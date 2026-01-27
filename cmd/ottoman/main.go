@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/trolleyman/ottoman/internal/client"
+	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/server"
 )
 
@@ -143,6 +144,64 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+// Config commands
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Configuration management commands",
+}
+
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Show current configuration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		cfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+		config.Print(cfg)
+		return nil
+	},
+}
+
+var configPathsCmd = &cobra.Command{
+	Use:   "paths",
+	Short: "Show configuration file search paths",
+	Run: func(cmd *cobra.Command, args []string) {
+		config.PrintPaths()
+	},
+}
+
+var configInitCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Create a default configuration file",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path, _ := cmd.Flags().GetString("output")
+		if path == "" {
+			path = config.DefaultConfigPath()
+		}
+
+		// Check if file already exists
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("config file already exists: %s", path)
+		}
+
+		// Load defaults and save
+		config.Init("")
+		cfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load defaults")
+		}
+
+		if err := config.Save(cfg, path); err != nil {
+			return errors.Wrap(err, "failed to save config")
+		}
+
+		fmt.Printf("Created config file: %s\n", path)
+		return nil
+	},
+}
+
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file path")
@@ -165,9 +224,16 @@ func init() {
 	statusCmd.Flags().String("server", "localhost:8080", "Server address")
 	statusCmd.Flags().String("client", "localhost:8081", "Client address")
 
+	// Config commands
+	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configPathsCmd)
+	configCmd.AddCommand(configInitCmd)
+	configInitCmd.Flags().StringP("output", "o", "", "output path for config file")
+
 	// Add commands to root
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(clientCmd)
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(configCmd)
 }

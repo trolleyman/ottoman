@@ -1,7 +1,5 @@
 package common
 
-import "time"
-
 // DisplayLayout represents a complete display configuration that can be applied
 type DisplayLayout struct {
 	Name        string       `json:"name"`
@@ -85,49 +83,3 @@ type MonitorConfig struct {
 	Enabled     bool    `json:"enabled"`
 }
 
-// WakeTarget represents a device that can be woken via WoL
-type WakeTarget struct {
-	Name       string `json:"name"`
-	MACAddress string `json:"mac_address"`
-	IPAddress  string `json:"ip_address,omitempty"`
-	Port       int    `json:"port,omitempty"`
-}
-
-// ServerConfig holds server configuration
-type ServerConfig struct {
-	ListenAddr     string       `json:"listen_addr"`
-	AuthToken      string       `json:"auth_token,omitempty"`
-	Username       string       `json:"username,omitempty"`
-	PasswordHash   string       `json:"password_hash,omitempty"`
-	WakeTargets    []WakeTarget `json:"wake_targets"`
-	ClientAddr     string       `json:"client_addr"`
-	PingURL        string       `json:"ping_url,omitempty"`
-	PingInterval   Duration     `json:"ping_interval,omitempty"`
-}
-
-// ClientConfig holds client configuration
-type ClientConfig struct {
-	ListenAddr  string `json:"listen_addr"`
-	AuthToken   string `json:"auth_token,omitempty"`
-	LayoutsFile string `json:"layouts_file"`
-}
-
-// Duration wraps time.Duration for JSON marshaling
-type Duration time.Duration
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + time.Duration(d).String() + `"`), nil
-}
-
-func (d *Duration) UnmarshalJSON(b []byte) error {
-	s := string(b)
-	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
-		s = s[1 : len(s)-1]
-	}
-	dur, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-	*d = Duration(dur)
-	return nil
-}

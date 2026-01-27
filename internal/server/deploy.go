@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/trolleyman/ottoman/internal/config"
 )
 
 const systemdService = `[Unit]
@@ -59,10 +60,11 @@ func InstallService() error {
 	}
 
 	// Create default config if it doesn't exist
-	configPath := filepath.Join(configDir, "server.json")
+	configPath := filepath.Join(configDir, "ottoman.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		config := DefaultConfig()
-		if err := config.Save(configPath); err != nil {
+		config.Init("")
+		cfg, _ := config.Load()
+		if err := config.Save(cfg, configPath); err != nil {
 			return errors.Wrap(err, "failed to create default config")
 		}
 		fmt.Printf("Created default config at %s\n", configPath)

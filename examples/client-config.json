@@ -1,5 +1,0 @@
-{
-  "listen_addr": ":8081",
-  "auth_token": "your-secret-token-here",
-  "layouts_file": "layouts.json"
-}

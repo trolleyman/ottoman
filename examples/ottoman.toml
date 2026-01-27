@@ -1,0 +1,28 @@
+# Ottoman Configuration
+# Place this file at one of these locations:
+#   - ./ottoman.toml (current directory)
+#   - /etc/ottoman/ottoman.toml (Linux system-wide)
+#   - ~/.config/ottoman/ottoman.toml (Linux user)
+#   - %APPDATA%/ottoman/ottoman.toml (Windows)
+
+[server]
+listen_addr = ":8080"
+auth_token = "your-secret-token-here"
+client_addr = "hades:8081"
+ping_url = "https://example.com/api/ottoman/ping"
+ping_interval = "5m"
+device_id = "ottoman-pi"
+
+# Optional basic auth (alternative to auth_token)
+# username = "admin"
+# password_hash = "hashed-password"
+
+[[server.wake_targets]]
+name = "hades"
+mac_address = "00:11:22:33:44:55"
+ip_address = "192.168.1.100"
+
+[client]
+listen_addr = ":8081"
+auth_token = "your-secret-token-here"
+layouts_file = "layouts.toml"

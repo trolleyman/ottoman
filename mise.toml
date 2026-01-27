@@ -1,58 +1,57 @@
 [tools]
 go = "latest"
-bun = "latest"
 
 [env]
 BUILD_DIR = "build"
 
 [tasks.build]
 description = "Build for current platform"
-run = "bun run scripts/build.ts"
+run = "mage build"
 
 [tasks."build:all"]
 description = "Build for all platforms"
-run = "bun run scripts/build.ts --all"
+run = "mage buildall"
 
 [tasks."build:pi"]
 description = "Build for Raspberry Pi (linux/arm)"
-run = "bun run scripts/build.ts --target pi"
+run = "mage buildpi"
 
 [tasks."build:windows"]
 description = "Build for Windows (windows/amd64)"
-run = "bun run scripts/build.ts --target windows"
+run = "mage buildwindows"
 
 [tasks."build:linux"]
 description = "Build for Linux desktop (linux/amd64)"
-run = "bun run scripts/build.ts --target linux"
+run = "mage buildlinux"
 
 [tasks.clean]
 description = "Remove build artifacts"
-run = "bun run scripts/clean.ts"
+run = "mage clean"
 
 [tasks.test]
 description = "Run tests"
-run = "bun run scripts/test.ts"
+run = "mage test"
 
 [tasks.lint]
 description = "Run linter"
-run = "bun run scripts/lint.ts"
+run = "mage lint"
 
 [tasks."run:server"]
 description = "Run server locally"
-run = "bun run scripts/run.ts server"
+run = "mage runserver"
 
 [tasks."run:client"]
 description = "Run client locally"
-run = "bun run scripts/run.ts client"
+run = "mage runclient"
 
 [tasks."deploy:pi"]
 description = "Deploy server to Raspberry Pi"
-run = "bun run scripts/deploy.ts --target pi"
+run = "mage deploypi"
 
 [tasks."deploy:client"]
 description = "Deploy client locally"
-run = "bun run scripts/deploy.ts --target client"
+run = "mage deployclient"
 
 [tasks.deps]
 description = "Install Go dependencies"
-run = "bun run scripts/deps.ts"
+run = "mage deps"

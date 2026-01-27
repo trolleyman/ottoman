@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	"github.com/pkg/errors"
+	"github.com/trolleyman/ottoman/internal/config"
 )
 
 const linuxSystemdService = `[Unit]
@@ -68,19 +69,20 @@ func installLinuxService() error {
 	}
 
 	// Create default config if it doesn't exist
-	configPath := filepath.Join(configDir, "client.json")
+	configPath := filepath.Join(configDir, "ottoman.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		config := DefaultConfig()
-		if err := config.Save(configPath); err != nil {
+		config.Init("")
+		cfg, _ := config.Load()
+		if err := config.Save(cfg, configPath); err != nil {
 			return errors.Wrap(err, "failed to create default config")
 		}
 		fmt.Printf("Created default config at %s\n", configPath)
 	}
 
 	// Create default layouts file if it doesn't exist
-	layoutsPath := filepath.Join(configDir, "layouts.json")
+	layoutsPath := filepath.Join(configDir, "layouts.toml")
 	if _, err := os.Stat(layoutsPath); os.IsNotExist(err) {
-		if err := os.WriteFile(layoutsPath, []byte("[]"), 0644); err != nil {
+		if err := os.WriteFile(layoutsPath, []byte(""), 0644); err != nil {
 			return errors.Wrap(err, "failed to create layouts file")
 		}
 		fmt.Printf("Created empty layouts file at %s\n", layoutsPath)
@@ -119,19 +121,20 @@ func installWindowsService() error {
 	}
 
 	// Create default config if it doesn't exist
-	configPath := filepath.Join(configDir, "client.json")
+	configPath := filepath.Join(configDir, "ottoman.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		config := DefaultConfig()
-		if err := config.Save(configPath); err != nil {
+		config.Init("")
+		cfg, _ := config.Load()
+		if err := config.Save(cfg, configPath); err != nil {
 			return errors.Wrap(err, "failed to create default config")
 		}
 		fmt.Printf("Created default config at %s\n", configPath)
 	}
 
 	// Create default layouts file if it doesn't exist
-	layoutsPath := filepath.Join(configDir, "layouts.json")
+	layoutsPath := filepath.Join(configDir, "layouts.toml")
 	if _, err := os.Stat(layoutsPath); os.IsNotExist(err) {
-		if err := os.WriteFile(layoutsPath, []byte("[]"), 0644); err != nil {
+		if err := os.WriteFile(layoutsPath, []byte(""), 0644); err != nil {
 			return errors.Wrap(err, "failed to create layouts file")
 		}
 		fmt.Printf("Created empty layouts file at %s\n", layoutsPath)

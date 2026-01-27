@@ -30,7 +30,7 @@ type Server struct {
 	startTime time.Time
 
 	mu          sync.RWMutex
-	wakeTargets map[string]common.WakeTarget
+	wakeTargets map[string]WakeTarget
 }
 
 // New creates a new server instance
@@ -44,7 +44,7 @@ func New(config *Config) (*Server, error) {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		wakeTargets: make(map[string]common.WakeTarget),
+		wakeTargets: make(map[string]WakeTarget),
 		startTime:   time.Now(),
 	}
 
@@ -177,7 +177,7 @@ func (s *Server) handleListWakeTargets(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	targets := make([]common.WakeTarget, 0, len(s.wakeTargets))
+	targets := make([]WakeTarget, 0, len(s.wakeTargets))
 	for _, target := range s.wakeTargets {
 		targets = append(targets, target)
 	}
