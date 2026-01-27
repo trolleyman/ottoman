@@ -1,0 +1,102 @@
+[
+  {
+    "name": "Normal",
+    "monitors": [
+      {
+        "name": "DP-1",
+        "width": 2560,
+        "height": 1440,
+        "refresh_rate": 144,
+        "position_x": 0,
+        "position_y": 0,
+        "primary": true,
+        "enabled": true
+      },
+      {
+        "name": "HDMI-1",
+        "width": 1920,
+        "height": 1080,
+        "refresh_rate": 60,
+        "position_x": 2560,
+        "position_y": 180,
+        "primary": false,
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "name": "TV Only",
+    "monitors": [
+      {
+        "name": "DP-1",
+        "width": 2560,
+        "height": 1440,
+        "refresh_rate": 144,
+        "position_x": 0,
+        "position_y": 0,
+        "primary": false,
+        "enabled": false
+      },
+      {
+        "name": "HDMI-1",
+        "width": 3840,
+        "height": 2160,
+        "refresh_rate": 60,
+        "position_x": 0,
+        "position_y": 0,
+        "primary": true,
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "name": "All Displays",
+    "monitors": [
+      {
+        "name": "DP-1",
+        "width": 2560,
+        "height": 1440,
+        "refresh_rate": 144,
+        "position_x": 0,
+        "position_y": 0,
+        "primary": true,
+        "enabled": true
+      },
+      {
+        "name": "HDMI-1",
+        "width": 1920,
+        "height": 1080,
+        "refresh_rate": 60,
+        "position_x": 2560,
+        "position_y": 180,
+        "primary": false,
+        "enabled": true
+      },
+      {
+        "name": "HDMI-2",
+        "width": 3840,
+        "height": 2160,
+        "refresh_rate": 60,
+        "position_x": -3840,
+        "position_y": 0,
+        "primary": false,
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "name": "Single Monitor",
+    "monitors": [
+      {
+        "name": "DP-1",
+        "width": 2560,
+        "height": 1440,
+        "refresh_rate": 144,
+        "position_x": 0,
+        "position_y": 0,
+        "primary": true,
+        "enabled": true
+      }
+    ]
+  }
+]

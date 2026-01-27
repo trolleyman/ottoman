@@ -1,0 +1,58 @@
+[tools]
+go = "latest"
+bun = "latest"
+
+[env]
+BUILD_DIR = "build"
+
+[tasks.build]
+description = "Build for current platform"
+run = "bun run scripts/build.ts"
+
+[tasks."build:all"]
+description = "Build for all platforms"
+run = "bun run scripts/build.ts --all"
+
+[tasks."build:pi"]
+description = "Build for Raspberry Pi (linux/arm)"
+run = "bun run scripts/build.ts --target pi"
+
+[tasks."build:windows"]
+description = "Build for Windows (windows/amd64)"
+run = "bun run scripts/build.ts --target windows"
+
+[tasks."build:linux"]
+description = "Build for Linux desktop (linux/amd64)"
+run = "bun run scripts/build.ts --target linux"
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "bun run scripts/clean.ts"
+
+[tasks.test]
+description = "Run tests"
+run = "bun run scripts/test.ts"
+
+[tasks.lint]
+description = "Run linter"
+run = "bun run scripts/lint.ts"
+
+[tasks."run:server"]
+description = "Run server locally"
+run = "bun run scripts/run.ts server"
+
+[tasks."run:client"]
+description = "Run client locally"
+run = "bun run scripts/run.ts client"
+
+[tasks."deploy:pi"]
+description = "Deploy server to Raspberry Pi"
+run = "bun run scripts/deploy.ts --target pi"
+
+[tasks."deploy:client"]
+description = "Deploy client locally"
+run = "bun run scripts/deploy.ts --target client"
+
+[tasks.deps]
+description = "Install Go dependencies"
+run = "bun run scripts/deps.ts"
