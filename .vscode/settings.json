@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^go test \\./internal/client -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^go test \\./\\.\\.\\. -run TestHandleSaveCurrentLayout -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

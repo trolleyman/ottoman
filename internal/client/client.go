@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -19,12 +21,12 @@ import (
 
 // Client is the display control agent running on the desktop
 type Client struct {
-	config       *Config
-	router       *http.ServeMux
-	server       *http.Server
-	layoutStore  *display.LayoutStore
-	displayMgr   display.Manager
-	startTime    time.Time
+	config        *Config
+	router        *http.ServeMux
+	server        *http.Server
+	layouts       *display.Layouts
+	displayMgr    display.Manager
+	startTime     time.Time
 	currentLayout string
 }
 
@@ -39,7 +41,7 @@ func New(config *Config) (*Client, error) {
 	if err != nil {
 		log.Printf("Warning: failed to load layouts: %v", err)
 		// Create empty store
-		store = &display.LayoutStore{}
+		store = &display.Layouts{}
 	}
 
 	// Create display manager
@@ -49,10 +51,10 @@ func New(config *Config) (*Client, error) {
 	}
 
 	c := &Client{
-		config:      config,
-		layoutStore: store,
-		displayMgr:  mgr,
-		startTime:   time.Now(),
+		config:     config,
+		layouts:    store,
+		displayMgr: mgr,
+		startTime:  time.Now(),
 	}
 
 	c.setupRoutes()
@@ -60,9 +62,59 @@ func New(config *Config) (*Client, error) {
 	return c, nil
 }
 
+// handleWebIndex serves the embedded HTML file
+func (c *Client) handleWebIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	tmpl := `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Layouts</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+	<div class="container mx-auto p-4">
+		<h1 class="text-2xl font-bold mb-4">Available Layouts</h1>
+		<ul id="layout-list" class="list-disc pl-5">
+			{{range .Layouts}}<li>{{.}}</li>{{else}}<li>No layouts</li>{{end}}
+		</ul>
+	</div>
+</body>
+</html>`
+
+	// Retrieve layouts to render in the template
+	layouts, err := c.layouts.List()
+	if err != nil {
+		log.Printf("Warning: failed to list layouts: %v", err)
+		layouts = []string{}
+	}
+
+	t, err := template.New("index").Parse(tmpl)
+	if err != nil {
+		common.WriteError(w, http.StatusInternalServerError, "failed to parse template")
+		return
+	}
+
+	data := struct {
+		Layouts []string
+	}{Layouts: layouts}
+
+	if err := t.Execute(w, data); err != nil {
+		log.Printf("Failed to execute template: %v", err)
+		// If headers already written, return; otherwise send error
+		return
+	}
+}
+
 // setupRoutes configures HTTP routes
 func (c *Client) setupRoutes() {
 	c.router = http.NewServeMux()
+
+	// Web index
+	c.router.HandleFunc("/", c.handleWebIndex)
 
 	// Health check (no auth)
 	c.router.HandleFunc("GET /health", c.handleHealth)
@@ -72,6 +124,7 @@ func (c *Client) setupRoutes() {
 	c.router.HandleFunc("GET /api/layouts", c.requireAuth(c.handleListLayouts))
 	c.router.HandleFunc("POST /api/layouts/switch", c.requireAuth(c.handleSwitchLayout))
 	c.router.HandleFunc("GET /api/layouts/current", c.requireAuth(c.handleCurrentLayout))
+	c.router.HandleFunc("POST /api/layouts/save-current", c.requireAuth(c.handleSaveCurrentLayout))
 
 	// Monitor info
 	c.router.HandleFunc("GET /api/monitors", c.requireAuth(c.handleListMonitors))
@@ -117,12 +170,15 @@ func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleListLayouts returns available display layouts
 func (c *Client) handleListLayouts(w http.ResponseWriter, r *http.Request) {
-	layouts := c.layoutStore.List()
-	currentLayout, _ := c.displayMgr.GetCurrentLayout()
+	layouts, err := c.layouts.List()
+	if err != nil {
+		common.WriteError(w, http.StatusInternalServerError, "failed to list layouts")
+		return
+	}
 
 	common.WriteJSON(w, http.StatusOK, common.ListLayoutsResponse{
 		Layouts:       layouts,
-		CurrentLayout: currentLayout,
+		CurrentLayout: c.currentLayout,
 	})
 }
 
@@ -174,6 +230,50 @@ func (c *Client) handleCurrentLayout(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, common.SwitchLayoutResponse{
 		Success:       true,
 		CurrentLayout: currentLayout,
+	})
+}
+
+// handleSaveCurrentLayout saves the current layout
+func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request) {
+	var req common.SaveLayoutRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		common.WriteError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	// Generate ID if not provided
+	if req.ID == "" {
+		req.ID = slugify(req.Name)
+	}
+
+	// Save layout into the layout store (simplified representation)
+	simplified := common.SimplifiedLayout{
+		Name:     req.Name,
+		Monitors: []common.MonitorConfig{},
+	}
+	c.layouts.Set(simplified)
+	if err := c.layouts.Save(); err != nil {
+		common.WriteError(w, http.StatusInternalServerError, "failed to save layout")
+		return
+	}
+
+	layout := &common.Layout{
+		ID:          req.ID,
+		Name:        req.Name,
+		Emoji:       req.Emoji,
+		SourceModes: []common.SourceMode{},
+		TargetModes: []common.TargetMode{},
+		Paths:       []common.Path{},
+	}
+
+	common.WriteJSON(w, http.StatusOK, common.SaveLayoutResponse{
+		Success: true,
+		Layout:  layout,
 	})
 }
 
@@ -241,4 +341,11 @@ func CheckStatus(addr string) string {
 		return "OK"
 	}
 	return fmt.Sprintf("ERROR: status %d", resp.StatusCode)
+}
+
+// slugify converts a string into a URL-friendly slug
+func slugify(input string) string {
+	// Replace spaces with dashes and remove non-alphanumeric characters
+	slug := regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(strings.ToLower(input), "-")
+	return strings.Trim(slug, "-")
 }

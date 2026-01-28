@@ -72,6 +72,20 @@ type AuthResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+// SaveLayoutRequest is sent to save the current display layout
+type SaveLayoutRequest struct {
+	ID    string `json:"id,omitempty"`    // Optional, defaults to slug of name
+	Name  string `json:"name"`            // Required
+	Emoji string `json:"emoji,omitempty"` // Optional
+}
+
+// SaveLayoutResponse is returned after saving a layout
+type SaveLayoutResponse struct {
+	Success bool    `json:"success"`
+	Layout  *Layout `json:"layout,omitempty"`
+	Message string  `json:"message,omitempty"`
+}
+
 // JSON helper functions
 
 // WriteJSON writes a JSON response

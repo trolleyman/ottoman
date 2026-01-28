@@ -10,17 +10,9 @@ import (
 
 // Manager handles display configuration switching
 type Manager interface {
-	// ListMonitors returns information about connected monitors
 	ListMonitors() ([]MonitorInfo, error)
-
-	// GetCurrentLayout attempts to identify the current layout
-	GetCurrentLayout() (string, error)
-
-	// ApplyLayout applies a named layout configuration
-	ApplyLayout(name string) error
-
-	// ApplyLayoutConfig applies a specific layout configuration
-	ApplyLayoutConfig(layout common.SimplifiedLayout) error
+	GetCurrentLayout(layouts *Layouts) (string, error)
+	ApplyLayoutConfig(layout common.Layout) error
 }
 
 // MonitorInfo contains information about a connected monitor
@@ -38,29 +30,20 @@ type MonitorInfo struct {
 	Connected    bool    `json:"connected"`
 }
 
-// LayoutStore manages display layout configurations
-type LayoutStore struct {
-	layouts map[string]common.SimplifiedLayout
-	file    string
+// Layouts manages display layout configurations
+type Layouts struct {
+	layouts map[string]common.Layout
 }
 
-// NewLayoutStore creates a new layout store from a file
-func NewLayoutStore(file string) (*LayoutStore, error) {
-	store := &LayoutStore{
-		layouts: make(map[string]common.SimplifiedLayout),
-		file:    file,
+func NewLayouts() *Layouts {
+	return &Layouts{
+		layouts: make(map[string]common.Layout),
 	}
-
-	if err := store.Load(); err != nil {
-		return nil, err
-	}
-
-	return store, nil
 }
 
 // Load reads layouts from the configuration file
-func (s *LayoutStore) Load() error {
-	data, err := os.ReadFile(s.file)
+func (s *Layouts) Load(file string) error {
+	data, err := os.ReadFile(file)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Return empty store if file doesn't exist
@@ -69,7 +52,7 @@ func (s *LayoutStore) Load() error {
 		return errors.Wrap(err, "failed to read layouts file")
 	}
 
-	var layouts []common.SimplifiedLayout
+	var layouts []common.Layout
 	if err := json.Unmarshal(data, &layouts); err != nil {
 		return errors.Wrap(err, "failed to parse layouts file")
 	}
@@ -82,8 +65,8 @@ func (s *LayoutStore) Load() error {
 }
 
 // Save writes layouts to the configuration file
-func (s *LayoutStore) Save() error {
-	layouts := make([]common.SimplifiedLayout, 0, len(s.layouts))
+func (s *Layouts) Save(file string) error {
+	layouts := make([]common.Layout, 0, len(s.layouts))
 	for _, layout := range s.layouts {
 		layouts = append(layouts, layout)
 	}
@@ -93,40 +76,40 @@ func (s *LayoutStore) Save() error {
 		return errors.Wrap(err, "failed to marshal layouts")
 	}
 
-	if err := os.WriteFile(s.file, data, 0644); err != nil {
+	if err := os.WriteFile(file, data, 0644); err != nil {
 		return errors.Wrap(err, "failed to write layouts file")
 	}
 
 	return nil
 }
 
-// Get returns a layout by name
-func (s *LayoutStore) Get(name string) (common.SimplifiedLayout, bool) {
-	layout, ok := s.layouts[name]
+// Get returns a layout by id
+func (s *Layouts) Get(id string) (common.Layout, bool) {
+	layout, ok := s.layouts[id]
 	return layout, ok
 }
 
-// List returns all layout names
-func (s *LayoutStore) List() []string {
-	names := make([]string, 0, len(s.layouts))
-	for name := range s.layouts {
-		names = append(names, name)
+// List returns all layouts
+func (s *Layouts) List() []common.Layout {
+	var layouts []common.Layout
+	for _, layout := range s.layouts {
+		layouts = append(layouts, layout)
 	}
-	return names
+	return layouts
 }
 
 // Set adds or updates a layout
-func (s *LayoutStore) Set(layout common.SimplifiedLayout) {
-	s.layouts[layout.Name] = layout
+func (s *Layouts) Set(layout common.Layout) {
+	s.layouts[layout.ID] = layout
 }
 
 // Delete removes a layout
-func (s *LayoutStore) Delete(name string) {
-	delete(s.layouts, name)
+func (s *Layouts) Delete(id string) {
+	delete(s.layouts, id)
 }
 
 // NewManager creates a platform-specific display manager
 // This is implemented in platform-specific files (windows.go, linux.go)
-func NewManager(store *LayoutStore) (Manager, error) {
+func NewManager(store *Layouts) (Manager, error) {
 	return newPlatformManager(store)
 }

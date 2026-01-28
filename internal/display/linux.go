@@ -16,10 +16,9 @@ import (
 
 // LinuxManager implements display management on Linux using xrandr
 type LinuxManager struct {
-	store *LayoutStore
 }
 
-func newPlatformManager(store *LayoutStore) (Manager, error) {
+func newPlatformManager(store *Layouts) (Manager, error) {
 	// Check if xrandr is available
 	if _, err := exec.LookPath("xrandr"); err != nil {
 		return nil, errors.Wrap(err, "xrandr not found")
@@ -125,10 +124,13 @@ func (m *LinuxManager) GetCurrentLayout() (string, error) {
 	}
 
 	// Try to match current state to a known layout
-	for _, name := range m.store.List() {
-		layout, _ := m.store.Get(name)
-		if m.matchesLayout(monitors, layout) {
-			return name, nil
+	id, err := m.store.List()
+	if err == nil {
+		for _, id := range id {
+			layout, _ := m.store.Get(id)
+			if m.matchesLayout(monitors, layout) {
+				return id, nil
+			}
 		}
 	}
 

@@ -1,8 +1,10 @@
 package common
 
-// DisplayLayout represents a complete display configuration that can be applied
-type DisplayLayout struct {
+// Layout represents a complete display configuration that can be applied
+type Layout struct {
+	ID          string       `json:"id"`
 	Name        string       `json:"name"`
+	Emoji       string       `json:"emoji,omitempty"`
 	SourceModes []SourceMode `json:"source_modes"`
 	TargetModes []TargetMode `json:"target_modes"`
 	Paths       []Path       `json:"paths"`
@@ -50,36 +52,17 @@ type DisplaySize struct {
 
 // Path connects a source to a target
 type Path struct {
-	SourceIndex    int        `json:"source_index"`
-	TargetIndex    int        `json:"target_index"`
-	OutputTech     string     `json:"output_tech,omitempty"`
-	Rotation       int        `json:"rotation,omitempty"`
-	Scaling        string     `json:"scaling,omitempty"`
-	RefreshRate    float64    `json:"refresh_rate"`
-	ScanlineOrder  string     `json:"scanline_order,omitempty"`
-	IsPrimary      bool       `json:"is_primary,omitempty"`
+	SourceIndex   int     `json:"source_index"`
+	TargetIndex   int     `json:"target_index"`
+	OutputTech    string  `json:"output_tech,omitempty"`
+	Rotation      int     `json:"rotation,omitempty"`
+	Scaling       string  `json:"scaling,omitempty"`
+	RefreshRate   float64 `json:"refresh_rate"`
+	ScanlineOrder string  `json:"scanline_order,omitempty"`
+	IsPrimary     bool    `json:"is_primary,omitempty"`
 }
 
 // LayoutsConfig holds all available display layouts
 type LayoutsConfig struct {
-	Layouts []DisplayLayout `json:"layouts"`
+	Layouts []Layout `json:"layouts"`
 }
-
-// SimplifiedLayout is a user-friendly layout format for configuration
-type SimplifiedLayout struct {
-	Name     string           `json:"name"`
-	Monitors []MonitorConfig  `json:"monitors"`
-}
-
-// MonitorConfig is a simplified monitor configuration
-type MonitorConfig struct {
-	Name        string  `json:"name"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	RefreshRate float64 `json:"refresh_rate"`
-	PositionX   int     `json:"position_x"`
-	PositionY   int     `json:"position_y"`
-	Primary     bool    `json:"primary,omitempty"`
-	Enabled     bool    `json:"enabled"`
-}
-

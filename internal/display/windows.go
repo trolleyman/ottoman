@@ -14,10 +14,10 @@ import (
 
 // WindowsManager implements display management on Windows
 type WindowsManager struct {
-	store *LayoutStore
+	store *Layouts
 }
 
-func newPlatformManager(store *LayoutStore) (Manager, error) {
+func newPlatformManager(store *Layouts) (Manager, error) {
 	return &WindowsManager{store: store}, nil
 }
 
@@ -154,10 +154,13 @@ func (m *WindowsManager) GetCurrentLayout() (string, error) {
 	}
 
 	// Try to match current state to a known layout
-	for _, name := range m.store.List() {
-		layout, _ := m.store.Get(name)
-		if matchesLayout(monitors, layout) {
-			return name, nil
+	names, err := m.store.List()
+	if err == nil {
+		for _, name := range names {
+			layout, _ := m.store.Get(name)
+			if matchesLayout(monitors, layout) {
+				return name, nil
+			}
 		}
 	}
 
