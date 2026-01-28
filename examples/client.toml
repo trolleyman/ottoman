@@ -1,0 +1,26 @@
+# Ottoman Client Configuration
+# Copy this file to one of these locations:
+#   - ./config.toml (current directory)
+#   - ~/.config/ottoman/config.toml (Linux user)
+#   - /etc/ottoman/config.toml (Linux system)
+#   - %APPDATA%/ottoman/config.toml (Windows)
+
+[client]
+listen_addr = ':8081'
+auth_token = 'your-secret-token-here'
+
+# Example layout (add more with `ottoman client layout add`)
+# [[client.layouts]]
+# id = 'desktop'
+# name = 'Desktop'
+# emoji = '🖥️'
+# aliases = ['d', 'main']
+# [[client.layouts.monitors]]
+# edid = 'DEL:D0A2'
+# width = 2560
+# height = 1440
+# refresh_rate = 144.0
+# position_x = 0
+# position_y = 0
+# primary = true
+# enabled = true

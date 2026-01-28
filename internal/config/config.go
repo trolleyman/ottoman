@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +12,17 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
+	"github.com/trolleyman/ottoman/internal/common"
 )
+
+// GenerateToken creates a cryptographically random token
+func GenerateToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", errors.Wrap(err, "failed to generate random bytes")
+	}
+	return hex.EncodeToString(bytes), nil
+}
 
 // Config holds the complete ottoman configuration
 type Config struct {
@@ -33,9 +45,9 @@ type ServerConfig struct {
 
 // ClientConfig holds client configuration
 type ClientConfig struct {
-	ListenAddr  string `mapstructure:"listen_addr"`
-	AuthToken   string `mapstructure:"auth_token"`
-	LayoutsFile string `mapstructure:"layouts_file"`
+	ListenAddr string          `mapstructure:"listen_addr"`
+	AuthToken  string          `mapstructure:"auth_token"`
+	Layouts    []common.Layout `mapstructure:"layouts"`
 }
 
 // WakeTarget represents a device that can be woken via WoL
@@ -58,7 +70,7 @@ func Init(cfgFile string) {
 	configFile = cfgFile
 
 	v.SetConfigType("toml")
-	v.SetConfigName("ottoman")
+	v.SetConfigName("config")
 
 	// Set defaults
 	setDefaults()
@@ -87,14 +99,7 @@ func setDefaults() {
 
 	// Client defaults
 	v.SetDefault("client.listen_addr", ":8081")
-	v.SetDefault("client.layouts_file", defaultLayoutsFile())
-}
-
-func defaultLayoutsFile() string {
-	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("APPDATA"), "ottoman", "layouts.toml")
-	}
-	return filepath.Join(os.Getenv("HOME"), ".config", "ottoman", "layouts.toml")
+	v.SetDefault("client.layouts", []common.Layout{})
 }
 
 func addConfigPaths() {
@@ -167,14 +172,14 @@ func ConfigPath() string {
 func DefaultConfigPath() string {
 	if runtime.GOOS == "windows" {
 		if appData := os.Getenv("APPDATA"); appData != "" {
-			return filepath.Join(appData, "ottoman", "ottoman.toml")
+			return filepath.Join(appData, "ottoman", "config.toml")
 		}
 	} else {
 		if home := os.Getenv("HOME"); home != "" {
-			return filepath.Join(home, ".config", "ottoman", "ottoman.toml")
+			return filepath.Join(home, ".config", "ottoman", "config.toml")
 		}
 	}
-	return "ottoman.toml"
+	return "config.toml"
 }
 
 // SystemConfigPath returns the system-wide config file path (Unix only)
@@ -182,33 +187,213 @@ func SystemConfigPath() string {
 	if runtime.GOOS == "windows" {
 		return DefaultConfigPath()
 	}
-	return "/etc/ottoman/ottoman.toml"
+	return "/etc/ottoman/config.toml"
 }
 
-// Save writes the configuration to a file
-func Save(cfg *Config, path string) error {
-	if path == "" {
-		path = DefaultConfigPath()
-	}
-
-	// Ensure directory exists
+// ensureConfigDir creates the config directory if needed
+func ensureConfigDir(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create config directory")
 	}
+	return nil
+}
 
-	// Create a new viper instance for writing
+// SaveClient writes client configuration to a file (client section only)
+func SaveClient(cfg *ClientConfig, path string) error {
+	if path == "" {
+		path = DefaultConfigPath()
+	}
+	if err := ensureConfigDir(path); err != nil {
+		return err
+	}
+
 	w := viper.New()
 	w.SetConfigType("toml")
 
-	// Set all values
-	w.Set("server", cfg.Server)
-	w.Set("client", cfg.Client)
+	w.Set("client.listen_addr", cfg.ListenAddr)
+	w.Set("client.auth_token", cfg.AuthToken)
+
+	if len(cfg.Layouts) > 0 {
+		layouts := make([]map[string]interface{}, len(cfg.Layouts))
+		for i, l := range cfg.Layouts {
+			layout := map[string]interface{}{
+				"id":   l.ID,
+				"name": l.Name,
+			}
+			if l.Emoji != "" {
+				layout["emoji"] = l.Emoji
+			}
+			if len(l.Aliases) > 0 {
+				layout["aliases"] = l.Aliases
+			}
+			if len(l.Monitors) > 0 {
+				monitors := make([]map[string]interface{}, len(l.Monitors))
+				for j, m := range l.Monitors {
+					monitors[j] = map[string]interface{}{
+						"edid":         m.EDID,
+						"port":         m.Port,
+						"width":        m.Width,
+						"height":       m.Height,
+						"refresh_rate": m.RefreshRate,
+						"position_x":   m.PositionX,
+						"position_y":   m.PositionY,
+						"primary":      m.Primary,
+						"enabled":      m.Enabled,
+					}
+				}
+				layout["monitors"] = monitors
+			}
+			layouts[i] = layout
+		}
+		w.Set("client.layouts", layouts)
+	}
 
 	if err := w.WriteConfigAs(path); err != nil {
 		return errors.Wrap(err, "failed to write config file")
 	}
+	return nil
+}
 
+// SaveServer writes server configuration to a file (server section only)
+func SaveServer(cfg *ServerConfig, path string) error {
+	if path == "" {
+		path = DefaultConfigPath()
+	}
+	if err := ensureConfigDir(path); err != nil {
+		return err
+	}
+
+	w := viper.New()
+	w.SetConfigType("toml")
+
+	w.Set("server.listen_addr", cfg.ListenAddr)
+	w.Set("server.auth_token", cfg.AuthToken)
+	if cfg.Username != "" {
+		w.Set("server.username", cfg.Username)
+	}
+	if cfg.PasswordHash != "" {
+		w.Set("server.password_hash", cfg.PasswordHash)
+	}
+	w.Set("server.client_addr", cfg.ClientAddr)
+	if cfg.PingURL != "" {
+		w.Set("server.ping_url", cfg.PingURL)
+	}
+	w.Set("server.ping_interval", cfg.PingInterval.String())
+	w.Set("server.device_id", cfg.DeviceID)
+
+	if len(cfg.WakeTargets) > 0 {
+		targets := make([]map[string]interface{}, len(cfg.WakeTargets))
+		for i, t := range cfg.WakeTargets {
+			target := map[string]interface{}{
+				"name":        t.Name,
+				"mac_address": t.MACAddress,
+			}
+			if t.IPAddress != "" {
+				target["ip_address"] = t.IPAddress
+			}
+			if t.Port != 0 {
+				target["port"] = t.Port
+			}
+			targets[i] = target
+		}
+		w.Set("server.wake_targets", targets)
+	}
+
+	if err := w.WriteConfigAs(path); err != nil {
+		return errors.Wrap(err, "failed to write config file")
+	}
+	return nil
+}
+
+// Save writes both server and client configuration (deprecated, use SaveClient/SaveServer)
+func Save(cfg *Config, path string) error {
+	if path == "" {
+		path = DefaultConfigPath()
+	}
+	if err := ensureConfigDir(path); err != nil {
+		return err
+	}
+
+	w := viper.New()
+	w.SetConfigType("toml")
+
+	// Server values
+	w.Set("server.listen_addr", cfg.Server.ListenAddr)
+	w.Set("server.auth_token", cfg.Server.AuthToken)
+	if cfg.Server.Username != "" {
+		w.Set("server.username", cfg.Server.Username)
+	}
+	if cfg.Server.PasswordHash != "" {
+		w.Set("server.password_hash", cfg.Server.PasswordHash)
+	}
+	w.Set("server.client_addr", cfg.Server.ClientAddr)
+	if cfg.Server.PingURL != "" {
+		w.Set("server.ping_url", cfg.Server.PingURL)
+	}
+	w.Set("server.ping_interval", cfg.Server.PingInterval.String())
+	w.Set("server.device_id", cfg.Server.DeviceID)
+
+	if len(cfg.Server.WakeTargets) > 0 {
+		targets := make([]map[string]interface{}, len(cfg.Server.WakeTargets))
+		for i, t := range cfg.Server.WakeTargets {
+			target := map[string]interface{}{
+				"name":        t.Name,
+				"mac_address": t.MACAddress,
+			}
+			if t.IPAddress != "" {
+				target["ip_address"] = t.IPAddress
+			}
+			if t.Port != 0 {
+				target["port"] = t.Port
+			}
+			targets[i] = target
+		}
+		w.Set("server.wake_targets", targets)
+	}
+
+	// Client values
+	w.Set("client.listen_addr", cfg.Client.ListenAddr)
+	w.Set("client.auth_token", cfg.Client.AuthToken)
+
+	if len(cfg.Client.Layouts) > 0 {
+		layouts := make([]map[string]interface{}, len(cfg.Client.Layouts))
+		for i, l := range cfg.Client.Layouts {
+			layout := map[string]interface{}{
+				"id":   l.ID,
+				"name": l.Name,
+			}
+			if l.Emoji != "" {
+				layout["emoji"] = l.Emoji
+			}
+			if len(l.Aliases) > 0 {
+				layout["aliases"] = l.Aliases
+			}
+			if len(l.Monitors) > 0 {
+				monitors := make([]map[string]interface{}, len(l.Monitors))
+				for j, m := range l.Monitors {
+					monitors[j] = map[string]interface{}{
+						"edid":         m.EDID,
+						"port":         m.Port,
+						"width":        m.Width,
+						"height":       m.Height,
+						"refresh_rate": m.RefreshRate,
+						"position_x":   m.PositionX,
+						"position_y":   m.PositionY,
+						"primary":      m.Primary,
+						"enabled":      m.Enabled,
+					}
+				}
+				layout["monitors"] = monitors
+			}
+			layouts[i] = layout
+		}
+		w.Set("client.layouts", layouts)
+	}
+
+	if err := w.WriteConfigAs(path); err != nil {
+		return errors.Wrap(err, "failed to write config file")
+	}
 	return nil
 }
 
@@ -223,7 +408,7 @@ func (c *ServerConfig) Validate() error {
 	}
 
 	if c.AuthToken == "" && c.Username == "" {
-		fmt.Println("Warning: No authentication configured. API will be open.")
+		return errors.New("server.auth_token is required (run 'ottoman config init server' to configure)")
 	}
 
 	return nil
@@ -235,8 +420,8 @@ func (c *ClientConfig) Validate() error {
 		return errors.New("client.listen_addr is required")
 	}
 
-	if c.LayoutsFile == "" {
-		return errors.New("client.layouts_file is required")
+	if c.AuthToken == "" {
+		return errors.New("client.auth_token is required (run 'ottoman config init client' to configure)")
 	}
 
 	return nil
@@ -291,22 +476,37 @@ func Print(cfg *Config) {
 	if cfg.Client.AuthToken != "" {
 		fmt.Printf("auth_token = %q\n", cfg.Client.AuthToken)
 	}
-	fmt.Printf("layouts_file = %q\n", cfg.Client.LayoutsFile)
+
+	if len(cfg.Client.Layouts) > 0 {
+		fmt.Println()
+		for _, layout := range cfg.Client.Layouts {
+			fmt.Println("[[client.layouts]]")
+			fmt.Printf("id = %q\n", layout.ID)
+			fmt.Printf("name = %q\n", layout.Name)
+			if layout.Emoji != "" {
+				fmt.Printf("emoji = %q\n", layout.Emoji)
+			}
+			if len(layout.Aliases) > 0 {
+				fmt.Printf("aliases = %v\n", layout.Aliases)
+			}
+			fmt.Printf("# %d monitors\n", len(layout.Monitors))
+		}
+	}
 }
 
 // PrintPaths outputs the config search paths
 func PrintPaths() {
 	fmt.Println("Config search paths:")
-	fmt.Println("  1. ./ottoman.toml")
+	fmt.Println("  1. ./config.toml")
 
 	if runtime.GOOS == "windows" {
 		if appData := os.Getenv("APPDATA"); appData != "" {
-			fmt.Printf("  2. %s\n", filepath.Join(appData, "ottoman", "ottoman.toml"))
+			fmt.Printf("  2. %s\n", filepath.Join(appData, "ottoman", "config.toml"))
 		}
 	} else {
-		fmt.Println("  2. /etc/ottoman/ottoman.toml")
+		fmt.Println("  2. /etc/ottoman/config.toml")
 		if home := os.Getenv("HOME"); home != "" {
-			fmt.Printf("  3. %s\n", filepath.Join(home, ".config", "ottoman", "ottoman.toml"))
+			fmt.Printf("  3. %s\n", filepath.Join(home, ".config", "ottoman", "config.toml"))
 		}
 	}
 

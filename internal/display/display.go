@@ -1,10 +1,6 @@
 package display
 
 import (
-	"encoding/json"
-	"os"
-
-	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/common"
 )
 
@@ -17,17 +13,23 @@ type Manager interface {
 
 // MonitorInfo contains information about a connected monitor
 type MonitorInfo struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	Manufacturer string  `json:"manufacturer,omitempty"`
-	Model        string  `json:"model,omitempty"`
-	Width        int     `json:"width"`
-	Height       int     `json:"height"`
-	RefreshRate  float64 `json:"refresh_rate"`
-	PositionX    int     `json:"position_x"`
-	PositionY    int     `json:"position_y"`
-	Primary      bool    `json:"primary"`
-	Connected    bool    `json:"connected"`
+	// Identification
+	EDID string `json:"edid,omitempty"` // EDID "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2"
+	Port string `json:"port"`           // Port/connector name e.g., "HDMI-1", "DP-1"
+
+	// Display info
+	Name         string `json:"name,omitempty"`
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+
+	// Current configuration
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	RefreshRate float64 `json:"refresh_rate"`
+	PositionX   int     `json:"position_x"`
+	PositionY   int     `json:"position_y"`
+	Primary     bool    `json:"primary"`
+	Connected   bool    `json:"connected"`
 }
 
 // Layouts manages display layout configurations
@@ -41,46 +43,24 @@ func NewLayouts() *Layouts {
 	}
 }
 
-// Load reads layouts from the configuration file
-func (s *Layouts) Load(file string) error {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Return empty store if file doesn't exist
-			return nil
-		}
-		return errors.Wrap(err, "failed to read layouts file")
+// NewLayoutsFromSlice creates a Layouts store from a slice of layouts
+func NewLayoutsFromSlice(layouts []common.Layout) *Layouts {
+	s := &Layouts{
+		layouts: make(map[string]common.Layout),
 	}
-
-	var layouts []common.Layout
-	if err := json.Unmarshal(data, &layouts); err != nil {
-		return errors.Wrap(err, "failed to parse layouts file")
-	}
-
 	for _, layout := range layouts {
-		s.layouts[layout.Name] = layout
+		s.layouts[layout.ID] = layout
 	}
-
-	return nil
+	return s
 }
 
-// Save writes layouts to the configuration file
-func (s *Layouts) Save(file string) error {
+// ToSlice returns all layouts as a slice (for saving to config)
+func (s *Layouts) ToSlice() []common.Layout {
 	layouts := make([]common.Layout, 0, len(s.layouts))
 	for _, layout := range s.layouts {
 		layouts = append(layouts, layout)
 	}
-
-	data, err := json.MarshalIndent(layouts, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal layouts")
-	}
-
-	if err := os.WriteFile(file, data, 0644); err != nil {
-		return errors.Wrap(err, "failed to write layouts file")
-	}
-
-	return nil
+	return layouts
 }
 
 // Get returns a layout by id
@@ -106,6 +86,64 @@ func (s *Layouts) Set(layout common.Layout) {
 // Delete removes a layout
 func (s *Layouts) Delete(id string) {
 	delete(s.layouts, id)
+}
+
+// FindByIDOrAlias returns layouts matching the given ID, name, or alias
+func (s *Layouts) FindByIDOrAlias(query string) []common.Layout {
+	var matches []common.Layout
+	for _, layout := range s.layouts {
+		// Check ID
+		if layout.ID == query {
+			matches = append(matches, layout)
+			continue
+		}
+		// Check name
+		if layout.Name == query {
+			matches = append(matches, layout)
+			continue
+		}
+		// Check aliases
+		for _, alias := range layout.Aliases {
+			if alias == query {
+				matches = append(matches, layout)
+				break
+			}
+		}
+	}
+	return matches
+}
+
+// AddAlias adds an alias to a layout
+func (s *Layouts) AddAlias(id, alias string) bool {
+	layout, ok := s.layouts[id]
+	if !ok {
+		return false
+	}
+	// Check if alias already exists
+	for _, a := range layout.Aliases {
+		if a == alias {
+			return true // Already exists
+		}
+	}
+	layout.Aliases = append(layout.Aliases, alias)
+	s.layouts[id] = layout
+	return true
+}
+
+// RemoveAlias removes an alias from a layout
+func (s *Layouts) RemoveAlias(id, alias string) bool {
+	layout, ok := s.layouts[id]
+	if !ok {
+		return false
+	}
+	for i, a := range layout.Aliases {
+		if a == alias {
+			layout.Aliases = append(layout.Aliases[:i], layout.Aliases[i+1:]...)
+			s.layouts[id] = layout
+			return true
+		}
+	}
+	return false
 }
 
 // NewManager creates a platform-specific display manager

@@ -16,6 +16,7 @@ import (
 
 // LinuxManager implements display management on Linux using xrandr
 type LinuxManager struct {
+	store *Layouts
 }
 
 func newPlatformManager(store *Layouts) (Manager, error) {
@@ -60,13 +61,13 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 				monitors = append(monitors, *currentMonitor)
 			}
 
-			name := matches[1]
+			port := matches[1]
 			connected := matches[2] == "connected"
 			primary := matches[3] == "primary"
 
 			currentMonitor = &MonitorInfo{
-				ID:        name,
-				Name:      name,
+				Port:      port,
+				Name:      port, // Use port as name on Linux
 				Connected: connected,
 				Primary:   primary,
 			}
@@ -117,20 +118,16 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 }
 
 // GetCurrentLayout attempts to identify the current layout
-func (m *LinuxManager) GetCurrentLayout() (string, error) {
+func (m *LinuxManager) GetCurrentLayout(layouts *Layouts) (string, error) {
 	monitors, err := m.ListMonitors()
 	if err != nil {
 		return "", err
 	}
 
 	// Try to match current state to a known layout
-	id, err := m.store.List()
-	if err == nil {
-		for _, id := range id {
-			layout, _ := m.store.Get(id)
-			if m.matchesLayout(monitors, layout) {
-				return id, nil
-			}
+	for _, layout := range layouts.List() {
+		if m.matchesLayout(monitors, layout) {
+			return layout.ID, nil
 		}
 	}
 
@@ -138,7 +135,7 @@ func (m *LinuxManager) GetCurrentLayout() (string, error) {
 }
 
 // matchesLayout checks if current monitors match a layout
-func (m *LinuxManager) matchesLayout(monitors []MonitorInfo, layout common.SimplifiedLayout) bool {
+func (m *LinuxManager) matchesLayout(monitors []MonitorInfo, layout common.Layout) bool {
 	enabledCount := 0
 	for _, lm := range layout.Monitors {
 		if lm.Enabled {
@@ -157,16 +154,24 @@ func (m *LinuxManager) matchesLayout(monitors []MonitorInfo, layout common.Simpl
 		return false
 	}
 
-	// Check resolutions match
+	// Check each layout monitor matches a physical monitor
 	for _, lm := range layout.Monitors {
 		if !lm.Enabled {
 			continue
 		}
 		found := false
 		for _, mon := range monitors {
-			if mon.Width == lm.Width && mon.Height == lm.Height {
-				found = true
-				break
+			// Match by EDID first, then by port
+			if lm.EDID != "" && lm.EDID == mon.EDID {
+				if mon.Width == lm.Width && mon.Height == lm.Height {
+					found = true
+					break
+				}
+			} else if lm.Port != "" && lm.Port == mon.Port {
+				if mon.Width == lm.Width && mon.Height == lm.Height {
+					found = true
+					break
+				}
 			}
 		}
 		if !found {
@@ -177,17 +182,8 @@ func (m *LinuxManager) matchesLayout(monitors []MonitorInfo, layout common.Simpl
 	return true
 }
 
-// ApplyLayout applies a named layout
-func (m *LinuxManager) ApplyLayout(name string) error {
-	layout, ok := m.store.Get(name)
-	if !ok {
-		return errors.Errorf("layout %q not found", name)
-	}
-	return m.ApplyLayoutConfig(layout)
-}
-
 // ApplyLayoutConfig applies a display configuration using xrandr
-func (m *LinuxManager) ApplyLayoutConfig(layout common.SimplifiedLayout) error {
+func (m *LinuxManager) ApplyLayoutConfig(layout common.Layout) error {
 	args := m.buildXrandrArgs(layout)
 	cmd := exec.Command("xrandr", args...)
 	output, err := cmd.CombinedOutput()
@@ -198,11 +194,17 @@ func (m *LinuxManager) ApplyLayoutConfig(layout common.SimplifiedLayout) error {
 }
 
 // buildXrandrArgs builds xrandr command arguments for a layout
-func (m *LinuxManager) buildXrandrArgs(layout common.SimplifiedLayout) []string {
+func (m *LinuxManager) buildXrandrArgs(layout common.Layout) []string {
 	var args []string
 
 	for _, mon := range layout.Monitors {
-		args = append(args, "--output", mon.Name)
+		// Use Port for xrandr output name
+		outputName := mon.Port
+		if outputName == "" {
+			continue // Skip monitors without port specification
+		}
+
+		args = append(args, "--output", outputName)
 
 		if !mon.Enabled {
 			args = append(args, "--off")

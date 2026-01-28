@@ -409,9 +409,16 @@ func DeployPi(host string) error {
 	return nil
 }
 
-// DeployClient deploys the client locally.
+// DeployClient deploys the client locally (alias for Install).
 func DeployClient() error {
-	fmt.Println("Deploying client locally...\n")
+	return Install()
+}
+
+// Install builds and installs ottoman to the system location.
+// On Windows: %LOCALAPPDATA%\ottoman\ottoman.exe
+// On Linux:   ~/.local/bin/ottoman
+func Install() error {
+	fmt.Println("Building and installing ottoman...\n")
 
 	// Build for current platform
 	if err := Build(); err != nil {
@@ -425,11 +432,10 @@ func DeployClient() error {
 	}
 	binaryPath := filepath.Join(buildDir, binary+ext)
 
-	if err := sh.RunV(binaryPath, "client", "install"); err != nil {
+	if err := sh.RunV(binaryPath, "install"); err != nil {
 		return err
 	}
 
-	fmt.Println("\nClient deployment complete!")
 	return nil
 }
 
@@ -442,83 +448,5 @@ func Deps() error {
 	}
 
 	fmt.Println("\nDependencies installed!")
-	return nil
-}
-
-// configCandidates returns likely locations for the ottoman config file.
-func configCandidates() []string {
-	var cands []string
-	if runtime.GOOS == "windows" {
-		if v := os.Getenv("APPDATA"); v != "" {
-			cands = append(cands, filepath.Join(v, "ottoman", "config.toml"))
-		}
-		if v := os.Getenv("LOCALAPPDATA"); v != "" {
-			cands = append(cands, filepath.Join(v, "ottoman", "config.toml"))
-		}
-	}
-	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
-		cands = append(cands, filepath.Join(v, "ottoman", "config.toml"))
-	}
-	if h := os.Getenv("HOME"); h != "" {
-		cands = append(cands, filepath.Join(h, ".config", "ottoman", "config.toml"))
-		cands = append(cands, filepath.Join(h, ".ottoman", "config.toml"))
-	}
-	// fallback local path
-	cands = append(cands, filepath.Join(".config", "ottoman", "config.toml"))
-	cands = append(cands, "config.toml")
-	return cands
-}
-
-// findConfig returns the first existing config path or empty if none found.
-func findConfig() string {
-	for _, p := range configCandidates() {
-		if p == "" {
-			continue
-		}
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
-}
-
-// RegenerateConfigs regenerates or copies the current config into examples/ for reference.
-func RegenerateConfigs() error {
-	log.Println("RegenerateConfigs: starting")
-
-	cfg := findConfig()
-	if cfg != "" {
-		log.Printf("Found config: %s", cfg)
-	} else {
-		log.Println("No existing config found in standard paths")
-	}
-
-	examplesDir := "examples"
-	if err := os.MkdirAll(examplesDir, 0755); err != nil {
-		return err
-	}
-	dest := filepath.Join(examplesDir, "config.toml")
-
-	if cfg != "" {
-		data, err := os.ReadFile(cfg)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(dest, data, 0644); err != nil {
-			return err
-		}
-		log.Printf("Copied config to %s", dest)
-	} else {
-		sample := []byte(`# Example ottoman config (generated)
-[server]
-port = 8080
-`)
-		if err := os.WriteFile(dest, sample, 0644); err != nil {
-			return err
-		}
-		log.Printf("Wrote sample config to %s", dest)
-	}
-
-	log.Println("RegenerateConfigs: complete")
 	return nil
 }

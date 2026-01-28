@@ -1,68 +1,33 @@
 package common
 
-// Layout represents a complete display configuration that can be applied
+// Layout represents a display layout configuration
 type Layout struct {
-	ID          string       `json:"id"`
-	Name        string       `json:"name"`
-	Emoji       string       `json:"emoji,omitempty"`
-	SourceModes []SourceMode `json:"source_modes"`
-	TargetModes []TargetMode `json:"target_modes"`
-	Paths       []Path       `json:"paths"`
+	ID       string    `json:"id"`                // Required: user-defined or slug of name
+	Name     string    `json:"name"`              // Required: display name
+	Emoji    string    `json:"emoji,omitempty"`   // Optional: emoji for UI
+	Aliases  []string  `json:"aliases,omitempty"` // Optional: alternative names/shortcuts
+	Monitors []Monitor `json:"monitors"`          // Monitor configurations
 }
 
-// SourceMode describes a display source configuration
-type SourceMode struct {
-	ID          string   `json:"id"`
-	Adapter     string   `json:"adapter,omitempty"`
-	GDIName     string   `json:"gdi_name,omitempty"`
-	Width       int      `json:"width"`
-	Height      int      `json:"height"`
-	PixelFormat string   `json:"pixel_format,omitempty"`
-	Position    Position `json:"position"`
+// Monitor represents a monitor configuration within a layout
+type Monitor struct {
+	// Identification - EDID preferred, Port as fallback
+	// EDID format: "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2", "SAM:0C4E"
+	// Port format: connector name e.g., "HDMI-1", "DP-1", "eDP-1"
+	EDID string `json:"edid,omitempty"` // EDID manufacturer:product (preferred, portable)
+	Port string `json:"port,omitempty"` // Fallback: port/connector name
+
+	// Display configuration
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	RefreshRate float64 `json:"refresh_rate"`
+	PositionX   int     `json:"position_x"`
+	PositionY   int     `json:"position_y"`
+	Primary     bool    `json:"primary,omitempty"`
+	Enabled     bool    `json:"enabled"`
 }
 
-// Position represents screen position
-type Position struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-}
-
-// TargetMode describes a display target configuration
-type TargetMode struct {
-	ID               string      `json:"id"`
-	OutputTechnology string      `json:"output_technology,omitempty"`
-	EDIDManufacturer string      `json:"edid_manufacturer,omitempty"`
-	EDIDProductCode  string      `json:"edid_product_code,omitempty"`
-	ConnectorIndex   int         `json:"connector_index,omitempty"`
-	MonitorDevice    string      `json:"monitor_device,omitempty"`
-	PixelRate        int64       `json:"pixel_rate,omitempty"`
-	HSyncFreq        float64     `json:"hsync_freq,omitempty"`
-	VSyncFreq        float64     `json:"vsync_freq,omitempty"`
-	ActiveSize       DisplaySize `json:"active_size"`
-	TotalSize        DisplaySize `json:"total_size,omitempty"`
-	VideoStandard    string      `json:"video_standard,omitempty"`
-	ScanlineOrdering string      `json:"scanline_ordering,omitempty"`
-}
-
-// DisplaySize represents display dimensions
-type DisplaySize struct {
-	Width  int `json:"width"`
-	Height int `json:"height"`
-}
-
-// Path connects a source to a target
-type Path struct {
-	SourceIndex   int     `json:"source_index"`
-	TargetIndex   int     `json:"target_index"`
-	OutputTech    string  `json:"output_tech,omitempty"`
-	Rotation      int     `json:"rotation,omitempty"`
-	Scaling       string  `json:"scaling,omitempty"`
-	RefreshRate   float64 `json:"refresh_rate"`
-	ScanlineOrder string  `json:"scanline_order,omitempty"`
-	IsPrimary     bool    `json:"is_primary,omitempty"`
-}
-
-// LayoutsConfig holds all available display layouts
+// LayoutsConfig holds all available display layouts (for file format)
 type LayoutsConfig struct {
 	Layouts []Layout `json:"layouts"`
 }

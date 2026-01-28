@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/trolleyman/ottoman/internal/config"
 )
 
 const systemdService = `[Unit]
@@ -59,16 +58,11 @@ func InstallService() error {
 		return errors.Wrap(err, "failed to create config directory")
 	}
 
-	// Create default config if it doesn't exist
-	configPath := filepath.Join(configDir, "ottoman.toml")
+	// Check if config exists
+	configPath := filepath.Join(configDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		config.Init("")
-		cfg, _ := config.Load()
-		if err := config.Save(cfg, configPath); err != nil {
-			return errors.Wrap(err, "failed to create default config")
-		}
-		fmt.Printf("Created default config at %s\n", configPath)
-		fmt.Println("Please edit the config file and set your MAC addresses and authentication.")
+		fmt.Printf("Config not found at %s\n", configPath)
+		fmt.Println("Run 'ottoman config init server' to create it.")
 	}
 
 	// Reload systemd

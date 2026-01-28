@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/trolleyman/ottoman/internal/client"
+	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
+	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/server"
 )
 
@@ -88,19 +92,245 @@ var clientRunCmd = &cobra.Command{
 	},
 }
 
-var clientInstallCmd = &cobra.Command{
+var clientDeployCmd = &cobra.Command{
+	Use:   "deploy",
+	Short: "Deploy client locally (alias for 'ottoman install')",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return client.Deploy()
+	},
+}
+
+// Service commands
+var serviceCmd = &cobra.Command{
+	Use:   "service",
+	Short: "Manage the ottoman client service (autostart)",
+}
+
+var serviceInstallCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install service for client (systemd on Linux, Windows Service on Windows)",
+	Short: "Install autostart service (systemd on Linux, startup script on Windows)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return client.InstallService()
 	},
 }
 
-var clientDeployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy client locally",
+var serviceUninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "Remove autostart service",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.Deploy()
+		return client.UninstallService()
+	},
+}
+
+// Install command (root level)
+var installCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install ottoman to system location and create config",
+	Long: `Install copies the ottoman binary to the appropriate system location:
+  - Windows: %LOCALAPPDATA%\ottoman\ottoman.exe
+  - Linux:   ~/.local/bin/ottoman
+
+It also creates a default configuration file if one doesn't exist.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return client.Install()
+	},
+}
+
+// Layout commands
+var layoutCmd = &cobra.Command{
+	Use:   "layout",
+	Short: "Manage display layouts",
+}
+
+var layoutAddCmd = &cobra.Command{
+	Use:   "add <id> <name> [emoji]",
+	Short: "Add a new layout from current display configuration",
+	Args:  cobra.RangeArgs(2, 3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		fullCfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+
+		mgr, err := display.NewManager(layouts)
+		if err != nil {
+			return errors.Wrap(err, "failed to create display manager")
+		}
+
+		// Get current monitor state
+		monitors, err := mgr.ListMonitors()
+		if err != nil {
+			return errors.Wrap(err, "failed to get monitors")
+		}
+
+		// Convert to layout monitors
+		var monitorConfigs []common.Monitor
+		for _, m := range monitors {
+			if m.Connected {
+				monitorConfigs = append(monitorConfigs, common.Monitor{
+					EDID:        m.EDID,
+					Port:        m.Port,
+					Width:       m.Width,
+					Height:      m.Height,
+					RefreshRate: m.RefreshRate,
+					PositionX:   m.PositionX,
+					PositionY:   m.PositionY,
+					Primary:     m.Primary,
+					Enabled:     true,
+				})
+			}
+		}
+
+		layout := common.Layout{
+			ID:       args[0],
+			Name:     args[1],
+			Monitors: monitorConfigs,
+		}
+		if len(args) > 2 {
+			layout.Emoji = args[2]
+		}
+
+		layouts.Set(layout)
+		fullCfg.Client.Layouts = layouts.ToSlice()
+		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+			return errors.Wrap(err, "failed to save config")
+		}
+
+		fmt.Printf("Added layout %q (%s)\n", layout.Name, layout.ID)
+		return nil
+	},
+}
+
+var layoutListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all layouts",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		cfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		if len(cfg.Client.Layouts) == 0 {
+			fmt.Println("No layouts configured")
+			return nil
+		}
+
+		for _, l := range cfg.Client.Layouts {
+			emoji := ""
+			if l.Emoji != "" {
+				emoji = l.Emoji + " "
+			}
+			aliases := ""
+			if len(l.Aliases) > 0 {
+				aliases = fmt.Sprintf(" (aliases: %v)", l.Aliases)
+			}
+			fmt.Printf("%s%s [%s]%s - %d monitors\n", emoji, l.Name, l.ID, aliases, len(l.Monitors))
+		}
+		return nil
+	},
+}
+
+var layoutAliasCmd = &cobra.Command{
+	Use:   "alias",
+	Short: "Manage layout aliases",
+}
+
+var layoutAliasAddCmd = &cobra.Command{
+	Use:   "add <id> <alias>",
+	Short: "Add an alias to a layout",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		fullCfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+
+		if !layouts.AddAlias(args[0], args[1]) {
+			return fmt.Errorf("layout %q not found", args[0])
+		}
+
+		fullCfg.Client.Layouts = layouts.ToSlice()
+		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+			return errors.Wrap(err, "failed to save config")
+		}
+
+		fmt.Printf("Added alias %q to layout %q\n", args[1], args[0])
+		return nil
+	},
+}
+
+var layoutAliasRemoveCmd = &cobra.Command{
+	Use:   "remove <id> <alias>",
+	Short: "Remove an alias from a layout",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		fullCfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+
+		if !layouts.RemoveAlias(args[0], args[1]) {
+			return fmt.Errorf("layout %q not found or alias %q doesn't exist", args[0], args[1])
+		}
+
+		fullCfg.Client.Layouts = layouts.ToSlice()
+		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+			return errors.Wrap(err, "failed to save config")
+		}
+
+		fmt.Printf("Removed alias %q from layout %q\n", args[1], args[0])
+		return nil
+	},
+}
+
+var layoutApplyCmd = &cobra.Command{
+	Use:   "apply <id-or-alias>",
+	Short: "Apply a layout by ID, name, or alias",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		cfg, err := config.Load()
+		if err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		layouts := display.NewLayoutsFromSlice(cfg.Client.Layouts)
+
+		matches := layouts.FindByIDOrAlias(args[0])
+		if len(matches) == 0 {
+			return fmt.Errorf("no layout found matching %q", args[0])
+		}
+		if len(matches) > 1 {
+			fmt.Printf("Multiple layouts match %q:\n", args[0])
+			for _, l := range matches {
+				fmt.Printf("  - %s [%s]\n", l.Name, l.ID)
+			}
+			return fmt.Errorf("ambiguous layout reference")
+		}
+
+		layout := matches[0]
+
+		mgr, err := display.NewManager(layouts)
+		if err != nil {
+			return errors.Wrap(err, "failed to create display manager")
+		}
+
+		if err := mgr.ApplyLayoutConfig(layout); err != nil {
+			return errors.Wrap(err, "failed to apply layout")
+		}
+
+		fmt.Printf("Applied layout %q (%s)\n", layout.Name, layout.ID)
+		return nil
 	},
 }
 
@@ -173,9 +403,20 @@ var configPathsCmd = &cobra.Command{
 }
 
 var configInitCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Create a default configuration file",
+	Use:   "init <client|server>",
+	Short: "Create a configuration file for client or server",
+	Long: `Create a configuration file with required settings.
+
+Examples:
+  ottoman config init client    # Initialize client configuration
+  ottoman config init server    # Initialize server configuration`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		mode := args[0]
+		if mode != "client" && mode != "server" {
+			return fmt.Errorf("invalid mode %q: must be 'client' or 'server'", mode)
+		}
+
 		path, _ := cmd.Flags().GetString("output")
 		if path == "" {
 			path = config.DefaultConfigPath()
@@ -183,21 +424,90 @@ var configInitCmd = &cobra.Command{
 
 		// Check if file already exists
 		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("config file already exists: %s", path)
+			return fmt.Errorf("config file already exists: %s\nEdit it directly or delete it first", path)
 		}
 
-		// Load defaults and save
+		// Initialize defaults
 		config.Init("")
-		cfg, err := config.Load()
-		if err != nil {
-			return errors.Wrap(err, "failed to load defaults")
+
+		reader := bufio.NewReader(os.Stdin)
+
+		if mode == "client" {
+			cfg := &config.ClientConfig{
+				ListenAddr: ":8081",
+			}
+
+			// Prompt for auth token
+			fmt.Print("Auth token (leave blank to generate): ")
+			token, _ := reader.ReadString('\n')
+			token = strings.TrimSpace(token)
+
+			if token == "" {
+				generated, err := config.GenerateToken()
+				if err != nil {
+					return errors.Wrap(err, "failed to generate token")
+				}
+				token = generated
+				fmt.Printf("Generated token: %s\n", token)
+			}
+			cfg.AuthToken = token
+
+			// Prompt for listen address
+			fmt.Print("Listen address [:8081]: ")
+			addr, _ := reader.ReadString('\n')
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				cfg.ListenAddr = addr
+			}
+
+			if err := config.SaveClient(cfg, path); err != nil {
+				return errors.Wrap(err, "failed to save config")
+			}
+
+		} else { // server
+			cfg := &config.ServerConfig{
+				ListenAddr: ":8080",
+				ClientAddr: "localhost:8081",
+				DeviceID:   "ottoman",
+			}
+
+			// Prompt for auth token
+			fmt.Print("Auth token (leave blank to generate): ")
+			token, _ := reader.ReadString('\n')
+			token = strings.TrimSpace(token)
+
+			if token == "" {
+				generated, err := config.GenerateToken()
+				if err != nil {
+					return errors.Wrap(err, "failed to generate token")
+				}
+				token = generated
+				fmt.Printf("Generated token: %s\n", token)
+			}
+			cfg.AuthToken = token
+
+			// Prompt for client address
+			fmt.Print("Client address [localhost:8081]: ")
+			clientAddr, _ := reader.ReadString('\n')
+			clientAddr = strings.TrimSpace(clientAddr)
+			if clientAddr != "" {
+				cfg.ClientAddr = clientAddr
+			}
+
+			// Prompt for listen address
+			fmt.Print("Listen address [:8080]: ")
+			addr, _ := reader.ReadString('\n')
+			addr = strings.TrimSpace(addr)
+			if addr != "" {
+				cfg.ListenAddr = addr
+			}
+
+			if err := config.SaveServer(cfg, path); err != nil {
+				return errors.Wrap(err, "failed to save config")
+			}
 		}
 
-		if err := config.Save(cfg, path); err != nil {
-			return errors.Wrap(err, "failed to save config")
-		}
-
-		fmt.Printf("Created config file: %s\n", path)
+		fmt.Printf("\nCreated config file: %s\n", path)
 		return nil
 	},
 }
@@ -214,8 +524,21 @@ func init() {
 
 	// Client commands
 	clientCmd.AddCommand(clientRunCmd)
-	clientCmd.AddCommand(clientInstallCmd)
 	clientCmd.AddCommand(clientDeployCmd)
+	clientCmd.AddCommand(layoutCmd)
+	clientCmd.AddCommand(serviceCmd)
+
+	// Service commands
+	serviceCmd.AddCommand(serviceInstallCmd)
+	serviceCmd.AddCommand(serviceUninstallCmd)
+
+	// Layout commands
+	layoutCmd.AddCommand(layoutAddCmd)
+	layoutCmd.AddCommand(layoutListCmd)
+	layoutCmd.AddCommand(layoutApplyCmd)
+	layoutCmd.AddCommand(layoutAliasCmd)
+	layoutAliasCmd.AddCommand(layoutAliasAddCmd)
+	layoutAliasCmd.AddCommand(layoutAliasRemoveCmd)
 
 	// Deploy command
 	deployCmd.Flags().String("server-target", "", "SSH target for server deployment")
@@ -236,4 +559,5 @@ func init() {
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(installCmd)
 }

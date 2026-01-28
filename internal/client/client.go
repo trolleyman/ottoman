@@ -16,12 +16,14 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/common"
+	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
 )
 
 // Client is the display control agent running on the desktop
 type Client struct {
 	config        *Config
+	configPath    string
 	router        *http.ServeMux
 	server        *http.Server
 	layouts       *display.Layouts
@@ -31,18 +33,13 @@ type Client struct {
 }
 
 // New creates a new client instance
-func New(config *Config) (*Client, error) {
-	if err := config.Validate(); err != nil {
+func New(cfg *Config) (*Client, error) {
+	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
-	// Load layouts
-	store, err := display.NewLayoutStore(config.LayoutsFile)
-	if err != nil {
-		log.Printf("Warning: failed to load layouts: %v", err)
-		// Create empty store
-		store = &display.Layouts{}
-	}
+	// Load layouts from config
+	store := display.NewLayoutsFromSlice(cfg.Layouts)
 
 	// Create display manager
 	mgr, err := display.NewManager(store)
@@ -51,7 +48,8 @@ func New(config *Config) (*Client, error) {
 	}
 
 	c := &Client{
-		config:     config,
+		config:     cfg,
+		configPath: config.ConfigPath(),
 		layouts:    store,
 		displayMgr: mgr,
 		startTime:  time.Now(),
@@ -86,10 +84,10 @@ func (c *Client) handleWebIndex(w http.ResponseWriter, r *http.Request) {
 </html>`
 
 	// Retrieve layouts to render in the template
-	layouts, err := c.layouts.List()
-	if err != nil {
-		log.Printf("Warning: failed to list layouts: %v", err)
-		layouts = []string{}
+	allLayouts := c.layouts.List()
+	var layouts []string
+	for _, l := range allLayouts {
+		layouts = append(layouts, l.Name)
 	}
 
 	t, err := template.New("index").Parse(tmpl)
@@ -170,14 +168,14 @@ func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleListLayouts returns available display layouts
 func (c *Client) handleListLayouts(w http.ResponseWriter, r *http.Request) {
-	layouts, err := c.layouts.List()
-	if err != nil {
-		common.WriteError(w, http.StatusInternalServerError, "failed to list layouts")
-		return
+	allLayouts := c.layouts.List()
+	var names []string
+	for _, l := range allLayouts {
+		names = append(names, l.Name)
 	}
 
 	common.WriteJSON(w, http.StatusOK, common.ListLayoutsResponse{
-		Layouts:       layouts,
+		Layouts:       names,
 		CurrentLayout: c.currentLayout,
 	})
 }
@@ -197,7 +195,13 @@ func (c *Client) handleSwitchLayout(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Switching to layout: %s", req.Layout)
 
-	if err := c.displayMgr.ApplyLayout(req.Layout); err != nil {
+	layout, ok := c.layouts.Get(req.Layout)
+	if !ok {
+		common.WriteError(w, http.StatusNotFound, fmt.Sprintf("layout %q not found", req.Layout))
+		return
+	}
+
+	if err := c.displayMgr.ApplyLayoutConfig(layout); err != nil {
 		log.Printf("Failed to apply layout: %v", err)
 		common.WriteJSON(w, http.StatusInternalServerError, common.SwitchLayoutResponse{
 			Success: false,
@@ -217,7 +221,7 @@ func (c *Client) handleSwitchLayout(w http.ResponseWriter, r *http.Request) {
 
 // handleCurrentLayout returns the current layout
 func (c *Client) handleCurrentLayout(w http.ResponseWriter, r *http.Request) {
-	currentLayout, err := c.displayMgr.GetCurrentLayout()
+	currentLayout, err := c.displayMgr.GetCurrentLayout(c.layouts)
 	if err != nil {
 		log.Printf("Failed to get current layout: %v", err)
 	}
@@ -251,29 +255,50 @@ func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request)
 		req.ID = slugify(req.Name)
 	}
 
-	// Save layout into the layout store (simplified representation)
-	simplified := common.SimplifiedLayout{
-		Name:     req.Name,
-		Monitors: []common.MonitorConfig{},
+	// Get current monitor state to save
+	monitors, err := c.displayMgr.ListMonitors()
+	if err != nil {
+		common.WriteError(w, http.StatusInternalServerError, "failed to get current monitors")
+		return
 	}
-	c.layouts.Set(simplified)
-	if err := c.layouts.Save(); err != nil {
+
+	// Convert MonitorInfo to Monitor config
+	var monitorConfigs []common.Monitor
+	for _, m := range monitors {
+		if m.Connected {
+			monitorConfigs = append(monitorConfigs, common.Monitor{
+				EDID:        m.EDID,
+				Port:        m.Port,
+				Width:       m.Width,
+				Height:      m.Height,
+				RefreshRate: m.RefreshRate,
+				PositionX:   m.PositionX,
+				PositionY:   m.PositionY,
+				Primary:     m.Primary,
+				Enabled:     true,
+			})
+		}
+	}
+
+	layout := common.Layout{
+		ID:       req.ID,
+		Name:     req.Name,
+		Emoji:    req.Emoji,
+		Monitors: monitorConfigs,
+	}
+
+	c.layouts.Set(layout)
+
+	// Save to config file
+	if err := c.saveLayouts(); err != nil {
+		log.Printf("Failed to save layouts: %v", err)
 		common.WriteError(w, http.StatusInternalServerError, "failed to save layout")
 		return
 	}
 
-	layout := &common.Layout{
-		ID:          req.ID,
-		Name:        req.Name,
-		Emoji:       req.Emoji,
-		SourceModes: []common.SourceMode{},
-		TargetModes: []common.TargetMode{},
-		Paths:       []common.Path{},
-	}
-
 	common.WriteJSON(w, http.StatusOK, common.SaveLayoutResponse{
 		Success: true,
-		Layout:  layout,
+		Layout:  &layout,
 	})
 }
 
@@ -348,4 +373,13 @@ func slugify(input string) string {
 	// Replace spaces with dashes and remove non-alphanumeric characters
 	slug := regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(strings.ToLower(input), "-")
 	return strings.Trim(slug, "-")
+}
+
+// saveLayouts saves the current layouts to the config file
+func (c *Client) saveLayouts() error {
+	// Update config with current layouts
+	c.config.Layouts = c.layouts.ToSlice()
+
+	// Save client config only
+	return config.SaveClient(c.config, c.configPath)
 }
