@@ -6,3 +6,23 @@ backend = "core:go"
 "platforms.macos-arm64" = { checksum = "sha256:984521ae978a5377c7d782fd2dd953291840d7d3d0bd95781a1f32f16d94a006", url = "https://dl.google.com/go/go1.25.6.darwin-arm64.tar.gz"}
 "platforms.macos-x64" = { checksum = "sha256:e2b5b237f5c262931b8e280ac4b8363f156e19bfad5270c099998932819670b7", url = "https://dl.google.com/go/go1.25.6.darwin-amd64.tar.gz"}
 "platforms.windows-x64" = { checksum = "sha256:19b4733b727ba5c611b5656187f3ac367d278d64c3d4199a845e39c0fdac5335", url = "https://dl.google.com/go/go1.25.6.windows-amd64.zip"}
+
+[[tools."go:github.com/cweill/gotests/gotests"]]
+version = "1.9.0"
+backend = "go:github.com/cweill/gotests/gotests"
+
+[[tools."go:github.com/go-delve/delve/cmd/dlv"]]
+version = "1.26.0"
+backend = "go:github.com/go-delve/delve/cmd/dlv"
+
+[[tools."go:github.com/josharian/impl"]]
+version = "1.5.0"
+backend = "go:github.com/josharian/impl"
+
+[[tools."go:github.com/magefile/mage"]]
+version = "1.15.0"
+backend = "go:github.com/magefile/mage"
+
+[[tools."go:golang.org/x/tools/gopls"]]
+version = "0.21.0"
+backend = "go:golang.org/x/tools/gopls"

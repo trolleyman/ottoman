@@ -268,7 +268,6 @@ func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request)
 		if m.Connected {
 			monitorConfigs = append(monitorConfigs, common.Monitor{
 				EDID:        m.EDID,
-				Port:        m.Port,
 				Width:       m.Width,
 				Height:      m.Height,
 				RefreshRate: m.RefreshRate,

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -14,6 +15,12 @@ import (
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/server"
 )
+
+// slugify converts a string into a URL-friendly slug
+func slugify(input string) string {
+	slug := regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(strings.ToLower(input), "-")
+	return strings.Trim(slug, "-")
+}
 
 var (
 	// Version is set at build time
@@ -143,9 +150,10 @@ var layoutCmd = &cobra.Command{
 }
 
 var layoutAddCmd = &cobra.Command{
-	Use:   "add <id> <name> [emoji]",
+	Use:   "add <name> [emoji]",
 	Short: "Add a new layout from current display configuration",
-	Args:  cobra.RangeArgs(2, 3),
+	Long:  `Add a new layout capturing the current display configuration. The ID is auto-generated from the name.`,
+	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config.Init(configFile)
 		fullCfg, err := config.Load()
@@ -172,7 +180,6 @@ var layoutAddCmd = &cobra.Command{
 			if m.Connected {
 				monitorConfigs = append(monitorConfigs, common.Monitor{
 					EDID:        m.EDID,
-					Port:        m.Port,
 					Width:       m.Width,
 					Height:      m.Height,
 					RefreshRate: m.RefreshRate,
@@ -184,13 +191,14 @@ var layoutAddCmd = &cobra.Command{
 			}
 		}
 
+		name := args[0]
 		layout := common.Layout{
-			ID:       args[0],
-			Name:     args[1],
+			ID:       slugify(name),
+			Name:     name,
 			Monitors: monitorConfigs,
 		}
-		if len(args) > 2 {
-			layout.Emoji = args[2]
+		if len(args) > 1 {
+			layout.Emoji = args[1]
 		}
 
 		layouts.Set(layout)
@@ -382,15 +390,14 @@ var configCmd = &cobra.Command{
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",
-	Short: "Show current configuration",
+	Short: "Show current configuration file contents",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		config.Init(configFile)
-		cfg, err := config.Load()
-		if err != nil {
+		// Load to find the config path
+		if _, err := config.Load(); err != nil {
 			return errors.Wrap(err, "failed to load config")
 		}
-		config.Print(cfg)
-		return nil
+		return config.Print()
 	},
 }
 

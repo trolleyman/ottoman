@@ -11,11 +11,9 @@ type Layout struct {
 
 // Monitor represents a monitor configuration within a layout
 type Monitor struct {
-	// Identification - EDID preferred, Port as fallback
-	// EDID format: "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2", "SAM:0C4E"
-	// Port format: connector name e.g., "HDMI-1", "DP-1", "eDP-1"
-	EDID string `json:"edid,omitempty"` // EDID manufacturer:product (preferred, portable)
-	Port string `json:"port,omitempty"` // Fallback: port/connector name
+	// Identification by EDID (manufacturer:product code)
+	// Format: "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2", "SAM:0C4E", "AOC:B403"
+	EDID string `json:"edid"`
 
 	// Display configuration
 	Width       int     `json:"width"`

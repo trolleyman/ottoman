@@ -232,7 +232,6 @@ func SaveClient(cfg *ClientConfig, path string) error {
 				for j, m := range l.Monitors {
 					monitors[j] = map[string]interface{}{
 						"edid":         m.EDID,
-						"port":         m.Port,
 						"width":        m.Width,
 						"height":       m.Height,
 						"refresh_rate": m.RefreshRate,
@@ -374,7 +373,6 @@ func Save(cfg *Config, path string) error {
 				for j, m := range l.Monitors {
 					monitors[j] = map[string]interface{}{
 						"edid":         m.EDID,
-						"port":         m.Port,
 						"width":        m.Width,
 						"height":       m.Height,
 						"refresh_rate": m.RefreshRate,
@@ -427,71 +425,26 @@ func (c *ClientConfig) Validate() error {
 	return nil
 }
 
-// Print outputs the current configuration to stdout
-func Print(cfg *Config) {
-	fmt.Println("# Ottoman Configuration")
-	if configPath != "" {
-		fmt.Printf("# Loaded from: %s\n", configPath)
-	} else {
-		fmt.Println("# Using defaults (no config file found)")
+// Print outputs the config file contents to stdout
+func Print() error {
+	if configPath == "" {
+		fmt.Println("No config file found.")
+		fmt.Println()
+		fmt.Printf("Default path: %s\n", DefaultConfigPath())
+		fmt.Println("Run 'ottoman config init client' or 'ottoman config init server' to create one.")
+		return nil
 	}
+
+	fmt.Printf("# %s\n", configPath)
 	fmt.Println()
 
-	fmt.Println("[server]")
-	fmt.Printf("listen_addr = %q\n", cfg.Server.ListenAddr)
-	if cfg.Server.AuthToken != "" {
-		fmt.Printf("auth_token = %q\n", cfg.Server.AuthToken)
-	}
-	if cfg.Server.Username != "" {
-		fmt.Printf("username = %q\n", cfg.Server.Username)
-	}
-	if cfg.Server.PasswordHash != "" {
-		fmt.Printf("password_hash = %q\n", cfg.Server.PasswordHash)
-	}
-	fmt.Printf("client_addr = %q\n", cfg.Server.ClientAddr)
-	if cfg.Server.PingURL != "" {
-		fmt.Printf("ping_url = %q\n", cfg.Server.PingURL)
-	}
-	fmt.Printf("ping_interval = %q\n", cfg.Server.PingInterval.String())
-	fmt.Printf("device_id = %q\n", cfg.Server.DeviceID)
-
-	if len(cfg.Server.WakeTargets) > 0 {
-		fmt.Println()
-		for _, target := range cfg.Server.WakeTargets {
-			fmt.Println("[[server.wake_targets]]")
-			fmt.Printf("name = %q\n", target.Name)
-			fmt.Printf("mac_address = %q\n", target.MACAddress)
-			if target.IPAddress != "" {
-				fmt.Printf("ip_address = %q\n", target.IPAddress)
-			}
-			if target.Port != 0 {
-				fmt.Printf("port = %d\n", target.Port)
-			}
-		}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to read config file")
 	}
 
-	fmt.Println()
-	fmt.Println("[client]")
-	fmt.Printf("listen_addr = %q\n", cfg.Client.ListenAddr)
-	if cfg.Client.AuthToken != "" {
-		fmt.Printf("auth_token = %q\n", cfg.Client.AuthToken)
-	}
-
-	if len(cfg.Client.Layouts) > 0 {
-		fmt.Println()
-		for _, layout := range cfg.Client.Layouts {
-			fmt.Println("[[client.layouts]]")
-			fmt.Printf("id = %q\n", layout.ID)
-			fmt.Printf("name = %q\n", layout.Name)
-			if layout.Emoji != "" {
-				fmt.Printf("emoji = %q\n", layout.Emoji)
-			}
-			if len(layout.Aliases) > 0 {
-				fmt.Printf("aliases = %v\n", layout.Aliases)
-			}
-			fmt.Printf("# %d monitors\n", len(layout.Monitors))
-		}
-	}
+	fmt.Print(string(content))
+	return nil
 }
 
 // PrintPaths outputs the config search paths
