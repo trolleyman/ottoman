@@ -247,6 +247,43 @@ var layoutListCmd = &cobra.Command{
 	},
 }
 
+var layoutShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Show current display configuration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		layouts := display.NewLayouts()
+		mgr, err := display.NewManager(layouts)
+		if err != nil {
+			return errors.Wrap(err, "failed to create display manager")
+		}
+
+		monitors, err := mgr.ListMonitors()
+		if err != nil {
+			return errors.Wrap(err, "failed to get monitors")
+		}
+
+		if len(monitors) == 0 {
+			fmt.Println("No monitors detected")
+			return nil
+		}
+
+		fmt.Println("Current display configuration:")
+		for _, m := range monitors {
+			if !m.Connected {
+				continue
+			}
+			primary := ""
+			if m.Primary {
+				primary = " [PRIMARY]"
+			}
+			fmt.Printf("  %s (%s)%s\n", m.EDID, m.Name, primary)
+			fmt.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Width, m.Height, m.RefreshRate)
+			fmt.Printf("    Position:   (%d, %d)\n", m.PositionX, m.PositionY)
+		}
+		return nil
+	},
+}
+
 var layoutAliasCmd = &cobra.Command{
 	Use:   "alias",
 	Short: "Manage layout aliases",
@@ -547,6 +584,7 @@ func init() {
 	// Layout commands
 	layoutCmd.AddCommand(layoutAddCmd)
 	layoutCmd.AddCommand(layoutListCmd)
+	layoutCmd.AddCommand(layoutShowCmd)
 	layoutCmd.AddCommand(layoutApplyCmd)
 	layoutCmd.AddCommand(layoutAliasCmd)
 	layoutAliasCmd.AddCommand(layoutAliasAddCmd)
