@@ -26,28 +26,28 @@ const ENUM_CURRENT_SETTINGS = 0xFFFFFFFF
 
 // DEVMODEW structure for EnumDisplaySettings
 type DEVMODEW struct {
-	DmDeviceName       [32]uint16
-	DmSpecVersion      uint16
-	DmDriverVersion    uint16
-	DmSize             uint16
-	DmDriverExtra      uint16
-	DmFields           uint32
-	DmPositionX        int32 // Union: dmPosition.x or dmOrientation
-	DmPositionY        int32 // Union: dmPosition.y
+	DmDeviceName         [32]uint16
+	DmSpecVersion        uint16
+	DmDriverVersion      uint16
+	DmSize               uint16
+	DmDriverExtra        uint16
+	DmFields             uint32
+	DmPositionX          int32 // Union: dmPosition.x or dmOrientation
+	DmPositionY          int32 // Union: dmPosition.y
 	DmDisplayOrientation uint32
 	DmDisplayFixedOutput uint32
-	DmColor            int16
-	DmDuplex           int16
-	DmYResolution      int16
-	DmTTOption         int16
-	DmCollate          int16
-	DmFormName         [32]uint16
-	DmLogPixels        uint16
-	DmBitsPerPel       uint32
-	DmPelsWidth        uint32
-	DmPelsHeight       uint32
-	DmDisplayFlags     uint32 // Union with dmNup
-	DmDisplayFrequency uint32
+	DmColor              int16
+	DmDuplex             int16
+	DmYResolution        int16
+	DmTTOption           int16
+	DmCollate            int16
+	DmFormName           [32]uint16
+	DmLogPixels          uint16
+	DmBitsPerPel         uint32
+	DmPelsWidth          uint32
+	DmPelsHeight         uint32
+	DmDisplayFlags       uint32 // Union with dmNup
+	DmDisplayFrequency   uint32
 	// Additional fields omitted - we only need up to dmDisplayFrequency
 }
 
@@ -210,7 +210,7 @@ type DISPLAYCONFIG_MODE_INFO struct {
 	InfoType   uint32
 	Id         uint32
 	AdapterId  LUID
-	ModeUnion  [64]byte // Union of source/target mode, using bytes for flexibility
+	ModeUnion  [48]byte // Union of source/target mode (48 bytes = 64 total - 16 header)
 }
 
 // DISPLAYCONFIG_DEVICE_INFO_HEADER is the header for device info requests
@@ -577,280 +577,224 @@ func (m *WindowsManager) matchesLayout(monitors []MonitorInfo, layout common.Lay
 	return true
 }
 
-// ApplyLayoutConfig applies a display configuration using SetDisplayConfig
-func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
-	log.Printf("[ApplyLayoutConfig] Applying layout: %s (%s)", layout.ID, layout.Name)
+// Status flags
+const (
+	DISPLAYCONFIG_SOURCE_IN_USE = 0x00000001
+	DISPLAYCONFIG_TARGET_IN_USE = 0x00000001
+)
 
-	// Collect EDIDs of monitors that should be enabled
-	enabledEDIDs := make(map[string]bool)
-	for _, mon := range layout.Monitors {
-		if mon.Enabled {
-			enabledEDIDs[mon.EDID] = true
-			log.Printf("[ApplyLayoutConfig] Layout wants enabled: %s", mon.EDID)
-		}
-	}
+// displayPathInfo holds all the info needed to build a path
+type displayPathInfo struct {
+	edid            string
+	friendlyName    string
+	sourceAdapterId LUID
+	sourceId        uint32
+	targetAdapterId LUID
+	targetId        uint32
+	targetMode      DISPLAYCONFIG_TARGET_MODE
+	outputTech      int32
+	rotation        uint32
+	scaling         uint32
+	refreshRate     DISPLAYCONFIG_RATIONAL
+	scanLineOrder   uint32
+}
 
-	// Get ALL paths AND modes (including inactive) to find available targets
+// getDisplayPathsFromConfig queries display config and extracts path info with target modes
+func getDisplayPathsFromConfig() ([]displayPathInfo, error) {
+	// Query ALL paths to get all possible connections
 	allPaths, allModes, err := queryDisplayConfig(QDC_ALL_PATHS)
 	if err != nil {
-		return errors.Wrap(err, "failed to query all display paths")
+		return nil, err
 	}
-	log.Printf("[ApplyLayoutConfig] Found %d total paths, %d modes", len(allPaths), len(allModes))
 
-	// Build a map from EDID to path index (we need the index for mode lookup)
-	type pathInfo struct {
-		index int
-		path  *DISPLAYCONFIG_PATH_INFO
-	}
-	edidToPath := make(map[string]pathInfo)
+	var result []displayPathInfo
+	seen := make(map[string]bool)
 
-	for i := range allPaths {
-		path := &allPaths[i]
+	for _, path := range allPaths {
+		// Get target device name (contains EDID)
 		targetName, err := getTargetDeviceName(path.TargetInfo.AdapterId, path.TargetInfo.Id)
-		if err != nil {
-			log.Printf("[ApplyLayoutConfig] Path %d: failed to get target name: %v", i, err)
-			continue
-		}
-		if targetName.EdidManufactureId != 0 {
-			edid := fmt.Sprintf("%s:%04X", decodeEdidManufacturer(targetName.EdidManufactureId), targetName.EdidProductCodeId)
-			friendlyName := utf16ToString(targetName.MonitorFriendlyDeviceName[:])
-			isActive := path.Flags&DISPLAYCONFIG_PATH_ACTIVE != 0
-			log.Printf("[ApplyLayoutConfig] Path %d: EDID=%s, Name=%s, Active=%v, SourceId=%d, TargetId=%d, SrcModeIdx=%d, TgtModeIdx=%d",
-				i, edid, friendlyName, isActive, path.SourceInfo.Id, path.TargetInfo.Id,
-				path.SourceInfo.ModeInfoIdx, path.TargetInfo.ModeInfoIdx)
-			// Keep the first (best) path for each EDID
-			if _, exists := edidToPath[edid]; !exists {
-				edidToPath[edid] = pathInfo{index: i, path: path}
-			}
-		} else {
-			log.Printf("[ApplyLayoutConfig] Path %d: no EDID (EdidManufactureId=0)", i)
-		}
-	}
-
-	log.Printf("[ApplyLayoutConfig] Unique EDIDs found: %d", len(edidToPath))
-	for edid := range edidToPath {
-		log.Printf("[ApplyLayoutConfig]   - %s", edid)
-	}
-
-	// Check for missing EDIDs
-	for edid := range enabledEDIDs {
-		if _, found := edidToPath[edid]; !found {
-			log.Printf("[ApplyLayoutConfig] WARNING: EDID %s not found in available paths!", edid)
-		}
-	}
-
-	// Build new paths and modes arrays with only enabled monitors
-	var newPaths []DISPLAYCONFIG_PATH_INFO
-	var newModes []DISPLAYCONFIG_MODE_INFO
-	modeIndexMap := make(map[uint32]uint32) // old index -> new index
-
-	for edid, info := range edidToPath {
-		if !enabledEDIDs[edid] {
+		if err != nil || targetName.EdidManufactureId == 0 {
 			continue
 		}
 
-		pathCopy := *info.path
-		pathCopy.Flags |= DISPLAYCONFIG_PATH_ACTIVE
+		edid := fmt.Sprintf("%s:%04X", decodeEdidManufacturer(targetName.EdidManufactureId), targetName.EdidProductCodeId)
+		friendlyName := utf16ToString(targetName.MonitorFriendlyDeviceName[:])
 
-		// Handle source mode
-		srcModeIdx := pathCopy.SourceInfo.ModeInfoIdx & 0xFFFF
-		if srcModeIdx != 0xFFFF && int(srcModeIdx) < len(allModes) {
-			if newIdx, exists := modeIndexMap[uint32(srcModeIdx)]; exists {
-				pathCopy.SourceInfo.ModeInfoIdx = newIdx
-			} else {
-				newIdx := uint32(len(newModes))
-				modeIndexMap[uint32(srcModeIdx)] = newIdx
-				newModes = append(newModes, allModes[srcModeIdx])
-				pathCopy.SourceInfo.ModeInfoIdx = newIdx
-			}
+		// Deduplicate by EDID
+		if seen[edid] {
+			continue
 		}
+		seen[edid] = true
 
-		// Handle target mode
-		tgtModeIdx := pathCopy.TargetInfo.ModeInfoIdx & 0xFFFF
+		// Get target mode from the modes array if available
+		var targetMode DISPLAYCONFIG_TARGET_MODE
+		tgtModeIdx := path.TargetInfo.ModeInfoIdx & 0xFFFF
 		if tgtModeIdx != 0xFFFF && int(tgtModeIdx) < len(allModes) {
-			if newIdx, exists := modeIndexMap[uint32(tgtModeIdx)]; exists {
-				pathCopy.TargetInfo.ModeInfoIdx = newIdx
-			} else {
-				newIdx := uint32(len(newModes))
-				modeIndexMap[uint32(tgtModeIdx)] = newIdx
-				newModes = append(newModes, allModes[tgtModeIdx])
-				pathCopy.TargetInfo.ModeInfoIdx = newIdx
+			modeInfo := allModes[tgtModeIdx]
+			if modeInfo.InfoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET {
+				targetMode = *(*DISPLAYCONFIG_TARGET_MODE)(unsafe.Pointer(&modeInfo.ModeUnion[0]))
 			}
 		}
 
-		newPaths = append(newPaths, pathCopy)
-		log.Printf("[ApplyLayoutConfig] Adding path for EDID %s (SourceId=%d, TargetId=%d, SrcModeIdx=%d, TgtModeIdx=%d)",
-			edid, pathCopy.SourceInfo.Id, pathCopy.TargetInfo.Id,
-			pathCopy.SourceInfo.ModeInfoIdx, pathCopy.TargetInfo.ModeInfoIdx)
+		// If no mode found, get preferred mode
+		if targetMode.TargetVideoSignalInfo.ActiveSize.Cx == 0 {
+			if prefMode, err := getTargetPreferredMode(path.TargetInfo.AdapterId, path.TargetInfo.Id); err == nil {
+				targetMode = prefMode.TargetMode
+			}
+		}
+
+		result = append(result, displayPathInfo{
+			edid:            edid,
+			friendlyName:    friendlyName,
+			sourceAdapterId: path.SourceInfo.AdapterId,
+			sourceId:        path.SourceInfo.Id,
+			targetAdapterId: path.TargetInfo.AdapterId,
+			targetId:        path.TargetInfo.Id,
+			targetMode:      targetMode,
+			outputTech:      path.TargetInfo.OutputTechnology,
+			rotation:        path.TargetInfo.Rotation,
+			scaling:         path.TargetInfo.Scaling,
+			refreshRate:     path.TargetInfo.RefreshRate,
+			scanLineOrder:   path.TargetInfo.ScanLineOrdering,
+		})
 	}
 
-	if len(newPaths) == 0 {
-		log.Printf("[ApplyLayoutConfig] ERROR: no matching monitors found for layout")
+	return result, nil
+}
+
+// ApplyLayoutConfig applies a display configuration using SetDisplayConfig
+func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
+	log.Printf("Applying layout: %s (%s)", layout.ID, layout.Name)
+
+	// Build map of EDIDs that should be enabled with their config
+	enabledMonitors := make(map[string]common.Monitor)
+	for _, mon := range layout.Monitors {
+		if mon.Enabled {
+			enabledMonitors[mon.EDID] = mon
+		}
+	}
+
+	// Get all display path info
+	pathInfos, err := getDisplayPathsFromConfig()
+	if err != nil {
+		return errors.Wrap(err, "failed to get display paths")
+	}
+
+	// Collect mode data for each enabled monitor
+	type monitorModeData struct {
+		edid            string
+		layoutMon       common.Monitor
+		info            *displayPathInfo
+		sourceId        uint32
+	}
+	var monitorData []monitorModeData
+	sourceIdCounter := uint32(0)
+
+	for edid, layoutMon := range enabledMonitors {
+		// Find the path info for this EDID
+		var info *displayPathInfo
+		for i := range pathInfos {
+			if pathInfos[i].edid == edid {
+				info = &pathInfos[i]
+				break
+			}
+		}
+
+		if info == nil {
+			log.Printf("WARNING: No path found for EDID %s", edid)
+			continue
+		}
+
+		monitorData = append(monitorData, monitorModeData{
+			edid:      edid,
+			layoutMon: layoutMon,
+			info:      info,
+			sourceId:  sourceIdCounter,
+		})
+		sourceIdCounter++
+	}
+
+	numMonitors := uint32(len(monitorData))
+
+	// Build target modes first, then source modes
+	var targetModes []DISPLAYCONFIG_MODE_INFO
+	var sourceModes []DISPLAYCONFIG_MODE_INFO
+	var paths []DISPLAYCONFIG_PATH_INFO
+
+	for i, md := range monitorData {
+		// Create target mode
+		var targetMode DISPLAYCONFIG_MODE_INFO
+		targetMode.InfoType = DISPLAYCONFIG_MODE_INFO_TYPE_TARGET
+		targetMode.Id = md.info.targetId
+		targetMode.AdapterId = md.info.targetAdapterId
+
+		tgtMode := (*DISPLAYCONFIG_TARGET_MODE)(unsafe.Pointer(&targetMode.ModeUnion[0]))
+		*tgtMode = md.info.targetMode
+
+		targetModes = append(targetModes, targetMode)
+
+		// Create source mode
+		var sourceMode DISPLAYCONFIG_MODE_INFO
+		sourceMode.InfoType = DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE
+		sourceMode.Id = md.sourceId
+		sourceMode.AdapterId = md.info.targetAdapterId
+
+		srcMode := (*DISPLAYCONFIG_SOURCE_MODE)(unsafe.Pointer(&sourceMode.ModeUnion[0]))
+		srcMode.Width = uint32(md.layoutMon.Width)
+		srcMode.Height = uint32(md.layoutMon.Height)
+		srcMode.PixelFormat = 4 // DISPLAYCONFIG_PIXELFORMAT_32BPP
+		srcMode.Position.X = int32(md.layoutMon.PositionX)
+		srcMode.Position.Y = int32(md.layoutMon.PositionY)
+
+		sourceModes = append(sourceModes, sourceMode)
+
+		// Calculate indices - target modes are at 0..numMonitors-1, source modes at numMonitors..2*numMonitors-1
+		targetModeIdx := uint32(i)
+		sourceModeIdx := numMonitors + uint32(i)
+
+		// Create the path
+		var path DISPLAYCONFIG_PATH_INFO
+		path.SourceInfo.AdapterId = md.info.targetAdapterId
+		path.SourceInfo.Id = md.sourceId
+		path.SourceInfo.ModeInfoIdx = sourceModeIdx
+		path.SourceInfo.StatusFlags = DISPLAYCONFIG_SOURCE_IN_USE
+
+		path.TargetInfo.AdapterId = md.info.targetAdapterId
+		path.TargetInfo.Id = md.info.targetId
+		path.TargetInfo.ModeInfoIdx = targetModeIdx
+		path.TargetInfo.OutputTechnology = md.info.outputTech
+		path.TargetInfo.Rotation = md.info.rotation
+		path.TargetInfo.Scaling = md.info.scaling
+		path.TargetInfo.RefreshRate = md.info.refreshRate
+		path.TargetInfo.ScanLineOrdering = md.info.scanLineOrder
+		path.TargetInfo.TargetAvailable = 1 // TRUE
+		path.TargetInfo.StatusFlags = DISPLAYCONFIG_TARGET_IN_USE
+
+		path.Flags = DISPLAYCONFIG_PATH_ACTIVE
+
+		paths = append(paths, path)
+	}
+
+	if len(paths) == 0 {
 		return errors.New("no matching monitors found for layout")
 	}
 
-	log.Printf("[ApplyLayoutConfig] Will apply %d paths with %d modes", len(newPaths), len(newModes))
+	// Combine modes: target modes first, then source modes (matching Windows active config order)
+	modes := append(targetModes, sourceModes...)
 
-	// Try to apply with mode info
-	err = applyPathsWithModes(newPaths, newModes)
-	if err != nil {
-		log.Printf("[ApplyLayoutConfig] applyPathsWithModes failed: %v", err)
-
-		// Fallback: try without mode info
-		log.Printf("[ApplyLayoutConfig] Trying without mode info...")
-		err = applyPathsConfig(newPaths)
-		if err != nil {
-			log.Printf("[ApplyLayoutConfig] applyPathsConfig also failed: %v", err)
-
-			// Last resort: for single monitor, try topology external
-			if len(newPaths) == 1 {
-				log.Printf("[ApplyLayoutConfig] Trying SDC_TOPOLOGY_EXTERNAL for single monitor")
-				if err := setDisplayTopology(SDC_TOPOLOGY_EXTERNAL); err == nil {
-					return nil
-				}
-			}
-
-			// Ultimate fallback
-			log.Printf("[ApplyLayoutConfig] Falling back to SDC_TOPOLOGY_EXTEND")
-			return setDisplayTopology(SDC_TOPOLOGY_EXTEND)
-		}
-	}
-
-	log.Printf("[ApplyLayoutConfig] Successfully applied layout config")
-	return nil
-}
-
-// applyPathsWithModes applies paths with their corresponding mode info
-func applyPathsWithModes(paths []DISPLAYCONFIG_PATH_INFO, modes []DISPLAYCONFIG_MODE_INFO) error {
-	if len(paths) == 0 {
-		return errors.New("no paths to apply")
-	}
-
-	log.Printf("[applyPathsWithModes] Attempting to apply %d paths with %d modes", len(paths), len(modes))
-	for i, p := range paths {
-		log.Printf("[applyPathsWithModes]   Path %d: SourceId=%d, TargetId=%d, Flags=0x%X, SrcModeIdx=%d, TgtModeIdx=%d",
-			i, p.SourceInfo.Id, p.TargetInfo.Id, p.Flags, p.SourceInfo.ModeInfoIdx, p.TargetInfo.ModeInfoIdx)
-	}
-
-	var modesPtr unsafe.Pointer
-	if len(modes) > 0 {
-		modesPtr = unsafe.Pointer(&modes[0])
-	}
-
-	// Try with SDC_USE_SUPPLIED_DISPLAY_CONFIG and mode info
-	flags1 := SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_SAVE_TO_DATABASE
-	log.Printf("[applyPathsWithModes] Trying SetDisplayConfig with flags=0x%X", flags1)
+	// Apply the configuration
+	flags := uint32(SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE)
 	ret, _, _ := procSetDisplayConfig.Call(
 		uintptr(len(paths)),
 		uintptr(unsafe.Pointer(&paths[0])),
 		uintptr(len(modes)),
-		uintptr(modesPtr),
-		uintptr(flags1),
-	)
-	log.Printf("[applyPathsWithModes] SetDisplayConfig returned: %d (0x%X)", ret, ret)
-	if ret == 0 {
-		log.Printf("[applyPathsWithModes] Success with first attempt")
-		return nil
-	}
-
-	// Try with path persistence
-	flags2 := SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_PATH_PERSIST_IF_REQUIRED
-	log.Printf("[applyPathsWithModes] Trying SetDisplayConfig with flags=0x%X", flags2)
-	ret, _, _ = procSetDisplayConfig.Call(
-		uintptr(len(paths)),
-		uintptr(unsafe.Pointer(&paths[0])),
-		uintptr(len(modes)),
-		uintptr(modesPtr),
-		uintptr(flags2),
-	)
-	log.Printf("[applyPathsWithModes] SetDisplayConfig returned: %d (0x%X)", ret, ret)
-	if ret == 0 {
-		log.Printf("[applyPathsWithModes] Success with second attempt")
-		return nil
-	}
-
-	// Try with allow path order changes
-	flags3 := SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_ALLOW_PATH_ORDER_CHANGES
-	log.Printf("[applyPathsWithModes] Trying SetDisplayConfig with flags=0x%X", flags3)
-	ret, _, _ = procSetDisplayConfig.Call(
-		uintptr(len(paths)),
-		uintptr(unsafe.Pointer(&paths[0])),
-		uintptr(len(modes)),
-		uintptr(modesPtr),
-		uintptr(flags3),
-	)
-	log.Printf("[applyPathsWithModes] SetDisplayConfig returned: %d (0x%X)", ret, ret)
-	if ret == 0 {
-		log.Printf("[applyPathsWithModes] Success with third attempt")
-		return nil
-	}
-
-	log.Printf("[applyPathsWithModes] All attempts failed")
-	return fmt.Errorf("SetDisplayConfig failed: %d", ret)
-}
-
-// applyPathsConfig applies a specific set of paths (without mode info)
-func applyPathsConfig(paths []DISPLAYCONFIG_PATH_INFO) error {
-	if len(paths) == 0 {
-		return errors.New("no paths to apply")
-	}
-
-	log.Printf("[applyPathsConfig] Attempting to apply %d paths", len(paths))
-	for i, p := range paths {
-		log.Printf("[applyPathsConfig]   Path %d: SourceId=%d, TargetId=%d, Flags=0x%X",
-			i, p.SourceInfo.Id, p.TargetInfo.Id, p.Flags)
-	}
-
-	// First try with SDC_USE_SUPPLIED_DISPLAY_CONFIG
-	flags1 := SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_SAVE_TO_DATABASE
-	log.Printf("[applyPathsConfig] Trying SetDisplayConfig with flags=0x%X", flags1)
-	ret, _, _ := procSetDisplayConfig.Call(
-		uintptr(len(paths)),
-		uintptr(unsafe.Pointer(&paths[0])),
-		0, // no mode info
-		0,
-		uintptr(flags1),
-	)
-	log.Printf("[applyPathsConfig] SetDisplayConfig returned: %d (0x%X)", ret, ret)
-	if ret == 0 {
-		log.Printf("[applyPathsConfig] Success with first attempt")
-		return nil
-	}
-
-	// Try again with path persistence
-	flags2 := SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES | SDC_PATH_PERSIST_IF_REQUIRED
-	log.Printf("[applyPathsConfig] Trying SetDisplayConfig with flags=0x%X", flags2)
-	ret, _, _ = procSetDisplayConfig.Call(
-		uintptr(len(paths)),
-		uintptr(unsafe.Pointer(&paths[0])),
-		0,
-		0,
-		uintptr(flags2),
-	)
-	log.Printf("[applyPathsConfig] SetDisplayConfig returned: %d (0x%X)", ret, ret)
-	if ret == 0 {
-		log.Printf("[applyPathsConfig] Success with second attempt")
-		return nil
-	}
-
-	log.Printf("[applyPathsConfig] Both attempts failed")
-	return fmt.Errorf("SetDisplayConfig failed: %d", ret)
-}
-
-// setDisplayTopology sets a simple display topology (fallback method)
-func setDisplayTopology(topology uint32) error {
-	flags := topology | SDC_APPLY
-	log.Printf("[setDisplayTopology] Calling SetDisplayConfig with topology flags=0x%X", flags)
-	ret, _, _ := procSetDisplayConfig.Call(
-		0,     // numPathArrayElements
-		0,     // pathArray
-		0,     // numModeInfoArrayElements
-		0,     // modeInfoArray
+		uintptr(unsafe.Pointer(&modes[0])),
 		uintptr(flags),
 	)
-	log.Printf("[setDisplayTopology] SetDisplayConfig returned: %d (0x%X)", ret, ret)
+
 	if ret != 0 {
-		return fmt.Errorf("SetDisplayConfig topology failed: %d", ret)
+		return fmt.Errorf("SetDisplayConfig failed: %d", ret)
 	}
+
 	return nil
 }
