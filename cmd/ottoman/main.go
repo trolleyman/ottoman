@@ -44,6 +44,11 @@ var rootCmd = &cobra.Command{
 from a Raspberry Pi. It provides wake-on-LAN, display switching, and
 remote management capabilities.`,
 	Version: Version,
+	// Silence usage after args validation passes (show usage for arg errors, not runtime errors)
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = true
+		return nil
+	},
 }
 
 // Server commands
