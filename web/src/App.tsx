@@ -267,7 +267,7 @@ function LayoutCard({
             {enabled.map((m, i) => (
               <div
                 key={m.port || m.edid || i}
-                className={`grid grid-cols-[1fr_auto_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${
+                className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${
                   m.primary
                     ? "bg-blue-500/10 border-blue-500/20"
                     : "bg-zinc-900/40 border-transparent"
