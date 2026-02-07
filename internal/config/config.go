@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
@@ -38,15 +37,6 @@ type ServerConfig struct {
 	PasswordHash string       `mapstructure:"password_hash"`
 	WakeTargets  []WakeTarget `mapstructure:"wake_targets"`
 	ClientAddr   string       `mapstructure:"client_addr"`
-	Ping         PingConfig   `mapstructure:"ping"`
-	DeviceID     string       `mapstructure:"device_id"`
-}
-
-// PingConfig holds configuration for periodic IP reporting
-type PingConfig struct {
-	URL       string        `mapstructure:"url"`
-	Interval  time.Duration `mapstructure:"interval"`
-	AuthToken string        `mapstructure:"auth_token"`
 }
 
 // ClientConfig holds client configuration
@@ -99,8 +89,6 @@ func setDefaults() {
 	// Server defaults
 	v.SetDefault("server.listen_addr", ":17293")
 	v.SetDefault("server.client_addr", "localhost:17294")
-	v.SetDefault("server.ping.interval", 5*time.Minute)
-	v.SetDefault("server.device_id", "ottoman")
 	v.SetDefault("server.wake_targets", []WakeTarget{})
 
 	// Client defaults
@@ -281,14 +269,6 @@ func SaveServer(cfg *ServerConfig, path string) error {
 		w.Set("server.password_hash", cfg.PasswordHash)
 	}
 	w.Set("server.client_addr", cfg.ClientAddr)
-	if cfg.Ping.URL != "" {
-		w.Set("server.ping.url", cfg.Ping.URL)
-		w.Set("server.ping.interval", cfg.Ping.Interval.String())
-		if cfg.Ping.AuthToken != "" {
-			w.Set("server.ping.auth_token", cfg.Ping.AuthToken)
-		}
-	}
-	w.Set("server.device_id", cfg.DeviceID)
 
 	if len(cfg.WakeTargets) > 0 {
 		targets := make([]map[string]interface{}, len(cfg.WakeTargets))
@@ -336,14 +316,6 @@ func Save(cfg *Config, path string) error {
 		w.Set("server.password_hash", cfg.Server.PasswordHash)
 	}
 	w.Set("server.client_addr", cfg.Server.ClientAddr)
-	if cfg.Server.Ping.URL != "" {
-		w.Set("server.ping.url", cfg.Server.Ping.URL)
-		w.Set("server.ping.interval", cfg.Server.Ping.Interval.String())
-		if cfg.Server.Ping.AuthToken != "" {
-			w.Set("server.ping.auth_token", cfg.Server.Ping.AuthToken)
-		}
-	}
-	w.Set("server.device_id", cfg.Server.DeviceID)
 
 	if len(cfg.Server.WakeTargets) > 0 {
 		targets := make([]map[string]interface{}, len(cfg.Server.WakeTargets))

@@ -363,40 +363,6 @@ func Run(config *Config) error {
 	return server.Start()
 }
 
-// loggingMiddleware logs all incoming HTTP requests
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		// Log request details
-		log.Printf("→ %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-
-		// Log auth header (masked)
-		if auth := r.Header.Get("Authorization"); auth != "" {
-			if token, ok := strings.CutPrefix(auth, "Bearer "); ok {
-				if len(token) > 8 {
-					log.Printf("  Auth: Bearer %s...%s", token[:4], token[len(token)-4:])
-				} else {
-					log.Printf("  Auth: Bearer [short token]")
-				}
-			} else if len(auth) > 20 {
-				log.Printf("  Auth: %s...", auth[:20])
-			} else {
-				log.Printf("  Auth: %s", auth)
-			}
-		} else {
-			log.Printf("  Auth: (none)")
-		}
-
-		// Wrap response writer to capture status code
-		wrapped := &statusResponseWriter{ResponseWriter: w, status: 200}
-		next.ServeHTTP(wrapped, r)
-
-		// Log response
-		log.Printf("← %d (%s)", wrapped.status, time.Since(start).Round(time.Millisecond))
-	})
-}
-
 type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
@@ -411,7 +377,7 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 func (s *Server) Start() error {
 	s.server = &http.Server{
 		Addr:         s.config.ListenAddr,
-		Handler:      loggingMiddleware(s.router),
+		Handler:      common.LoggingMiddleware(s.router),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
