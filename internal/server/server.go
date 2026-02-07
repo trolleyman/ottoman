@@ -349,7 +349,17 @@ func (s *Server) proxyToClient(method, path string, body []byte) (*http.Response
 		req.Header.Set("Authorization", "Bearer "+s.config.AuthToken)
 	}
 
-	return s.client.Do(req)
+	start := time.Now()
+	resp, err := s.client.Do(req)
+	duration := time.Since(start).Round(time.Microsecond)
+
+	if err != nil {
+		log.Printf("PROXY %s %s error: %v (%s)", method, path, err, duration)
+		return nil, err
+	}
+
+	log.Printf("PROXY %s %s %d %s", method, path, resp.StatusCode, duration)
+	return resp, nil
 }
 
 // Run starts the server
