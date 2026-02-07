@@ -329,7 +329,7 @@ function LoginForm({
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <form onSubmit={submit} className="w-full max-w-sm px-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">
+        <h1 className="text-3xl font-bold font-serif tracking-tight text-zinc-100 mb-1">
           Ottoman
         </h1>
         <p className="text-zinc-500 text-sm mb-6">
@@ -510,9 +510,12 @@ export default function App() {
       <div className="max-w-4xl mx-auto px-6 py-10">
         {/* Header */}
         <header className="mb-10 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Ottoman</h1>
-            <p className="text-zinc-500 text-sm mt-1">Display Management</p>
+          <div className="flex items-center gap-4">
+            <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
+            <div>
+              <h1 className="text-3xl font-bold font-serif tracking-tight">Ottoman</h1>
+              <p className="text-zinc-500 italic text-sm mt-1">Display Management</p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <button
