@@ -303,19 +303,28 @@ func formatPathPair(src, dst string) string {
 // run runs a command silently (no stdout/stderr forwarding), printing "Running: ..." first.
 func run(cmd string, args ...string) error {
 	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
-	return sh.Run(cmd, args...)
+	if err := sh.Run(cmd, args...); err != nil {
+		return fmt.Errorf("failed to run %q: %w", cmd, err)
+	}
+	return nil
 }
 
 // runV runs a command with stdout/stderr forwarded, printing "Running: ..." first.
 func runV(cmd string, args ...string) error {
 	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
-	return sh.RunV(cmd, args...)
+	if err := sh.RunV(cmd, args...); err != nil {
+		return fmt.Errorf("failed to run %q: %w", cmd, err)
+	}
+	return nil
 }
 
 // runWithEnv runs a command with environment variables set, printing "Running: ..." first.
 func runWithEnv(env map[string]string, cmd string, args ...string) error {
 	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
-	return sh.RunWith(env, cmd, args...)
+	if err := sh.RunWith(env, cmd, args...); err != nil {
+		return fmt.Errorf("failed to run %q: %w", cmd, err)
+	}
+	return nil
 }
 
 // runInDir runs a command in a specific directory, printing "Running: ... (in dir)" first.
@@ -325,7 +334,10 @@ func runInDir(dir string, cmd string, args ...string) error {
 	c.Dir = dir
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	return c.Run()
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("failed to run %q in %q: %w", cmd, dir, err)
+	}
+	return nil
 }
 
 // copyFile copies a file from src to dst, printing "Copying: ..." first.
@@ -513,7 +525,7 @@ func RunServer() error {
 	} else {
 		fmt.Printf("Loading existing config: %s\n", serverConfigFile)
 	}
-	return runV("go", "run", "./cmd/ottoman", "server", "run")
+	return runV("go", "run", "./cmd/ottoman", "--config", serverConfigFile, "server", "run")
 }
 
 // RunClient runs the client locally.
