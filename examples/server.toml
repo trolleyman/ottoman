@@ -9,12 +9,6 @@
 listen_addr = ':17293'
 auth_token = 'your-secret-token-here'
 client_addr = '192.168.1.100:17294'
-device_id = 'ottoman-server'
-
-[server.ping]
-url = 'https://example.com/api/ottoman/ping'
-interval = '5m'
-auth_token = 'your-ping-token-here'
 
 [[server.wake_targets]]
 name = 'desktop'
