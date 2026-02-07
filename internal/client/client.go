@@ -335,6 +335,7 @@ func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request)
 	for _, m := range monitors {
 		if m.Connected {
 			monitorConfigs = append(monitorConfigs, common.Monitor{
+				Name:        m.Name,
 				EDID:        m.EDID,
 				Width:       m.Width,
 				Height:      m.Height,

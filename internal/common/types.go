@@ -2,11 +2,11 @@ package common
 
 // Layout represents a display layout configuration
 type Layout struct {
-	ID       string    `json:"id" mapstructure:"id"`                      // Required: user-defined or slug of name
-	Name     string    `json:"name" mapstructure:"name"`                  // Required: display name
-	Emoji    string    `json:"emoji,omitempty" mapstructure:"emoji"`      // Optional: emoji for UI
-	Aliases  []string  `json:"aliases,omitempty" mapstructure:"aliases"`  // Optional: alternative names/shortcuts
-	Monitors []Monitor `json:"monitors" mapstructure:"monitors"`          // Monitor configurations
+	ID       string    `json:"id" mapstructure:"id"`                     // Required: user-defined or slug of name
+	Name     string    `json:"name" mapstructure:"name"`                 // Required: display name
+	Emoji    string    `json:"emoji,omitempty" mapstructure:"emoji"`     // Optional: emoji for UI
+	Aliases  []string  `json:"aliases,omitempty" mapstructure:"aliases"` // Optional: alternative names/shortcuts
+	Monitors []Monitor `json:"monitors" mapstructure:"monitors"`         // Monitor configurations
 }
 
 // Monitor represents a monitor configuration within a layout
@@ -18,6 +18,9 @@ type Monitor struct {
 	// Port is the output name (e.g., "HDMI-1", "DP-1" on Linux)
 	// Used by xrandr on Linux for display configuration
 	Port string `json:"port,omitempty" mapstructure:"port"`
+
+	// Name is the human-readable name of the monitor
+	Name string `json:"name,omitempty" mapstructure:"name"`
 
 	// Display configuration
 	Width       int     `json:"width" mapstructure:"width"`

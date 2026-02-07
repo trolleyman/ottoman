@@ -20,6 +20,7 @@ interface MonitorInfo {
 interface LayoutMonitor {
   edid: string;
   port: string;
+  name: string;
   width: number;
   height: number;
   refresh_rate: number;
@@ -256,7 +257,7 @@ function LayoutCard({
             {enabled.map((m, i) => (
               <span key={m.port || m.edid || i} className="flex items-center gap-1.5">
                 <span className="font-mono text-zinc-300">{m.width}x{m.height}</span>
-                {m.edid && <span className="text-zinc-500">{m.edid}</span>}
+                {(m.name || m.edid) && <span className="text-zinc-500 truncate max-w-[120px]">{m.name || m.edid}</span>}
                 {m.primary && <span className="ml-auto text-blue-400">primary</span>}
               </span>
             ))}
