@@ -20,7 +20,7 @@ interface MonitorInfo {
 interface LayoutMonitor {
   edid: string;
   port: string;
-  name: string;
+  name?: string;
   width: number;
   height: number;
   refresh_rate: number;
@@ -160,22 +160,25 @@ function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; sca
         return (
           <div
             key={m.edid || m.port || i}
-            className="absolute rounded border border-zinc-600 bg-zinc-700/60 overflow-hidden"
+            className={`absolute rounded border ${m.primary ? `bg-blue-500/30 border-blue-500/40` : `border-zinc-600 bg-zinc-700/60`} overflow-hidden`}
             style={{ left: x, top: y, width: w, height: h }}
           >
             {m.primary && <>
-              <span className="absolute top-0.5 left-1 leading-none text-blue-400 text-[7pt]">
+              <span className="absolute top-0.5 right-1 leading-none text-blue-400 text-[7pt]">
                 primary
               </span>
             </>}
-            <span className="absolute top-0.5 right-1 text-zinc-400 leading-none text-[7pt]">
-              {m.edid}
+            <span className="absolute top-0.5 left-1 text-zinc-400 font-mono leading-none text-[7pt]">
+              {m.position_x},{m.position_y}
             </span>
-            <span className="absolute inset-0 flex items-center justify-center text-zinc-200 font-mono font-medium leading-none text-[10pt]">
+            <span className="absolute bottom-0.5 left-1 text-zinc-400 font-mono leading-none text-[7pt]">
               {m.width}x{m.height}
             </span>
-            <span className="absolute bottom-0.5 left-1 text-zinc-500 leading-none text-[7pt]">
-              {m.position_x},{m.position_y}
+            <span className="absolute bottom-0.5 right-1 text-zinc-500 leading-none text-[7pt]">
+              {m.edid}
+            </span>
+            <span className="absolute inset-0 flex items-center justify-center text-zinc-200 font-medium leading-none text-[10pt]">
+              {m.name}
             </span>
           </div>
         );
@@ -253,15 +256,24 @@ function LayoutCard({
 
         {/* Monitor list */}
         {enabled.length > 0 && (
-          <span className="flex flex-col gap-0.5 text-xs font-normal mt-1">
+          <div className="flex flex-col gap-1 mt-2 w-full">
             {enabled.map((m, i) => (
-              <span key={m.port || m.edid || i} className="flex items-center gap-1.5">
-                <span className="font-mono text-zinc-300">{m.width}x{m.height}</span>
-                {(m.name || m.edid) && <span className="text-zinc-500 truncate max-w-[120px]">{m.name || m.edid}</span>}
-                {m.primary && <span className="ml-auto text-blue-400">primary</span>}
-              </span>
+              <div
+                key={m.port || m.edid || i}
+                className={`grid grid-cols-[1fr_auto_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${
+                  m.primary
+                    ? "bg-blue-500/10 border-blue-500/20"
+                    : "bg-zinc-900/40 border-transparent"
+                }`}
+              >
+                <span className="truncate text-zinc-300 font-medium" title={m.name || m.port}>
+                  {m.name || m.port || "Unknown"}
+                </span>
+                <span className="font-mono text-zinc-500">{m.width}x{m.height}</span>
+                <span className="font-mono text-zinc-600 text-[10px]">{m.edid}</span>
+              </div>
             ))}
-          </span>
+          </div>
         )}
       </button>
 
