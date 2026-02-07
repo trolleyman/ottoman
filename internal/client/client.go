@@ -19,7 +19,6 @@ import (
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
-	"github.com/trolleyman/ottoman/web"
 )
 
 // Client is the display control agent running on the desktop
@@ -87,12 +86,9 @@ func (c *Client) setupRoutes() error {
 	// Monitor info
 	c.router.HandleFunc("GET /api/monitors", c.requireAuth(c.handleListMonitors))
 
-	// Embedded web client (SPA fallback for all other routes)
-	client_fs, err := web.ClientDistFS()
-	if err != nil {
-		return errors.Wrap(err, "failed to create client dist/ FS")
+	if err := common.SetupSPAHandler(c.router); err != nil {
+		return errors.Wrap(err, "failed to create SPA handler")
 	}
-	c.router.Handle("/", http.FileServerFS(client_fs))
 
 	return nil
 }

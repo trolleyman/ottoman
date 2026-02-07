@@ -5,10 +5,10 @@ import (
 	"io/fs"
 )
 
-//go:embed all:client/dist
+//go:embed all:dist
 var assets embed.FS
 
-// ClientDistFS returns the web client's dist directory as an fs.FS.
-func ClientDistFS() (fs.FS, error) {
-	return fs.Sub(assets, "client/dist")
+// DistFS returns the web client's dist directory as an fs.FS.
+func DistFS() (fs.FS, error) {
+	return fs.Sub(assets, "dist")
 }

@@ -53,18 +53,25 @@ func New(config *Config) (*Server, error) {
 		s.wakeTargets[strings.ToLower(target.Name)] = target
 	}
 
-	s.setupRoutes()
+	if err := s.setupRoutes(); err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
 
 // setupRoutes configures HTTP routes
-func (s *Server) setupRoutes() {
+func (s *Server) setupRoutes() error {
 	s.router = http.NewServeMux()
 
 	// Health check (no auth required)
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /api/status", s.handleStatus)
+
+	// Auth endpoints
+	s.router.HandleFunc("POST /api/auth", s.handleAuth)
+	s.router.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	s.router.HandleFunc("GET /api/auth/check", s.requireAuth(s.handleAuthCheck))
 
 	// Wake-on-LAN
 	s.router.HandleFunc("POST /api/wake", s.requireAuth(s.handleWake))
@@ -74,9 +81,15 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /api/layouts", s.requireAuth(s.handleListLayouts))
 	s.router.HandleFunc("POST /api/layouts/switch", s.requireAuth(s.handleSwitchLayout))
 	s.router.HandleFunc("GET /api/layouts/current", s.requireAuth(s.handleCurrentLayout))
+	s.router.HandleFunc("GET /api/monitors", s.requireAuth(s.handleListMonitors))
 
 	// Client status
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
+
+	if err := common.SetupSPAHandler(s.router); err != nil {
+		return errors.Wrap(err, "")
+	}
+	return nil
 }
 
 // requireAuth wraps a handler with authentication
@@ -91,6 +104,14 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 					next(w, r)
 					return
 				}
+			}
+		}
+
+		// Check ottoman_token cookie
+		if cookie, err := r.Cookie("ottoman_token"); err == nil {
+			if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(s.config.AuthToken)) == 1 {
+				next(w, r)
+				return
 			}
 		}
 
@@ -126,6 +147,56 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Version: "dev", // Set at build time
 		Uptime:  uptime,
 	})
+}
+
+// handleAuth validates a token and sets an auth cookie
+func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	var req common.AuthRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(s.config.AuthToken)) != 1 {
+		common.WriteJSON(w, http.StatusUnauthorized, common.AuthResponse{
+			Success: false,
+			Message: "invalid token",
+		})
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ottoman_token",
+		Value:    req.Token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	common.WriteJSON(w, http.StatusOK, common.AuthResponse{
+		Success: true,
+	})
+}
+
+// handleLogout clears the auth cookie
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ottoman_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	common.WriteJSON(w, http.StatusOK, common.AuthResponse{
+		Success: true,
+	})
+}
+
+// handleAuthCheck returns whether the request is authenticated
+func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	common.WriteJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
 }
 
 // handleWake sends a wake-on-LAN packet
@@ -201,6 +272,20 @@ func (s *Server) handleSwitchLayout(w http.ResponseWriter, r *http.Request) {
 
 	body, _ := json.Marshal(req)
 	resp, err := s.proxyToClient("POST", "/api/layouts/switch", body)
+	if err != nil {
+		common.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// handleListMonitors proxies to client to get connected monitors
+func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.proxyToClient("GET", "/api/monitors", nil)
 	if err != nil {
 		common.WriteError(w, http.StatusBadGateway, err.Error())
 		return

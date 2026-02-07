@@ -3,6 +3,10 @@ package common
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
+
+	"github.com/pkg/errors"
+	"github.com/trolleyman/ottoman/web"
 )
 
 // API request/response types
@@ -117,4 +121,29 @@ func WriteError(w http.ResponseWriter, status int, message string) {
 // ReadJSON reads JSON from a request body
 func ReadJSON(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+// SetupSPAHandler sets up the SPA handler
+func SetupSPAHandler(router *http.ServeMux) error {
+	// Embedded web client (SPA fallback for all other routes)
+	clientFS, err := web.DistFS()
+	if err != nil {
+		return errors.Wrap(err, "failed to create dist/ FS")
+	}
+
+	fileServer := http.FileServer(http.FS(clientFS))
+
+	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		if _, err := clientFS.Open(path); err != nil {
+			r.URL.Path = "/"
+		}
+
+		fileServer.ServeHTTP(w, r)
+	})
+	return nil
 }
