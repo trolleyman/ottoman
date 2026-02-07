@@ -186,7 +186,7 @@ function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; sca
 /** Sort monitors: primary first, then left-to-right, top-to-bottom */
 function sortedMonitors<T extends { primary?: boolean; position_x: number; position_y: number }>(monitors: T[]): T[] {
   return [...monitors].sort((a, b) => {
-    if (a.primary !== b.primary) return a.primary ? -1 : 1;
+    // if (a.primary !== b.primary) return a.primary ? -1 : 1;
     if (a.position_x !== b.position_x) return a.position_x - b.position_x;
     return a.position_y - b.position_y;
   });
