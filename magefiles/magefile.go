@@ -837,26 +837,34 @@ func DeployServer() error {
 	deployDir := path.Dir(expandPath(cfg.Server.DeployPath))
 	configDir := path.Dir(expandPath(cfg.Server.ConfigPath))
 
-	if err := run("ssh", cfg.Server.SSHTarget, "mkdir -p "+deployDir); err != nil {
+	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("mkdir -p '%s'", deployDir)); err != nil {
 		return fmt.Errorf("failed to create deploy directory: %w", err)
 	}
 
-	if err := run("ssh", cfg.Server.SSHTarget, "mkdir -p "+configDir); err != nil {
+	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("mkdir -p '%s'", configDir)); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	// Stop service if running (ignore errors as it might not exist yet)
+	_ = run("ssh", cfg.Server.SSHTarget, "systemctl --user stop ottoman-server")
+
+	// Remove binary if it exists
+	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("rm -f '%s'", cfg.Server.DeployPath)); err != nil {
+		return fmt.Errorf("failed to remove existing binary: %w", err)
+	}
+
 	// Copy binary (use scpPath to handle ~ properly)
-	if err := run("scp", binaryPath, cfg.Server.SSHTarget+":"+scpPath(cfg.Server.DeployPath)); err != nil {
+	if err := run("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Server.SSHTarget, scpPath(cfg.Server.DeployPath))); err != nil {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
 	// Make executable
-	if err := run("ssh", cfg.Server.SSHTarget, "chmod +x "+cfg.Server.DeployPath); err != nil {
+	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("chmod +x %s", cfg.Server.DeployPath)); err != nil {
 		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
 	// Write config file
-	if err := run("scp", serverConfigPath, cfg.Server.SSHTarget+":"+scpPath(cfg.Server.ConfigPath)); err != nil {
+	if err := run("scp", serverConfigPath, fmt.Sprintf("%s:%s", cfg.Server.SSHTarget, scpPath(cfg.Server.ConfigPath))); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
