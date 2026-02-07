@@ -884,8 +884,13 @@ func DeployServer() error {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
+	// Checking status
+	fmt.Println("\nDeployed - checking status:")
+	if err := run("ssh", cfg.Server.SSHTarget, "systemctl --user status ottoman-server"); err != nil {
+		return fmt.Errorf("failed to start service: %w", err)
+	}
+
 	fmt.Println("\n=== Server deployment complete! ===")
-	fmt.Printf("\nTo check status: ssh %s 'systemctl --user status ottoman-server'\n", cfg.Server.SSHTarget)
 	return nil
 }
 
