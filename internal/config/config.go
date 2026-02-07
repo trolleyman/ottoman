@@ -32,15 +32,21 @@ type Config struct {
 
 // ServerConfig holds server configuration
 type ServerConfig struct {
-	ListenAddr   string        `mapstructure:"listen_addr"`
-	AuthToken    string        `mapstructure:"auth_token"`
-	Username     string        `mapstructure:"username"`
-	PasswordHash string        `mapstructure:"password_hash"`
-	WakeTargets  []WakeTarget  `mapstructure:"wake_targets"`
-	ClientAddr   string        `mapstructure:"client_addr"`
-	PingURL      string        `mapstructure:"ping_url"`
-	PingInterval time.Duration `mapstructure:"ping_interval"`
-	DeviceID     string        `mapstructure:"device_id"`
+	ListenAddr   string       `mapstructure:"listen_addr"`
+	AuthToken    string       `mapstructure:"auth_token"`
+	Username     string       `mapstructure:"username"`
+	PasswordHash string       `mapstructure:"password_hash"`
+	WakeTargets  []WakeTarget `mapstructure:"wake_targets"`
+	ClientAddr   string       `mapstructure:"client_addr"`
+	Ping         PingConfig   `mapstructure:"ping"`
+	DeviceID     string       `mapstructure:"device_id"`
+}
+
+// PingConfig holds configuration for periodic IP reporting
+type PingConfig struct {
+	URL       string        `mapstructure:"url"`
+	Interval  time.Duration `mapstructure:"interval"`
+	AuthToken string        `mapstructure:"auth_token"`
 }
 
 // ClientConfig holds client configuration
@@ -91,14 +97,14 @@ func Init(cfgFile string) {
 
 func setDefaults() {
 	// Server defaults
-	v.SetDefault("server.listen_addr", ":8080")
-	v.SetDefault("server.client_addr", "localhost:8081")
-	v.SetDefault("server.ping_interval", 5*time.Minute)
+	v.SetDefault("server.listen_addr", ":17293")
+	v.SetDefault("server.client_addr", "localhost:17294")
+	v.SetDefault("server.ping.interval", 5*time.Minute)
 	v.SetDefault("server.device_id", "ottoman")
 	v.SetDefault("server.wake_targets", []WakeTarget{})
 
 	// Client defaults
-	v.SetDefault("client.listen_addr", ":8081")
+	v.SetDefault("client.listen_addr", ":17294")
 	v.SetDefault("client.layouts", []common.Layout{})
 }
 
@@ -275,10 +281,13 @@ func SaveServer(cfg *ServerConfig, path string) error {
 		w.Set("server.password_hash", cfg.PasswordHash)
 	}
 	w.Set("server.client_addr", cfg.ClientAddr)
-	if cfg.PingURL != "" {
-		w.Set("server.ping_url", cfg.PingURL)
+	if cfg.Ping.URL != "" {
+		w.Set("server.ping.url", cfg.Ping.URL)
+		w.Set("server.ping.interval", cfg.Ping.Interval.String())
+		if cfg.Ping.AuthToken != "" {
+			w.Set("server.ping.auth_token", cfg.Ping.AuthToken)
+		}
 	}
-	w.Set("server.ping_interval", cfg.PingInterval.String())
 	w.Set("server.device_id", cfg.DeviceID)
 
 	if len(cfg.WakeTargets) > 0 {
@@ -327,10 +336,13 @@ func Save(cfg *Config, path string) error {
 		w.Set("server.password_hash", cfg.Server.PasswordHash)
 	}
 	w.Set("server.client_addr", cfg.Server.ClientAddr)
-	if cfg.Server.PingURL != "" {
-		w.Set("server.ping_url", cfg.Server.PingURL)
+	if cfg.Server.Ping.URL != "" {
+		w.Set("server.ping.url", cfg.Server.Ping.URL)
+		w.Set("server.ping.interval", cfg.Server.Ping.Interval.String())
+		if cfg.Server.Ping.AuthToken != "" {
+			w.Set("server.ping.auth_token", cfg.Server.Ping.AuthToken)
+		}
 	}
-	w.Set("server.ping_interval", cfg.Server.PingInterval.String())
 	w.Set("server.device_id", cfg.Server.DeviceID)
 
 	if len(cfg.Server.WakeTargets) > 0 {

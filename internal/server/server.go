@@ -82,19 +82,11 @@ func (s *Server) setupRoutes() {
 // requireAuth wraps a handler with authentication
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check if auth is configured
-		if s.config.AuthToken == "" && s.config.Username == "" {
-			next(w, r)
-			return
-		}
-
-		// Check Authorization header
 		auth := r.Header.Get("Authorization")
 
 		// Token-based auth
 		if s.config.AuthToken != "" {
-			if strings.HasPrefix(auth, "Bearer ") {
-				token := strings.TrimPrefix(auth, "Bearer ")
+			if token, ok := strings.CutPrefix(auth, "Bearer "); ok {
 				if subtle.ConstantTimeCompare([]byte(token), []byte(s.config.AuthToken)) == 1 {
 					next(w, r)
 					return
@@ -286,18 +278,62 @@ func Run(config *Config) error {
 	return server.Start()
 }
 
+// loggingMiddleware logs all incoming HTTP requests
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// Log request details
+		log.Printf("→ %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Log auth header (masked)
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			if token, ok := strings.CutPrefix(auth, "Bearer "); ok {
+				if len(token) > 8 {
+					log.Printf("  Auth: Bearer %s...%s", token[:4], token[len(token)-4:])
+				} else {
+					log.Printf("  Auth: Bearer [short token]")
+				}
+			} else if len(auth) > 20 {
+				log.Printf("  Auth: %s...", auth[:20])
+			} else {
+				log.Printf("  Auth: %s", auth)
+			}
+		} else {
+			log.Printf("  Auth: (none)")
+		}
+
+		// Wrap response writer to capture status code
+		wrapped := &statusResponseWriter{ResponseWriter: w, status: 200}
+		next.ServeHTTP(wrapped, r)
+
+		// Log response
+		log.Printf("← %d (%s)", wrapped.status, time.Since(start).Round(time.Millisecond))
+	})
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusResponseWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // Start starts the HTTP server and background tasks
 func (s *Server) Start() error {
 	s.server = &http.Server{
 		Addr:         s.config.ListenAddr,
-		Handler:      s.router,
+		Handler:      loggingMiddleware(s.router),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
 	// Start IP ping task if configured
-	if s.config.PingURL != "" {
+	if s.config.Ping.URL != "" {
 		go s.startIPPinger()
 	}
 
@@ -323,7 +359,7 @@ func (s *Server) Start() error {
 
 // startIPPinger periodically reports external IP to the configured URL
 func (s *Server) startIPPinger() {
-	ticker := time.NewTicker(s.config.PingInterval)
+	ticker := time.NewTicker(s.config.Ping.Interval)
 	defer ticker.Stop()
 
 	// Initial ping
@@ -352,7 +388,16 @@ func (s *Server) pingExternalIP() {
 	}
 
 	body, _ := json.Marshal(pingReq)
-	resp, err := s.client.Post(s.config.PingURL, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", s.config.Ping.URL, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("Failed to create ping request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.config.Ping.AuthToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.config.Ping.AuthToken)
+	}
+	resp, err := s.client.Do(req)
 	if err != nil {
 		log.Printf("Failed to ping external URL: %v", err)
 		return

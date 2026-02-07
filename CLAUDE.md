@@ -45,11 +45,11 @@ internal/
     server.go            # HTTP server, routes, proxy logic
     wol.go               # Wake-on-LAN implementation
     config.go            # Server config wrapper
-    deploy.go            # SSH deployment
+    deploy.go            # Systemd service installation
   client/                # Desktop client component
     client.go            # HTTP API for display control
     config.go            # Client config wrapper
-    deploy.go            # Local deployment
+    deploy.go            # Service registration (systemd/Windows startup)
   display/               # Display management abstraction
     display.go           # Interface & layout store
     windows.go           # Windows implementation (PowerShell/WMI)
@@ -76,6 +76,15 @@ build/                   # Compiled binaries output
   - `%APPDATA%/ottoman/ottoman.toml` (Windows)
 - **Authentication**: Bearer token or Basic auth with constant-time comparison
 - **Error handling**: Uses `github.com/pkg/errors` for wrapping
+
+## Deployment Commands
+
+```bash
+mage deployClient        # Interactive client deployment (build + copy + register service)
+mage deployServer        # Interactive server deployment via SSH to Raspberry Pi
+```
+
+Deployment settings are saved to `magefiles/deploy.toml` (gitignored).
 
 ## Config Commands
 

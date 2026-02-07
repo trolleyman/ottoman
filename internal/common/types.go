@@ -15,6 +15,10 @@ type Monitor struct {
 	// Format: "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2", "SAM:0C4E", "AOC:B403"
 	EDID string `json:"edid" mapstructure:"edid"`
 
+	// Port is the output name (e.g., "HDMI-1", "DP-1" on Linux)
+	// Used by xrandr on Linux for display configuration
+	Port string `json:"port,omitempty" mapstructure:"port"`
+
 	// Display configuration
 	Width       int     `json:"width" mapstructure:"width"`
 	Height      int     `json:"height" mapstructure:"height"`

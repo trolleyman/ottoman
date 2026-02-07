@@ -6,18 +6,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/pkg/errors"
 )
 
-const systemdService = `[Unit]
+const systemdServiceTemplate = `[Unit]
 Description=Ottoman Home Automation Server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ottoman server run
+ExecStart=%s server run
 Restart=always
 RestartSec=5
 User=ottoman
@@ -38,9 +37,20 @@ func InstallService() error {
 		return errors.New("must run as root to install systemd service")
 	}
 
+	// Get current binary path
+	binPath, err := os.Executable()
+	if err != nil {
+		return errors.Wrap(err, "failed to get executable path")
+	}
+	binPath, err = filepath.EvalSymlinks(binPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve executable path")
+	}
+
 	// Write service file
 	servicePath := "/etc/systemd/system/ottoman-server.service"
-	if err := os.WriteFile(servicePath, []byte(systemdService), 0644); err != nil {
+	serviceContent := fmt.Sprintf(systemdServiceTemplate, binPath)
+	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write service file")
 	}
 
@@ -82,63 +92,36 @@ func InstallService() error {
 	return nil
 }
 
-// Deploy deploys the server to a remote target via SSH
-func Deploy(target string) error {
-	if target == "" {
-		return errors.New("target is required (e.g., pi@raspberrypi.local)")
+// UninstallService removes the systemd service
+func UninstallService() error {
+	if runtime.GOOS != "linux" {
+		return errors.New("systemd service uninstallation only supported on Linux")
 	}
 
-	// Parse target
-	parts := strings.Split(target, "@")
-	if len(parts) != 2 {
-		return errors.New("target must be in format user@host")
+	// Check if running as root
+	if os.Geteuid() != 0 {
+		return errors.New("must run as root to uninstall systemd service")
 	}
 
-	// Build for Raspberry Pi (linux/arm)
-	fmt.Println("Building ottoman for Raspberry Pi (linux/arm)...")
+	// Stop service (ignore errors - might not be running)
+	fmt.Println("Stopping service...")
+	exec.Command("systemctl", "stop", "ottoman-server").Run()
 
-	binaryPath := filepath.Join(os.TempDir(), "ottoman-linux-arm")
+	// Disable service (ignore errors - might not be enabled)
+	fmt.Println("Disabling service...")
+	exec.Command("systemctl", "disable", "ottoman-server").Run()
 
-	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/ottoman")
-	buildCmd.Env = append(os.Environ(),
-		"GOOS=linux",
-		"GOARCH=arm",
-		"GOARM=7",
-	)
-	buildCmd.Stdout = os.Stdout
-	buildCmd.Stderr = os.Stderr
-
-	if err := buildCmd.Run(); err != nil {
-		return errors.Wrap(err, "build failed")
+	// Remove service file
+	servicePath := "/etc/systemd/system/ottoman-server.service"
+	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
+		return errors.Wrap(err, "failed to remove service file")
 	}
 
-	// Copy to target
-	fmt.Printf("Copying to %s...\n", target)
-	scpCmd := exec.Command("scp", binaryPath, target+":/tmp/ottoman")
-	scpCmd.Stdout = os.Stdout
-	scpCmd.Stderr = os.Stderr
-
-	if err := scpCmd.Run(); err != nil {
-		return errors.Wrap(err, "scp failed")
+	// Reload systemd
+	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+		return errors.Wrap(err, "failed to reload systemd")
 	}
 
-	// Install on target
-	fmt.Println("Installing on target...")
-	installScript := `
-		sudo mv /tmp/ottoman /usr/local/bin/ottoman && \
-		sudo chmod +x /usr/local/bin/ottoman && \
-		sudo /usr/local/bin/ottoman server install && \
-		sudo systemctl restart ottoman-server
-	`
-
-	sshCmd := exec.Command("ssh", target, installScript)
-	sshCmd.Stdout = os.Stdout
-	sshCmd.Stderr = os.Stderr
-
-	if err := sshCmd.Run(); err != nil {
-		return errors.Wrap(err, "remote installation failed")
-	}
-
-	fmt.Println("Deployment complete!")
+	fmt.Println("Service uninstalled successfully!")
 	return nil
 }

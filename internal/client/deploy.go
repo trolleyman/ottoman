@@ -29,104 +29,10 @@ func InstallPaths() (binPath, configDir string) {
 	return
 }
 
-// Install copies the current binary to the installation directory and creates config
+// Install registers the ottoman client as a service for autostart.
+// This is called after the binary has been deployed to the target location.
 func Install() error {
-	binPath, configDir := InstallPaths()
-
-	// Get the current executable
-	currentExe, err := os.Executable()
-	if err != nil {
-		return errors.Wrap(err, "failed to get current executable path")
-	}
-
-	// Resolve symlinks
-	currentExe, err = filepath.EvalSymlinks(currentExe)
-	if err != nil {
-		return errors.Wrap(err, "failed to resolve executable path")
-	}
-
-	fmt.Printf("Installing ottoman...\n")
-	fmt.Printf("  Source: %s\n", currentExe)
-	fmt.Printf("  Target: %s\n", binPath)
-	fmt.Printf("  Config: %s\n", configDir)
-	fmt.Println()
-
-	// Create directories
-	if err := os.MkdirAll(filepath.Dir(binPath), 0755); err != nil {
-		return errors.Wrap(err, "failed to create bin directory")
-	}
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return errors.Wrap(err, "failed to create config directory")
-	}
-
-	// Copy binary (skip if same file)
-	if currentExe != binPath {
-		if err := copyFile(currentExe, binPath); err != nil {
-			return errors.Wrap(err, "failed to copy binary")
-		}
-		// Make executable on Unix
-		if runtime.GOOS != "windows" {
-			if err := os.Chmod(binPath, 0755); err != nil {
-				return errors.Wrap(err, "failed to make binary executable")
-			}
-		}
-		fmt.Printf("Copied binary to %s\n", binPath)
-	} else {
-		fmt.Println("Binary already in place")
-	}
-
-	// Check if config exists
-	configPath := filepath.Join(configDir, "config.toml")
-	_, configErr := os.Stat(configPath)
-	configExists := configErr == nil
-	if configExists {
-		fmt.Printf("Config exists at %s\n", configPath)
-	}
-
-	fmt.Println()
-	fmt.Println("Installation complete!")
-	fmt.Println()
-
-	// Platform-specific next steps
-	switch runtime.GOOS {
-	case "windows":
-		fmt.Println("Next steps:")
-		step := 1
-		if !configExists {
-			fmt.Printf("  %d. Initialize config:\n", step)
-			fmt.Printf("     \"%s\" config init client\n", binPath)
-			fmt.Println()
-			step++
-		}
-		fmt.Printf("  %d. Run the client:\n", step)
-		fmt.Printf("     \"%s\" client run\n", binPath)
-		fmt.Println()
-		step++
-		fmt.Printf("  %d. To start automatically at login:\n", step)
-		fmt.Printf("     \"%s\" client service install\n", binPath)
-	default:
-		fmt.Println("Next steps:")
-		step := 1
-		fmt.Printf("  %d. Add to PATH (if not already):\n", step)
-		fmt.Println("     Add to ~/.bashrc or ~/.zshrc:")
-		fmt.Println("     export PATH=\"$HOME/.local/bin:$PATH\"")
-		fmt.Println()
-		step++
-		if !configExists {
-			fmt.Printf("  %d. Initialize config:\n", step)
-			fmt.Println("     ottoman config init client")
-			fmt.Println()
-			step++
-		}
-		fmt.Printf("  %d. Run the client:\n", step)
-		fmt.Println("     ottoman client run")
-		fmt.Println()
-		step++
-		fmt.Printf("  %d. To start automatically at login:\n", step)
-		fmt.Println("     ottoman client service install")
-	}
-
-	return nil
+	return InstallService()
 }
 
 // copyFile copies a file from src to dst
@@ -180,16 +86,20 @@ func InstallService() error {
 
 // installLinuxService installs a systemd user service
 func installLinuxService() error {
-	binPath, _ := InstallPaths()
 	home := os.Getenv("HOME")
 
 	if home == "" {
 		return errors.New("HOME environment variable must be set")
 	}
 
-	// Check if binary is installed
-	if _, err := os.Stat(binPath); os.IsNotExist(err) {
-		return errors.Errorf("ottoman not installed at %s. Run 'ottoman install' first", binPath)
+	// Get current binary path
+	binPath, err := os.Executable()
+	if err != nil {
+		return errors.Wrap(err, "failed to get executable path")
+	}
+	binPath, err = filepath.EvalSymlinks(binPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve executable path")
 	}
 
 	// User-level systemd service
@@ -233,16 +143,25 @@ WshShell.Run """%s"" client run", 0, False
 
 // installWindowsService creates a startup shortcut/script for Windows
 func installWindowsService() error {
-	binPath, configDir := InstallPaths()
-
-	// Check if binary is installed
-	if _, err := os.Stat(binPath); os.IsNotExist(err) {
-		return errors.Errorf("ottoman not installed at %s. Run 'ottoman install' first", binPath)
+	// Get current binary path
+	binPath, err := os.Executable()
+	if err != nil {
+		return errors.Wrap(err, "failed to get executable path")
+	}
+	binPath, err = filepath.EvalSymlinks(binPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve executable path")
 	}
 
 	// Get startup folder
 	appData := os.Getenv("APPDATA")
+	configDir := filepath.Join(appData, "ottoman")
 	startupDir := filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+
+	// Ensure config directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create config directory")
+	}
 
 	// Create a VBS script to run hidden (no console window)
 	vbsPath := filepath.Join(configDir, "ottoman-startup.vbs")
@@ -272,11 +191,6 @@ func installWindowsService() error {
 	fmt.Printf("  %s\n", shortcutPath)
 
 	return nil
-}
-
-// Deploy is an alias for Install (for backwards compatibility)
-func Deploy() error {
-	return Install()
 }
 
 // UninstallService removes the installed service

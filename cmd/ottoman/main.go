@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -45,9 +47,8 @@ from a Raspberry Pi. It provides wake-on-LAN, display switching, and
 remote management capabilities.`,
 	Version: Version,
 	// Silence usage after args validation passes (show usage for arg errors, not runtime errors)
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		cmd.SilenceUsage = true
-		return nil
 	},
 }
 
@@ -77,12 +78,11 @@ var serverInstallCmd = &cobra.Command{
 	},
 }
 
-var serverDeployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy server to Pi target",
+var serverUninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "Uninstall systemd service for server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		target, _ := cmd.Flags().GetString("target")
-		return server.Deploy(target)
+		return server.UninstallService()
 	},
 }
 
@@ -101,14 +101,6 @@ var clientRunCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 		return client.Run(cfg)
-	},
-}
-
-var clientDeployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy client locally (alias for 'ottoman install')",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.Deploy()
 	},
 }
 
@@ -384,22 +376,6 @@ var layoutApplyCmd = &cobra.Command{
 	},
 }
 
-// Deploy command (both)
-var deployCmd = &cobra.Command{
-	Use:   "deploy",
-	Short: "Deploy both server and client",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		serverTarget, _ := cmd.Flags().GetString("server-target")
-		if err := server.Deploy(serverTarget); err != nil {
-			return errors.Wrap(err, "server deploy failed")
-		}
-		if err := client.Deploy(); err != nil {
-			return errors.Wrap(err, "client deploy failed")
-		}
-		return nil
-	},
-}
-
 // Status command
 var statusCmd = &cobra.Command{
 	Use:   "status",
@@ -455,10 +431,13 @@ var configInitCmd = &cobra.Command{
 	Use:   "init <client|server>",
 	Short: "Create a configuration file for client or server",
 	Long: `Create a configuration file with required settings.
+If the file already exists, it will be displayed and you will be asked
+whether to keep it or reconfigure.
 
 Examples:
-  ottoman config init client    # Initialize client configuration
-  ottoman config init server    # Initialize server configuration`,
+  ottoman config init client                        # Initialize client configuration
+  ottoman config init server                        # Initialize server configuration
+  ottoman config init server --output server.toml   # Write to specific path`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := args[0]
@@ -471,86 +450,43 @@ Examples:
 			path = config.DefaultConfigPath()
 		}
 
-		// Check if file already exists
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("config file already exists: %s\nEdit it directly or delete it first", path)
-		}
-
-		// Initialize defaults
-		config.Init("")
-
 		reader := bufio.NewReader(os.Stdin)
 
+		// If file already exists, show it and ask whether to keep
+		if _, err := os.Stat(path); err == nil {
+			content, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return errors.Wrap(readErr, "failed to read existing config")
+			}
+			fmt.Printf("Existing config (%s):\n\n", path)
+			fmt.Print(string(content))
+			fmt.Println()
+
+			answer := promptInput(reader, "Use this configuration? [Y/n]", "")
+			if answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes") {
+				fmt.Println("Keeping existing configuration.")
+				return nil
+			}
+
+			// Load existing values as defaults
+			config.Init(path)
+		} else {
+			config.Init("")
+		}
+
 		if mode == "client" {
-			cfg := &config.ClientConfig{
-				ListenAddr: ":8081",
+			cfg, err := initClientConfig(reader)
+			if err != nil {
+				return err
 			}
-
-			// Prompt for auth token
-			fmt.Print("Auth token (leave blank to generate): ")
-			token, _ := reader.ReadString('\n')
-			token = strings.TrimSpace(token)
-
-			if token == "" {
-				generated, err := config.GenerateToken()
-				if err != nil {
-					return errors.Wrap(err, "failed to generate token")
-				}
-				token = generated
-				fmt.Printf("Generated token: %s\n", token)
-			}
-			cfg.AuthToken = token
-
-			// Prompt for listen address
-			fmt.Print("Listen address [:8081]: ")
-			addr, _ := reader.ReadString('\n')
-			addr = strings.TrimSpace(addr)
-			if addr != "" {
-				cfg.ListenAddr = addr
-			}
-
 			if err := config.SaveClient(cfg, path); err != nil {
 				return errors.Wrap(err, "failed to save config")
 			}
-
-		} else { // server
-			cfg := &config.ServerConfig{
-				ListenAddr: ":8080",
-				ClientAddr: "localhost:8081",
-				DeviceID:   "ottoman",
+		} else {
+			cfg, err := initServerConfig(reader)
+			if err != nil {
+				return err
 			}
-
-			// Prompt for auth token
-			fmt.Print("Auth token (leave blank to generate): ")
-			token, _ := reader.ReadString('\n')
-			token = strings.TrimSpace(token)
-
-			if token == "" {
-				generated, err := config.GenerateToken()
-				if err != nil {
-					return errors.Wrap(err, "failed to generate token")
-				}
-				token = generated
-				fmt.Printf("Generated token: %s\n", token)
-			}
-			cfg.AuthToken = token
-
-			// Prompt for client address
-			fmt.Print("Client address [localhost:8081]: ")
-			clientAddr, _ := reader.ReadString('\n')
-			clientAddr = strings.TrimSpace(clientAddr)
-			if clientAddr != "" {
-				cfg.ClientAddr = clientAddr
-			}
-
-			// Prompt for listen address
-			fmt.Print("Listen address [:8080]: ")
-			addr, _ := reader.ReadString('\n')
-			addr = strings.TrimSpace(addr)
-			if addr != "" {
-				cfg.ListenAddr = addr
-			}
-
 			if err := config.SaveServer(cfg, path); err != nil {
 				return errors.Wrap(err, "failed to save config")
 			}
@@ -561,6 +497,173 @@ Examples:
 	},
 }
 
+// promptInput asks for user input with an optional default value
+func promptInput(reader *bufio.Reader, question, defaultVal string) string {
+	if defaultVal != "" {
+		fmt.Printf("%s [%s]: ", question, defaultVal)
+	} else {
+		fmt.Printf("%s: ", question)
+	}
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return defaultVal
+	}
+	return answer
+}
+
+// promptToken asks for an auth token, generating one if left blank
+func promptToken(reader *bufio.Reader, label, defaultVal string) (string, error) {
+	if defaultVal != "" {
+		token := promptInput(reader, label, defaultVal)
+		return token, nil
+	}
+	token := promptInput(reader, label+" (leave blank to generate)", "")
+	if token == "" {
+		generated, err := config.GenerateToken()
+		if err != nil {
+			return "", errors.Wrap(err, "failed to generate token")
+		}
+		fmt.Printf("Generated token: %s\n", generated)
+		return generated, nil
+	}
+	return token, nil
+}
+
+// initClientConfig interactively creates a client config
+func initClientConfig(reader *bufio.Reader) (*config.ClientConfig, error) {
+	// Try to load existing values
+	existing, _ := config.Load()
+	cfg := &config.ClientConfig{
+		ListenAddr: ":17294",
+	}
+	if existing != nil {
+		cfg = &existing.Client
+	}
+
+	var err error
+	cfg.AuthToken, err = promptToken(reader, "Auth token", cfg.AuthToken)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ListenAddr = promptInput(reader, "Listen address", cfg.ListenAddr)
+
+	return cfg, nil
+}
+
+// initServerConfig interactively creates a server config
+func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
+	// Try to load existing values
+	existing, _ := config.Load()
+	cfg := &config.ServerConfig{
+		ListenAddr: ":17293",
+		ClientAddr: "localhost:17294",
+		DeviceID:   "ottoman",
+	}
+	if existing != nil {
+		cfg = &existing.Server
+	}
+
+	// Smart defaults from local network
+	localIP := getLocalIP()
+	if cfg.ClientAddr == "localhost:17294" && localIP != "" {
+		cfg.ClientAddr = localIP + ":17294"
+	}
+
+	var err error
+	cfg.AuthToken, err = promptToken(reader, "Auth token", cfg.AuthToken)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ListenAddr = promptInput(reader, "Listen address", cfg.ListenAddr)
+	cfg.ClientAddr = promptInput(reader, "Client address", cfg.ClientAddr)
+	cfg.DeviceID = promptInput(reader, "Device ID", cfg.DeviceID)
+
+	// Ping (optional)
+	cfg.Ping.URL = promptInput(reader, "Ping URL (optional)", cfg.Ping.URL)
+	if cfg.Ping.URL != "" {
+		if cfg.Ping.Interval == 0 {
+			cfg.Ping.Interval = 5 * time.Minute
+		}
+		intervalStr := promptInput(reader, "Ping interval", cfg.Ping.Interval.String())
+		// Store as string and let Viper parse it on load; for saving, parse it here
+		parsed, parseErr := parseDuration(intervalStr)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid ping interval %q: %w", intervalStr, parseErr)
+		}
+		cfg.Ping.Interval = parsed
+		cfg.Ping.AuthToken = promptInput(reader, "Ping auth token (optional)", cfg.Ping.AuthToken)
+	}
+
+	// Wake target
+	fmt.Println("\n--- Wake-on-LAN Target ---")
+	if len(cfg.WakeTargets) == 0 {
+		cfg.WakeTargets = []config.WakeTarget{{Name: "desktop"}}
+	}
+	wt := &cfg.WakeTargets[0]
+	wt.Name = promptInput(reader, "Wake target name", wt.Name)
+
+	localMAC := getLocalMAC()
+	if wt.MACAddress == "" && localMAC != "" {
+		wt.MACAddress = localMAC
+	}
+	wt.MACAddress = promptInput(reader, "MAC address", wt.MACAddress)
+
+	if wt.IPAddress == "" && localIP != "" {
+		wt.IPAddress = localIP
+	}
+	wt.IPAddress = promptInput(reader, "IP address", wt.IPAddress)
+
+	return cfg, nil
+}
+
+// parseDuration parses a duration string like "5m", "1h30m", etc.
+func parseDuration(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	return d, nil
+}
+
+// getLocalIP returns the local machine's IP address
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
+}
+
+// getLocalMAC returns the MAC address of the primary network interface
+func getLocalMAC() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagLoopback != 0 || len(iface.HardwareAddr) == 0 {
+			continue
+		}
+		name := strings.ToLower(iface.Name)
+		if strings.HasPrefix(name, "veth") || strings.HasPrefix(name, "docker") ||
+			strings.HasPrefix(name, "br-") || strings.HasPrefix(name, "virbr") {
+			continue
+		}
+		if iface.Flags&net.FlagUp != 0 {
+			return iface.HardwareAddr.String()
+		}
+	}
+	return ""
+}
+
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file path")
@@ -568,12 +671,10 @@ func init() {
 	// Server commands
 	serverCmd.AddCommand(serverRunCmd)
 	serverCmd.AddCommand(serverInstallCmd)
-	serverCmd.AddCommand(serverDeployCmd)
-	serverDeployCmd.Flags().StringP("target", "t", "", "SSH target (user@host)")
+	serverCmd.AddCommand(serverUninstallCmd)
 
 	// Client commands
 	clientCmd.AddCommand(clientRunCmd)
-	clientCmd.AddCommand(clientDeployCmd)
 	clientCmd.AddCommand(layoutCmd)
 	clientCmd.AddCommand(serviceCmd)
 
@@ -590,12 +691,9 @@ func init() {
 	layoutAliasCmd.AddCommand(layoutAliasAddCmd)
 	layoutAliasCmd.AddCommand(layoutAliasRemoveCmd)
 
-	// Deploy command
-	deployCmd.Flags().String("server-target", "", "SSH target for server deployment")
-
 	// Status command
-	statusCmd.Flags().String("server", "localhost:8080", "Server address")
-	statusCmd.Flags().String("client", "localhost:8081", "Client address")
+	statusCmd.Flags().String("server", "localhost:17293", "Server address")
+	statusCmd.Flags().String("client", "localhost:17294", "Client address")
 
 	// Config commands
 	configCmd.AddCommand(configShowCmd)
@@ -606,7 +704,6 @@ func init() {
 	// Add commands to root
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(clientCmd)
-	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(installCmd)

@@ -37,11 +37,13 @@ This installs ottoman to:
 - **Windows:** `%LOCALAPPDATA%\ottoman\ottoman.exe`
 - **Linux:** `~/.local/bin/ottoman`
 
-### One-liner (build + install)
+### One-liner (build + deploy client)
 
 ```bash
-mise run install
+mage deployClient
 ```
+
+This interactively builds, copies, and registers the client as a service.
 
 ## Client Setup
 
@@ -81,17 +83,20 @@ ottoman client layout alias add desktop d
 
 ## Server Setup (Raspberry Pi)
 
-```bash
-# Copy binary to Pi
-scp build/ottoman-linux-arm user@pi:/tmp/ottoman
+Use the interactive deployment command:
 
-# On the Pi:
-sudo mv /tmp/ottoman /usr/local/bin/ottoman
-sudo chmod +x /usr/local/bin/ottoman
-ottoman server install
+```bash
+mage deployServer
 ```
 
-Or use mage: `mage deploypi user@pi.local`
+This will:
+1. Ask for SSH target and server configuration
+2. Auto-detect your desktop's MAC/IP for Wake-on-LAN
+3. Build for Raspberry Pi
+4. Deploy binary and config via SSH
+5. Install systemd service
+
+Settings are saved to `magefiles/deploy.toml` for future deployments.
 
 ## Configuration
 
@@ -156,7 +161,6 @@ ottoman client layout alias remove <id> <a>
 # Server commands
 ottoman server run                        # Run the server
 ottoman server install                    # Install systemd service
-ottoman server deploy -t user@pi          # Deploy to Pi via SSH
 
 # Config
 ottoman config show                       # Show current config

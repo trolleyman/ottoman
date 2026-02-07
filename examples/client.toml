@@ -6,7 +6,7 @@
 #   - %APPDATA%/ottoman/config.toml (Windows)
 
 [client]
-listen_addr = ':8081'
+listen_addr = ':17294'
 auth_token = 'your-secret-token-here'
 
 # Example layout (add more with `ottoman client layout add`)

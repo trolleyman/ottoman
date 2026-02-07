@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
+	"github.com/trolleyman/ottoman/web"
 )
 
 // Client is the display control agent running on the desktop
@@ -55,64 +55,16 @@ func New(cfg *Config) (*Client, error) {
 		startTime:  time.Now(),
 	}
 
-	c.setupRoutes()
+	if err := c.setupRoutes(); err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }
 
-// handleWebIndex serves the embedded HTML file
-func (c *Client) handleWebIndex(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-
-	tmpl := `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Layouts</title>
-	<script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 text-gray-800">
-	<div class="container mx-auto p-4">
-		<h1 class="text-2xl font-bold mb-4">Available Layouts</h1>
-		<ul id="layout-list" class="list-disc pl-5">
-			{{range .Layouts}}<li>{{.}}</li>{{else}}<li>No layouts</li>{{end}}
-		</ul>
-	</div>
-</body>
-</html>`
-
-	// Retrieve layouts to render in the template
-	allLayouts := c.layouts.List()
-	var layouts []string
-	for _, l := range allLayouts {
-		layouts = append(layouts, l.Name)
-	}
-
-	t, err := template.New("index").Parse(tmpl)
-	if err != nil {
-		common.WriteError(w, http.StatusInternalServerError, "failed to parse template")
-		return
-	}
-
-	data := struct {
-		Layouts []string
-	}{Layouts: layouts}
-
-	if err := t.Execute(w, data); err != nil {
-		log.Printf("Failed to execute template: %v", err)
-		// If headers already written, return; otherwise send error
-		return
-	}
-}
-
 // setupRoutes configures HTTP routes
-func (c *Client) setupRoutes() {
+func (c *Client) setupRoutes() error {
 	c.router = http.NewServeMux()
-
-	// Web index
-	c.router.HandleFunc("/", c.handleWebIndex)
 
 	// Health check (no auth)
 	c.router.HandleFunc("GET /health", c.handleHealth)
@@ -126,6 +78,15 @@ func (c *Client) setupRoutes() {
 
 	// Monitor info
 	c.router.HandleFunc("GET /api/monitors", c.requireAuth(c.handleListMonitors))
+
+	// Embedded web client (SPA fallback for all other routes)
+	client_fs, err := web.ClientDistFS()
+	if err != nil {
+		return errors.Wrap(err, "failed to create client dist/ FS")
+	}
+	c.router.Handle("/", http.FileServerFS(client_fs))
+
+	return nil
 }
 
 // requireAuth wraps a handler with authentication
