@@ -103,13 +103,7 @@ var clientRunCmd = &cobra.Command{
 	},
 }
 
-// Service commands
-var serviceCmd = &cobra.Command{
-	Use:   "service",
-	Short: "Manage the ottoman client service (autostart)",
-}
-
-var serviceInstallCmd = &cobra.Command{
+var clientInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install autostart service (systemd on Linux, startup script on Windows)",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -117,7 +111,7 @@ var serviceInstallCmd = &cobra.Command{
 	},
 }
 
-var serviceUninstallCmd = &cobra.Command{
+var clientUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Remove autostart service",
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -648,11 +642,8 @@ func init() {
 	// Client commands
 	clientCmd.AddCommand(clientRunCmd)
 	clientCmd.AddCommand(layoutCmd)
-	clientCmd.AddCommand(serviceCmd)
-
-	// Service commands
-	serviceCmd.AddCommand(serviceInstallCmd)
-	serviceCmd.AddCommand(serviceUninstallCmd)
+	clientCmd.AddCommand(clientInstallCmd)
+	clientCmd.AddCommand(clientUninstallCmd)
 
 	// Layout commands
 	layoutCmd.AddCommand(layoutAddCmd)
