@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -383,11 +382,6 @@ func (s *Server) Start() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start IP ping task if configured
-	if s.config.Ping.URL != "" {
-		go s.startIPPinger()
-	}
-
 	// Handle graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -406,86 +400,6 @@ func (s *Server) Start() error {
 	defer cancel()
 
 	return s.server.Shutdown(ctx)
-}
-
-// startIPPinger periodically reports external IP to the configured URL
-func (s *Server) startIPPinger() {
-	ticker := time.NewTicker(s.config.Ping.Interval)
-	defer ticker.Stop()
-
-	// Initial ping
-	s.pingExternalIP()
-
-	for range ticker.C {
-		s.pingExternalIP()
-	}
-}
-
-// pingExternalIP reports the external IP to the configured URL
-func (s *Server) pingExternalIP() {
-	externalIP, err := s.getExternalIP()
-	if err != nil {
-		log.Printf("Failed to get external IP: %v", err)
-		return
-	}
-
-	localIP := s.getLocalIP()
-
-	pingReq := common.PingRequest{
-		DeviceID:   s.config.DeviceID,
-		ExternalIP: externalIP,
-		LocalIP:    localIP,
-		Timestamp:  time.Now().Unix(),
-	}
-
-	body, _ := json.Marshal(pingReq)
-	req, err := http.NewRequest("POST", s.config.Ping.URL, bytes.NewReader(body))
-	if err != nil {
-		log.Printf("Failed to create ping request: %v", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if s.config.Ping.AuthToken != "" {
-		req.Header.Set("Authorization", "Bearer "+s.config.Ping.AuthToken)
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		log.Printf("Failed to ping external URL: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Ping returned status %d", resp.StatusCode)
-	}
-}
-
-// getExternalIP fetches the external IP from a public service
-func (s *Server) getExternalIP() (string, error) {
-	resp, err := s.client.Get("https://api.ipify.org")
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	ip, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(string(ip)), nil
-}
-
-// getLocalIP returns the local IP address
-func (s *Server) getLocalIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return ""
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
 }
 
 // CheckStatus checks if a server is reachable
