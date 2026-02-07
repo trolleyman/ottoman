@@ -222,7 +222,7 @@ function LayoutCard({
   const idAliases = [layout.id, ...(layout.aliases ?? [])].join(" \u00b7 ");
 
   return (
-    <div className="relative group mb-auto">
+    <div className="relative group mb-auto flex-grow">
       {onDelete && (
         <button
           onClick={(e) => {
@@ -239,7 +239,7 @@ function LayoutCard({
         onClick={onClick}
         disabled={disabled}
         className={`
-          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col gap-1.5 min-w-[180px] text-left
+          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-[180px] text-left
           ${isCurrent
             ? "bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-indigo-500/20 text-blue-400 border border-blue-500/40 ring-1 ring-blue-500/20"
             : "bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 text-zinc-300 border border-zinc-700/50 hover:border-zinc-600 hover:from-zinc-800 hover:to-zinc-800/80"
