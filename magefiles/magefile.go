@@ -351,10 +351,8 @@ func moveFile(src, dst string) error {
 	return os.Rename(src, dst)
 }
 
-// buildWeb builds the web client (bun install + bun run build).
-func buildWeb() error {
-	webDir := filepath.Join("web", "client")
-
+// Build the web files (bun install + bun run build).
+func buildWebFiles(webDir string) error {
 	// Run bun install if node_modules doesn't exist
 	if _, err := os.Stat(filepath.Join(webDir, "node_modules")); os.IsNotExist(err) {
 		if err := runInDir(webDir, "bun", "install"); err != nil {
@@ -368,9 +366,28 @@ func buildWeb() error {
 	return nil
 }
 
-// BuildWeb builds the web client.
-func BuildWeb() error {
-	return buildWeb()
+func getWebClientPath() string {
+	return filepath.Join("web", "client")
+}
+
+func getWebServerPath() string {
+	return filepath.Join("web", "server")
+}
+
+func buildWebClientFiles() error {
+	return buildWebFiles(getWebClientPath())
+}
+
+func buildWebServerFiles() error {
+	return buildWebFiles(getWebServerPath())
+}
+
+func BuildWebClient() error {
+	return buildWebClientFiles()
+}
+
+func BuildWebServer() error {
+	return buildWebServerFiles()
 }
 
 // buildTarget compiles for a specific target.
@@ -389,9 +406,13 @@ func buildTarget(target BuildTarget, version string) error {
 	return runWithEnv(env, "go", "build", "-ldflags", ldflags, "-o", outputPath, "./cmd/ottoman")
 }
 
-// Build builds for the current platform.
+func buildDeps() {
+	mg.SerialDeps(ensureBuildDir, buildWebClientFiles, buildWebServerFiles)
+}
+
+// Build builds the client for the current platform.
 func Build() error {
-	mg.Deps(ensureBuildDir, buildWeb)
+	buildDeps()
 
 	version := getVersion()
 	ldflags := fmt.Sprintf("-X main.Version=%s", version)
@@ -406,7 +427,7 @@ func Build() error {
 
 // BuildAll builds for all platforms.
 func BuildAll() error {
-	mg.Deps(ensureBuildDir, buildWeb)
+	buildDeps()
 
 	version := getVersion()
 	fmt.Printf("Version: %s\n\n", version)
@@ -423,7 +444,7 @@ func BuildAll() error {
 
 // BuildPi builds for Raspberry Pi (linux/arm).
 func BuildPi() error {
-	mg.Deps(ensureBuildDir, buildWeb)
+	buildDeps()
 
 	version := getVersion()
 	fmt.Printf("Version: %s\n\n", version)
@@ -433,7 +454,7 @@ func BuildPi() error {
 
 // BuildWindows builds for Windows (windows/amd64).
 func BuildWindows() error {
-	mg.Deps(ensureBuildDir, buildWeb)
+	buildDeps()
 
 	version := getVersion()
 	fmt.Printf("Version: %s\n\n", version)
@@ -443,7 +464,7 @@ func BuildWindows() error {
 
 // BuildLinux builds for Linux desktop (linux/amd64).
 func BuildLinux() error {
-	mg.Deps(ensureBuildDir, buildWeb)
+	buildDeps()
 
 	version := getVersion()
 	fmt.Printf("Version: %s\n\n", version)
@@ -484,12 +505,13 @@ func Lint() error {
 
 // RunServer runs the server locally.
 func RunServer() error {
+	mg.Deps(buildWebServerFiles)
 	return runV("go", "run", "./cmd/ottoman", "server", "run")
 }
 
 // RunClient runs the client locally.
 func RunClient() error {
-	mg.Deps(buildWeb)
+	mg.Deps(buildWebClientFiles)
 	return runV("go", "run", "./cmd/ottoman", "client", "run")
 }
 
