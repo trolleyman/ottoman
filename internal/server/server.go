@@ -80,6 +80,8 @@ func (s *Server) setupRoutes() error {
 	s.router.HandleFunc("GET /api/layouts", s.requireAuth(s.handleListLayouts))
 	s.router.HandleFunc("POST /api/layouts/switch", s.requireAuth(s.handleSwitchLayout))
 	s.router.HandleFunc("GET /api/layouts/current", s.requireAuth(s.handleCurrentLayout))
+	s.router.HandleFunc("POST /api/layouts/save-current", s.requireAuth(s.handleSaveCurrentLayout))
+	s.router.HandleFunc("POST /api/layouts/remove", s.requireAuth(s.handleRemoveLayout))
 	s.router.HandleFunc("GET /api/monitors", s.requireAuth(s.handleListMonitors))
 
 	// Client status
@@ -299,6 +301,48 @@ func (s *Server) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 // handleCurrentLayout gets current layout from client
 func (s *Server) handleCurrentLayout(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.proxyToClient("GET", "/api/layouts/current", nil)
+	if err != nil {
+		common.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// handleSaveCurrentLayout proxies save layout request to client
+func (s *Server) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request) {
+	var req common.SaveLayoutRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	body, _ := json.Marshal(req)
+	resp, err := s.proxyToClient("POST", "/api/layouts/save-current", body)
+	if err != nil {
+		common.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// handleRemoveLayout proxies remove layout request to client
+func (s *Server) handleRemoveLayout(w http.ResponseWriter, r *http.Request) {
+	var req common.RemoveLayoutRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	body, _ := json.Marshal(req)
+	resp, err := s.proxyToClient("POST", "/api/layouts/remove", body)
 	if err != nil {
 		common.WriteError(w, http.StatusBadGateway, err.Error())
 		return

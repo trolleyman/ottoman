@@ -198,18 +198,32 @@ function LayoutCard({
   disabled,
   scale,
   onClick,
+  onDelete,
 }: {
   layout: Layout;
   isCurrent: boolean;
   disabled: boolean;
   scale: number;
   onClick: () => void;
+  onDelete?: () => void;
 }) {
   const enabled = sortedMonitors((layout.monitors ?? []).filter((m) => m.enabled));
   const idAliases = [layout.id, ...(layout.aliases ?? [])].join(" \u00b7 ");
 
   return (
     <div className="relative group mb-auto">
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-zinc-800 border border-zinc-600 text-zinc-400 hover:text-red-400 hover:border-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all z-20 shadow-lg cursor-pointer"
+          title="Delete layout"
+        >
+          ×
+        </button>
+      )}
       <button
         onClick={onClick}
         disabled={disabled}
@@ -346,6 +360,9 @@ export default function App() {
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [newLayoutName, setNewLayoutName] = useState("");
+  const [newLayoutEmoji, setNewLayoutEmoji] = useState("");
 
   // Check auth on mount
   useEffect(() => {
@@ -400,6 +417,46 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Switch failed");
     } finally {
       setSwitching(false);
+    }
+  };
+
+  const saveCurrentLayout = async (name: string, emoji: string) => {
+    try {
+      const res = await fetch("/api/layouts/save-current", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, emoji }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowSaveForm(false);
+        setNewLayoutName("");
+        setNewLayoutEmoji("");
+        refresh();
+      } else {
+        setError(data.message || "Failed to save layout");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save layout");
+    }
+  };
+
+  const removeLayout = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this layout?")) return;
+    try {
+      const res = await fetch("/api/layouts/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout: id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refresh();
+      } else {
+        setError(data.message || "Failed to remove layout");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove layout");
     }
   };
 
@@ -473,12 +530,46 @@ export default function App() {
             <section className="mb-10">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-zinc-200">Layouts</h2>
-                {/* {currentLayout && (
-                  <span className="text-xs text-zinc-500">
-                    Current: {currentLayout}
-                  </span>
-                )} */}
+                <button
+                  onClick={() => setShowSaveForm(!showSaveForm)}
+                  className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
+                >
+                  {showSaveForm ? "Cancel" : "Save Current"}
+                </button>
               </div>
+
+              {showSaveForm && (
+                <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs text-zinc-500 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={newLayoutName}
+                      onChange={(e) => setNewLayoutName(e.target.value)}
+                      className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+                      placeholder="My Layout"
+                    />
+                  </div>
+                  <div className="w-full sm:w-24">
+                    <label className="block text-xs text-zinc-500 mb-1">Emoji</label>
+                    <input
+                      type="text"
+                      value={newLayoutEmoji}
+                      onChange={(e) => setNewLayoutEmoji(e.target.value)}
+                      className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+                      placeholder="🖥️"
+                    />
+                  </div>
+                  <button
+                    onClick={() => saveCurrentLayout(newLayoutName, newLayoutEmoji)}
+                    disabled={!newLayoutName.trim()}
+                    className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-3">
                 {layouts.map((l) => (
                   <LayoutCard
@@ -488,6 +579,7 @@ export default function App() {
                     disabled={switching}
                     scale={layoutScale}
                     onClick={() => switchLayout(l.id)}
+                    onDelete={() => removeLayout(l.id)}
                   />
                 ))}
               </div>
