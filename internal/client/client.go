@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -70,11 +72,17 @@ func (c *Client) setupRoutes() error {
 	c.router.HandleFunc("GET /health", c.handleHealth)
 	c.router.HandleFunc("GET /api/status", c.handleStatus)
 
+	// Auth endpoints (no auth required for login/logout)
+	c.router.HandleFunc("POST /api/auth", c.handleAuth)
+	c.router.HandleFunc("POST /api/auth/logout", c.handleLogout)
+	c.router.HandleFunc("GET /api/auth/check", c.requireAuth(c.handleAuthCheck))
+
 	// Display control
 	c.router.HandleFunc("GET /api/layouts", c.requireAuth(c.handleListLayouts))
 	c.router.HandleFunc("POST /api/layouts/switch", c.requireAuth(c.handleSwitchLayout))
 	c.router.HandleFunc("GET /api/layouts/current", c.requireAuth(c.handleCurrentLayout))
 	c.router.HandleFunc("POST /api/layouts/save-current", c.requireAuth(c.handleSaveCurrentLayout))
+	c.router.HandleFunc("POST /api/layouts/remove", c.requireAuth(c.handleRemoveLayout))
 
 	// Monitor info
 	c.router.HandleFunc("GET /api/monitors", c.requireAuth(c.handleListMonitors))
@@ -97,10 +105,19 @@ func (c *Client) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		// Check Authorization: Bearer header
 		auth := r.Header.Get("Authorization")
 		if strings.HasPrefix(auth, "Bearer ") {
 			token := strings.TrimPrefix(auth, "Bearer ")
 			if subtle.ConstantTimeCompare([]byte(token), []byte(c.config.AuthToken)) == 1 {
+				next(w, r)
+				return
+			}
+		}
+
+		// Check ottoman_token cookie
+		if cookie, err := r.Cookie("ottoman_token"); err == nil {
+			if subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(c.config.AuthToken)) == 1 {
 				next(w, r)
 				return
 			}
@@ -117,6 +134,56 @@ func (c *Client) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// handleAuth validates a token and sets an auth cookie
+func (c *Client) handleAuth(w http.ResponseWriter, r *http.Request) {
+	var req common.AuthRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if subtle.ConstantTimeCompare([]byte(req.Token), []byte(c.config.AuthToken)) != 1 {
+		common.WriteJSON(w, http.StatusUnauthorized, common.AuthResponse{
+			Success: false,
+			Message: "invalid token",
+		})
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ottoman_token",
+		Value:    req.Token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	common.WriteJSON(w, http.StatusOK, common.AuthResponse{
+		Success: true,
+	})
+}
+
+// handleLogout clears the auth cookie
+func (c *Client) handleLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ottoman_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	common.WriteJSON(w, http.StatusOK, common.AuthResponse{
+		Success: true,
+	})
+}
+
+// handleAuthCheck returns whether the request is authenticated
+func (c *Client) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+	common.WriteJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+}
+
 // handleStatus returns detailed status
 func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(c.startTime).Round(time.Second).String()
@@ -130,15 +197,41 @@ func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
 // handleListLayouts returns available display layouts
 func (c *Client) handleListLayouts(w http.ResponseWriter, r *http.Request) {
 	allLayouts := c.layouts.List()
-	var names []string
-	for _, l := range allLayouts {
-		names = append(names, l.Name)
-	}
+
+	// Sort by minimum integer alias (if any), then by ID
+	sort.Slice(allLayouts, func(i, j int) bool {
+		ai := minIntAlias(allLayouts[i].Aliases)
+		aj := minIntAlias(allLayouts[j].Aliases)
+		if ai != aj {
+			// Layouts with an integer alias come first
+			if ai == nil {
+				return false
+			}
+			if aj == nil {
+				return true
+			}
+			return *ai < *aj
+		}
+		return allLayouts[i].ID < allLayouts[j].ID
+	})
 
 	common.WriteJSON(w, http.StatusOK, common.ListLayoutsResponse{
-		Layouts:       names,
+		Layouts:       allLayouts,
 		CurrentLayout: c.currentLayout,
 	})
+}
+
+// minIntAlias returns the smallest integer alias, or nil if none
+func minIntAlias(aliases []string) *int {
+	var result *int
+	for _, a := range aliases {
+		if v, err := strconv.Atoi(a); err == nil {
+			if result == nil || v < *result {
+				result = &v
+			}
+		}
+	}
+	return result
 }
 
 // handleSwitchLayout switches to a named layout
@@ -262,6 +355,43 @@ func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// handleRemoveLayout removes a layout by name/ID
+func (c *Client) handleRemoveLayout(w http.ResponseWriter, r *http.Request) {
+	var req common.RemoveLayoutRequest
+	if err := common.ReadJSON(r, &req); err != nil {
+		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Layout == "" {
+		common.WriteError(w, http.StatusBadRequest, "layout name is required")
+		return
+	}
+
+	if _, ok := c.layouts.Get(req.Layout); !ok {
+		common.WriteError(w, http.StatusNotFound, fmt.Sprintf("layout %q not found", req.Layout))
+		return
+	}
+
+	log.Printf("Removing layout: %s", req.Layout)
+	c.layouts.Delete(req.Layout)
+
+	if c.currentLayout == req.Layout {
+		c.currentLayout = ""
+	}
+
+	if err := c.saveLayouts(); err != nil {
+		log.Printf("Failed to save layouts: %v", err)
+		common.WriteError(w, http.StatusInternalServerError, "failed to save config")
+		return
+	}
+
+	common.WriteJSON(w, http.StatusOK, common.RemoveLayoutResponse{
+		Success: true,
+		Message: fmt.Sprintf("Removed layout: %s", req.Layout),
+	})
+}
+
 // handleListMonitors returns connected monitor information
 func (c *Client) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	monitors, err := c.displayMgr.ListMonitors()
@@ -283,11 +413,31 @@ func Run(config *Config) error {
 	return client.Start()
 }
 
+// loggingMiddleware logs HTTP requests with method, path, status, and duration
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		lw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(lw, r)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, lw.status, time.Since(start).Round(time.Microsecond))
+	})
+}
+
+type logResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *logResponseWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // Start starts the HTTP server
 func (c *Client) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddr,
-		Handler:      c.router,
+		Handler:      loggingMiddleware(c.router),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -298,7 +448,7 @@ func (c *Client) Start() error {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("Client starting on %s", c.config.ListenAddr)
+		log.Printf("Client starting at http://%s", c.config.ListenAddr)
 		if err := c.server.ListenAndServe(); err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}

@@ -458,9 +458,9 @@ Examples:
 			if readErr != nil {
 				return errors.Wrap(readErr, "failed to read existing config")
 			}
-			fmt.Printf("Existing config (%s):\n\n", path)
-			fmt.Print(string(content))
-			fmt.Println()
+			fmt.Printf("=== Existing config (%s) ===\n", path)
+			fmt.Println(string(content))
+			fmt.Println("===========================")
 
 			answer := promptInput(reader, "Use this configuration? [Y/n]", "")
 			if answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes") {

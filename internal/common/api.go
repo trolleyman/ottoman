@@ -46,7 +46,7 @@ type SwitchLayoutResponse struct {
 
 // ListLayoutsResponse returns available layouts
 type ListLayoutsResponse struct {
-	Layouts       []string `json:"layouts"`
+	Layouts       []Layout `json:"layouts"`
 	CurrentLayout string   `json:"current_layout,omitempty"`
 }
 
@@ -84,6 +84,17 @@ type SaveLayoutResponse struct {
 	Success bool    `json:"success"`
 	Layout  *Layout `json:"layout,omitempty"`
 	Message string  `json:"message,omitempty"`
+}
+
+// RemoveLayoutRequest is sent to remove a layout
+type RemoveLayoutRequest struct {
+	Layout string `json:"layout"` // Layout ID or name
+}
+
+// RemoveLayoutResponse is returned after removing a layout
+type RemoveLayoutResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
 }
 
 // JSON helper functions

@@ -228,19 +228,35 @@ const (
 	colorBold   = "\033[1m"
 )
 
-// shellQuote quotes a string for display as a shell argument.
-// Args with spaces are wrapped in double quotes; embedded " and ' are escaped.
+// Quotes a string for display as a shell argument.
+func shellQuoteForce(s string) string {
+	containsDoubleQuote := strings.Contains(s, `"`)
+	containsSingleQuote := strings.Contains(s, `'`)
+	escaped := strings.ReplaceAll(s, "\t", `\t`)
+	escaped = strings.ReplaceAll(s, `\`, `\\`)
+	if !containsDoubleQuote {
+		return `"` + escaped + `"`
+	} else if !containsSingleQuote {
+		return `'` + escaped + `'`
+	} else {
+		return `"` + strings.ReplaceAll(escaped, `"`, `\"`) + `"`
+	}
+}
+
+// Quotes a string for display as a shell argument if necessary.
+// Args with whitespace or quotes are wrapped in double quotes; embedded " and ' are escaped.
 func shellQuote(s string) string {
 	if s == "" {
 		return `""`
 	}
-	if !strings.ContainsAny(s, " \t\"'\\") {
-		return s
+	containsDoubleQuote := strings.Contains(s, `"`)
+	containsSingleQuote := strings.Contains(s, `'`)
+	containsQuote := containsDoubleQuote || containsSingleQuote
+	containsWhitespace := strings.ContainsAny(s, " \t")
+	if containsQuote || containsWhitespace {
+		return shellQuoteForce(s)
 	}
-	escaped := strings.ReplaceAll(s, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
-	return `"` + escaped + `"`
+	return s
 }
 
 // formatCmd formats a command and its arguments for display.
@@ -512,7 +528,19 @@ func RunServer() error {
 // RunClient runs the client locally.
 func RunClient() error {
 	mg.Deps(buildWebClientFiles)
-	return runV("go", "run", "./cmd/ottoman", "client", "run")
+	clientConfigFile := filepath.Join("magefiles", "client_dev.toml")
+	_, err := os.Stat(deployConfigPath)
+	if os.IsNotExist(err) {
+		err = runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile)
+		if err != nil {
+			return fmt.Errorf("failed to run config init client: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to read %q: %w", clientConfigFile, err)
+	} else {
+		fmt.Printf("Loading existing config: %s\n", clientConfigFile)
+	}
+	return runV("go", "run", "./cmd/ottoman", "--config", clientConfigFile, "client", "run")
 }
 
 // DeployConfig holds deployment configuration
