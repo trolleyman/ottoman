@@ -53,6 +53,7 @@ interface WakeTarget {
   name: string;
   mac_address: string;
   ip_address: string;
+  status?: string;
 }
 
 // --- API helpers ---
