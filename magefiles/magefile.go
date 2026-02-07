@@ -516,7 +516,7 @@ func Lint() error {
 // RunServer runs the server locally.
 func RunServer() error {
 	mg.Deps(buildWebFiles)
-	serverConfigFile := filepath.Join("magefiles", "server_dev.toml")
+	serverConfigFile := filepath.Join("magefiles", "dev_server.toml")
 	_, err := os.Stat(serverConfigFile)
 	if os.IsNotExist(err) {
 		err = runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigFile)
@@ -531,7 +531,7 @@ func RunServer() error {
 // RunClient runs the client locally.
 func RunClient() error {
 	mg.Deps(buildWebFiles)
-	clientConfigFile := filepath.Join("magefiles", "client_dev.toml")
+	clientConfigFile := filepath.Join("magefiles", "dev_client.toml")
 	_, err := os.Stat(clientConfigFile)
 	if os.IsNotExist(err) {
 		err = runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile)
@@ -610,6 +610,25 @@ func prompt(reader *bufio.Reader, question, defaultVal string) string {
 	return answer
 }
 
+// fileExists checks if a file exists and is not a directory
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// hasFlag checks if a flag is present in os.Args
+func hasFlag(name string) bool {
+	for _, arg := range os.Args {
+		if arg == name {
+			return true
+		}
+	}
+	return false
+}
+
 // defaultClientBinaryPath returns the default client binary path for the current platform
 func defaultClientBinaryPath() string {
 	switch runtime.GOOS {
@@ -630,6 +649,11 @@ func defaultClientBinaryPath() string {
 func DeployClient() error {
 	fmt.Println("=== Ottoman Client Deployment ===\n")
 
+	clientConfigPath := filepath.Join("magefiles", "deploy_client.toml")
+	reconfigure := hasFlag("--config")
+	deployConfigExists := fileExists(deployConfigPath)
+	clientConfigExists := fileExists(clientConfigPath)
+
 	// Load existing config
 	cfg, err := loadDeployConfig()
 	if err != nil {
@@ -637,25 +661,40 @@ func DeployClient() error {
 		cfg = &DeployConfig{}
 	}
 
-	reader := bufio.NewReader(os.Stdin)
+	if !reconfigure && deployConfigExists && clientConfigExists {
+		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
+		if content, err := os.ReadFile(deployConfigPath); err == nil {
+			fmt.Println(string(content))
+		}
+	} else {
+		reader := bufio.NewReader(os.Stdin)
 
-	// Get binary path
-	defaultPath := cfg.Client.BinaryPath
-	if defaultPath == "" {
-		defaultPath = defaultClientBinaryPath()
+		// Get binary path
+		defaultPath := cfg.Client.BinaryPath
+		if defaultPath == "" {
+			defaultPath = defaultClientBinaryPath()
+		}
+		cfg.Client.BinaryPath = prompt(reader, "Binary install path", defaultPath)
+
+		// Save deploy config
+		if err := saveDeployConfig(cfg); err != nil {
+			return err
+		}
+		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
+
+		// Generate client config via config init
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigPath); err != nil {
+			return fmt.Errorf("config init failed: %w", err)
+		}
 	}
-	cfg.Client.BinaryPath = prompt(reader, "Binary install path", defaultPath)
 
-	// Save deploy config
-	if err := saveDeployConfig(cfg); err != nil {
-		return err
-	}
-	fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
-
-	// Generate client config via config init
-	clientConfigPath := filepath.Join("magefiles", "deploy_client.toml")
-	if err := runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigPath); err != nil {
-		return fmt.Errorf("config init failed: %w", err)
+	// Stop existing service/process to allow binary overwrite
+	if runtime.GOOS == "windows" {
+		exec.Command("schtasks", "/End", "/TN", "OttomanClient").Run()
+		// Force kill to ensure file is released
+		exec.Command("taskkill", "/F", "/IM", "ottoman.exe").Run()
+	} else {
+		exec.Command("systemctl", "--user", "stop", "ottoman-client").Run()
 	}
 
 	// Build for current platform
@@ -717,6 +756,11 @@ func defaultConfigPath() string {
 func DeployServer() error {
 	fmt.Println("=== Ottoman Server Deployment ===\n")
 
+	serverConfigPath := filepath.Join("magefiles", "deploy_server.toml")
+	reconfigure := hasFlag("--config")
+	deployConfigExists := fileExists(deployConfigPath)
+	serverConfigExists := fileExists(serverConfigPath)
+
 	// Load existing deploy config
 	cfg, err := loadDeployConfig()
 	if err != nil {
@@ -724,46 +768,46 @@ func DeployServer() error {
 		cfg = &DeployConfig{}
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-
-	// Prompt for deployment settings
-	fmt.Println("--- Deployment Settings ---")
-
-	if cfg.Server.SSHTarget == "" {
-		cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", "")
+	if !reconfigure && deployConfigExists && serverConfigExists {
+		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
+		if content, err := os.ReadFile(deployConfigPath); err == nil {
+			fmt.Println(string(content))
+		}
 	} else {
-		cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", cfg.Server.SSHTarget)
-	}
-	if cfg.Server.SSHTarget == "" {
-		return fmt.Errorf("SSH target is required")
-	}
+		reader := bufio.NewReader(os.Stdin)
 
-	if cfg.Server.DeployPath == "" {
-		cfg.Server.DeployPath = "~/.local/share/ottoman/ottoman"
-	}
-	cfg.Server.DeployPath = prompt(reader, "Remote binary path", cfg.Server.DeployPath)
+		// Prompt for deployment settings
+		fmt.Println("--- Deployment Settings ---")
 
-	if cfg.Server.ConfigPath == "" {
-		cfg.Server.ConfigPath = "~/.config/ottoman/config.toml"
-	}
-	cfg.Server.ConfigPath = prompt(reader, "Remote config path", cfg.Server.ConfigPath)
+		if cfg.Server.SSHTarget == "" {
+			cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", "")
+		} else {
+			cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", cfg.Server.SSHTarget)
+		}
+		if cfg.Server.SSHTarget == "" {
+			return fmt.Errorf("SSH target is required")
+		}
 
-	// Save deploy config
-	if err := saveDeployConfig(cfg); err != nil {
-		return err
-	}
-	fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
+		if cfg.Server.DeployPath == "" {
+			cfg.Server.DeployPath = "~/.local/share/ottoman/ottoman"
+		}
+		cfg.Server.DeployPath = prompt(reader, "Remote binary path", cfg.Server.DeployPath)
 
-	// Generate server config via config init
-	serverConfigPath := filepath.Join("magefiles", "deploy_server.toml")
-	if err := runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigPath); err != nil {
-		return fmt.Errorf("config init failed: %w", err)
-	}
+		if cfg.Server.ConfigPath == "" {
+			cfg.Server.ConfigPath = "~/.config/ottoman/config.toml"
+		}
+		cfg.Server.ConfigPath = prompt(reader, "Remote config path", cfg.Server.ConfigPath)
 
-	// Read generated config
-	serverConfig, err := os.ReadFile(serverConfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to read generated config: %w", err)
+		// Save deploy config
+		if err := saveDeployConfig(cfg); err != nil {
+			return err
+		}
+		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
+
+		// Generate server config via config init
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigPath); err != nil {
+			return fmt.Errorf("config init failed: %w", err)
+		}
 	}
 
 	// Build for Raspberry Pi
@@ -796,24 +840,33 @@ func DeployServer() error {
 	}
 
 	// Write config file
-	configCmd := fmt.Sprintf("cat > %s << 'OTTOMAN_CONFIG_EOF'\n%sOTTOMAN_CONFIG_EOF", cfg.Server.ConfigPath, string(serverConfig))
-	if err := run("ssh", cfg.Server.SSHTarget, configCmd); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
+	if err := run("scp", serverConfigPath, cfg.Server.SSHTarget+":"+scpPath(cfg.Server.ConfigPath)); err != nil {
+		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
 	// Install systemd service
-	installCmd := fmt.Sprintf("sudo %s server install", cfg.Server.DeployPath)
+	installCmd := fmt.Sprintf("%s server install", cfg.Server.DeployPath)
 	if err := run("ssh", cfg.Server.SSHTarget, installCmd); err != nil {
 		return fmt.Errorf("failed to install service: %w", err)
 	}
 
+	// Enable lingering to ensure service starts on boot
+	if err := run("ssh", cfg.Server.SSHTarget, "loginctl enable-linger"); err != nil {
+		fmt.Printf("Warning: failed to enable lingering: %v\n", err)
+	}
+
 	// Restart service
-	if err := run("ssh", cfg.Server.SSHTarget, "sudo systemctl restart ottoman-server"); err != nil {
+	if err := run("ssh", cfg.Server.SSHTarget, "systemctl --user restart ottoman-server"); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
 	fmt.Println("\n=== Server deployment complete! ===")
-	fmt.Printf("\nTo check status: ssh %s 'sudo systemctl status ottoman-server'\n", cfg.Server.SSHTarget)
+	fmt.Printf("\nTo check status: ssh %s 'systemctl --user status ottoman-server'\n", cfg.Server.SSHTarget)
+	return nil
+}
+
+func DeployAll() error {
+	mg.SerialDeps(DeployServer, DeployClient)
 	return nil
 }
 

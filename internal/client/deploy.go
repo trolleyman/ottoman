@@ -1,12 +1,14 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -33,27 +35,6 @@ func InstallPaths() (binPath, configDir string) {
 // This is called after the binary has been deployed to the target location.
 func Install() error {
 	return InstallService()
-}
-
-// copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	// Remove existing file first (in case it's in use on Windows)
-	os.Remove(dst)
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
 }
 
 const linuxSystemdService = `[Unit]
@@ -116,12 +97,12 @@ func installLinuxService() error {
 	}
 
 	// Reload and enable
-	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload systemd")
+	if err := run("systemctl", "--user", "daemon-reload"); err != nil {
+		return err
 	}
 
-	if err := exec.Command("systemctl", "--user", "enable", "ottoman-client").Run(); err != nil {
-		return errors.Wrap(err, "failed to enable service")
+	if err := run("systemctl", "--user", "enable", "ottoman-client"); err != nil {
+		return err
 	}
 
 	fmt.Println("Service installed successfully!")
@@ -132,13 +113,79 @@ func installLinuxService() error {
 	fmt.Println("  Status:  systemctl --user status ottoman-client")
 	fmt.Println("  Logs:    journalctl --user -u ottoman-client -f")
 	fmt.Println()
-	fmt.Println("To start on login, run: loginctl enable-linger $USER")
+	fmt.Println("To start on boot, run: loginctl enable-linger")
 
 	return nil
 }
 
-const windowsStartupVbs = `Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" client run", 0, False
+const taskXmlTemplate = `<?xml version="1.0"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>Ottoman</Author>
+    <Description>%s</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>%s</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>%s</Command>
+      <Arguments>%s</Arguments>
+    </Exec>
+  </Actions>
+</Task>`
+
+const autohotkeyScript = `#Requires AutoHotkey v2.0
+#SingleInstance Force
+
+; Define the function once
+ApplyLayout(num) {
+    Run(A_ScriptDir "\ottoman.exe client layout apply " num)
+}
+
+; Call the function for each hotkey
+#^1::ApplyLayout(0)
+#^2::ApplyLayout(1)
+#^3::ApplyLayout(2)
+#^4::ApplyLayout(3)
+#^5::ApplyLayout(4)
+#^6::ApplyLayout(5)
+#^7::ApplyLayout(6)
+#^8::ApplyLayout(7)
+#^9::ApplyLayout(8)
+#^0::ApplyLayout(9)
+`
+
+const windowsAHKStartupVbs = `Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run """%s""", 1, False
 `
 
 // installWindowsService creates a startup shortcut/script for Windows
@@ -163,32 +210,67 @@ func installWindowsService() error {
 		return errors.Wrap(err, "failed to create config directory")
 	}
 
-	// Create a VBS script to run hidden (no console window)
-	vbsPath := filepath.Join(configDir, "ottoman-startup.vbs")
-	vbsContent := fmt.Sprintf(windowsStartupVbs, binPath)
+	// Clean up previous installations (ignore errors)
+	exec.Command("schtasks", "/End", "/TN", "OttomanClient").Run()
+	exec.Command("schtasks", "/Delete", "/TN", "OttomanClient", "/F").Run()
+	exec.Command("schtasks", "/End", "/TN", "OttomanHotkeys").Run()
+	exec.Command("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F").Run()
 
-	if err := os.WriteFile(vbsPath, []byte(vbsContent), 0644); err != nil {
-		return errors.Wrap(err, "failed to write startup script")
+	// --- Install Scheduled Task (Main Client) ---
+
+	currentUser, err := user.Current()
+	if err != nil {
+		return errors.Wrap(err, "failed to get current user")
 	}
 
-	// Create shortcut in startup folder
-	shortcutPath := filepath.Join(startupDir, "Ottoman Client.vbs")
+	// Create XML definition
+	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Client", currentUser.Username, binPath, "client run")
+	xmlPath := filepath.Join(configDir, "ottoman_task.xml")
+	if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
+		return errors.Wrap(err, "failed to write task XML")
+	}
+	defer os.Remove(xmlPath) // Cleanup temp file
 
-	// Copy VBS to startup folder
-	if err := copyFile(vbsPath, shortcutPath); err != nil {
-		return errors.Wrap(err, "failed to create startup shortcut")
+	// Register Task
+	// /F forces overwrite
+	if err := runSchtasks("/Create", "/TN", "OttomanClient", "/XML", xmlPath, "/F"); err != nil {
+		return err
 	}
 
-	fmt.Println("Startup script installed successfully!")
-	fmt.Printf("  Script: %s\n", shortcutPath)
+	fmt.Println("Task Scheduler task installed successfully!")
 	fmt.Println()
 	fmt.Println("The client will start automatically at login (hidden).")
-	fmt.Println()
-	fmt.Println("To start now, run:")
-	fmt.Printf("  \"%s\" client run\n", binPath)
-	fmt.Println()
-	fmt.Println("To remove, delete:")
-	fmt.Printf("  %s\n", shortcutPath)
+	fmt.Println("To start now, run: schtasks /Run /TN OttomanClient")
+
+	// --- Install AHK script ---
+
+	// Write AHK script to binDir (where ottoman.exe is)
+	binDir := filepath.Dir(binPath)
+	ahkPath := filepath.Join(binDir, "ottoman.ahk")
+	if err := os.WriteFile(ahkPath, []byte(autohotkeyScript), 0644); err != nil {
+		return errors.Wrap(err, "failed to write AHK script")
+	}
+
+	// Create VBS launcher for AHK
+	ahkVbsPath := filepath.Join(configDir, "ottoman-ahk.vbs")
+	ahkVbsContent := fmt.Sprintf(windowsAHKStartupVbs, ahkPath)
+	if err := os.WriteFile(ahkVbsPath, []byte(ahkVbsContent), 0644); err != nil {
+		return errors.Wrap(err, "failed to write AHK startup script")
+	}
+
+	// Create Shortcut in Startup folder
+	ahkShortcutPath := filepath.Join(startupDir, "Ottoman Hotkeys.lnk")
+	if err := makeLink(ahkVbsPath, ahkShortcutPath); err != nil {
+		return errors.Wrap(err, "failed to create AHK shortcut")
+	}
+
+	// Remove old AHK VBS shortcut if it exists (cleanup)
+	oldAhkShortcutPath := filepath.Join(startupDir, "Ottoman Hotkeys.vbs")
+	os.Remove(oldAhkShortcutPath)
+
+	fmt.Println("AHK script installed as shortcut successfully!")
+	fmt.Printf("  Script: %s\n", ahkPath)
+	fmt.Printf("  Shortcut: %s\n", ahkShortcutPath)
 
 	return nil
 }
@@ -209,15 +291,15 @@ func uninstallLinuxService() error {
 	home := os.Getenv("HOME")
 
 	// Stop and disable
-	exec.Command("systemctl", "--user", "stop", "ottoman-client").Run()
-	exec.Command("systemctl", "--user", "disable", "ottoman-client").Run()
+	run("systemctl", "--user", "stop", "ottoman-client")
+	run("systemctl", "--user", "disable", "ottoman-client")
 
 	// Remove service file
 	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-client.service")
 	os.Remove(servicePath)
 
 	// Reload
-	exec.Command("systemctl", "--user", "daemon-reload").Run()
+	run("systemctl", "--user", "daemon-reload")
 
 	fmt.Println("Service uninstalled.")
 	return nil
@@ -226,15 +308,116 @@ func uninstallLinuxService() error {
 func uninstallWindowsService() error {
 	appData := os.Getenv("APPDATA")
 	startupDir := filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
-	shortcutPath := filepath.Join(startupDir, "Ottoman Client.vbs")
 
-	if err := os.Remove(shortcutPath); err != nil && !os.IsNotExist(err) {
-		return errors.Wrap(err, "failed to remove startup script")
-	}
+	// Remove Scheduled Tasks
+	runSchtasks("/Delete", "/TN", "OttomanClient", "/F")
+	// runSchtasks("/Delete", "/TN", "OttomanHotkeys", "/F") // No longer used
 
-	// Also try to remove old schtasks task if it exists
-	exec.Command("schtasks", "/delete", "/tn", "OttomanClient", "/f").Run()
+	// Remove AHK shortcut
+	ahkShortcutPath := filepath.Join(startupDir, "Ottoman Hotkeys.lnk")
+	os.Remove(ahkShortcutPath)
+
+	// Remove old client shortcut (cleanup)
+	clientShortcutPath := filepath.Join(startupDir, "Ottoman Client.vbs")
+	os.Remove(clientShortcutPath)
 
 	fmt.Println("Service uninstalled.")
 	return nil
+}
+
+// Quotes a string for display as a shell argument.
+func shellQuoteForce(s string) string {
+	containsDoubleQuote := strings.Contains(s, `"`)
+	containsSingleQuote := strings.Contains(s, `'`)
+	escaped := strings.ReplaceAll(s, "\t", `\t`)
+	escaped = strings.ReplaceAll(s, `\`, `\\`)
+	if !containsDoubleQuote {
+		return `"` + escaped + `"`
+	} else if !containsSingleQuote {
+		return `'` + escaped + `'`
+	} else {
+		return `"` + strings.ReplaceAll(escaped, `"`, `\"`) + `"`
+	}
+}
+
+// Quotes a string for display as a shell argument if necessary.
+func shellQuote(s string) string {
+	if s == "" {
+		return `""`
+	}
+	containsDoubleQuote := strings.Contains(s, `"`)
+	containsSingleQuote := strings.Contains(s, `'`)
+	containsQuote := containsDoubleQuote || containsSingleQuote
+	containsWhitespace := strings.ContainsAny(s, " \t")
+	if containsQuote || containsWhitespace {
+		return shellQuoteForce(s)
+	}
+	return s
+}
+
+// formatCmd formats a command and its arguments for display.
+func formatCmd(cmd string, args ...string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellQuote(cmd))
+	for _, a := range args {
+		parts = append(parts, shellQuote(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+// run executes a command and prints it to stdout
+func run(name string, args ...string) error {
+	fmt.Printf("Running: %s\n", formatCmd(name, args...))
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return errors.Wrapf(err, "failed to run %s", name)
+	}
+	return nil
+}
+
+// runSchtasks runs schtasks and attempts elevation if access is denied
+func runSchtasks(args ...string) error {
+	name := "schtasks"
+	fmt.Printf("Running: %s\n", formatCmd(name, args...))
+
+	var stderr bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errStr := stderr.String()
+		// Check for Access is denied
+		if strings.Contains(errStr, "Access is denied") {
+			fmt.Println("Access denied. Attempting to run with elevation...")
+			return runElevated(name, args...)
+		}
+		fmt.Fprint(os.Stderr, errStr)
+		return errors.Wrapf(err, "failed to run %s", name)
+	}
+	return nil
+}
+
+// runElevated runs a command with Administrator privileges using PowerShell
+func runElevated(name string, args ...string) error {
+	verb := "RunAs"
+	exe, _ := exec.LookPath("powershell.exe")
+
+	var psArgList []string
+	for _, arg := range args {
+		// Escape single quotes for PowerShell
+		arg = strings.ReplaceAll(arg, "'", "''")
+		// Wrap in single quotes
+		psArgList = append(psArgList, fmt.Sprintf("'%s'", arg))
+	}
+	argsStr := strings.Join(psArgList, ", ")
+
+	psCmd := fmt.Sprintf("Start-Process -FilePath '%s' -ArgumentList %s -Verb %s -Wait -WindowStyle Hidden", name, argsStr, verb)
+
+	cmd := exec.Command(exe, "-NoProfile", "-NonInteractive", "-Command", psCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
