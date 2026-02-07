@@ -267,11 +267,10 @@ function LayoutCard({
             {enabled.map((m, i) => (
               <div
                 key={m.port || m.edid || i}
-                className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${
-                  m.primary
+                className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${m.primary
                     ? "bg-blue-500/10 border-blue-500/20"
                     : "bg-zinc-900/40 border-transparent"
-                }`}
+                  }`}
               >
                 <span className="truncate text-zinc-300 font-medium" title={m.name || m.port}>
                   {m.name || m.port || "Unknown"}
@@ -377,13 +376,19 @@ export default function App() {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [currentLayout, setCurrentLayout] = useState("");
+
   const [switching, setSwitching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [newLayoutName, setNewLayoutName] = useState("");
   const [newLayoutEmoji, setNewLayoutEmoji] = useState("");
+
+  const [monitorsLoading, setMonitorsLoading] = useState(false);
+  const [monitorsError, setMonitorsError] = useState<string | null>(null);
+  const [layoutsLoading, setLayoutsLoading] = useState(false);
+  const [layoutsError, setLayoutsError] = useState<string | null>(null);
   const [wakeTargets, setWakeTargets] = useState<WakeTarget[]>([]);
+  const [wakeTargetsLoading, setWakeTargetsLoading] = useState(false);
+  const [wakeTargetsError, setWakeTargetsError] = useState<string | null>(null);
 
   // Check auth on mount
   useEffect(() => {
@@ -392,52 +397,65 @@ export default function App() {
       .catch(() => setAuthed(false));
   }, []);
 
-  const fetchData = useCallback(async (clearError: boolean) => {
+  const fetchWakeTargets = useCallback(async () => {
+    setWakeTargetsLoading(true);
     try {
-      // Try to fetch wake targets (only available on server)
-      try {
-        const res = await fetch("/api/wake/targets");
-        if (res.ok) {
-          const targets = await res.json();
-          setWakeTargets(targets);
-        }
-      } catch {
-        // Ignore errors, likely running on client
+      const res = await fetch("/api/wake/targets");
+      if (res.ok) {
+        const targets = await res.json();
+        setWakeTargets(targets);
+        setWakeTargetsError(null);
       }
-
-      const [monitorsData, layoutsData] = await Promise.all([
-        fetchJSON<MonitorInfo[]>("/api/monitors"),
-        fetchJSON<LayoutsResponse>("/api/layouts"),
-      ]);
-      setMonitors(sortedMonitors(monitorsData.filter((m) => m.connected)));
-      setLayouts(layoutsData.layouts ?? []);
-      setCurrentLayout(layoutsData.current_layout ?? "");
-      if (clearError) setError(null);
-    } catch (e) {
-      // Check if client is offline (only if we are on server)
-      try {
-        const health = await fetch("/health/client");
-        if (health.status === 503) {
-          setError("Desktop is offline");
-          setLoading(false);
-          return;
-        }
-      } catch {}
-
-      setError(e instanceof Error ? e.message : "Failed to load data");
+    } catch {
+      setWakeTargetsError("Failed to load wake targets");
     } finally {
-      setLoading(false);
+      setWakeTargetsLoading(false);
     }
   }, []);
 
-  const refresh = useCallback(() => fetchData(true), [fetchData]);
+  const fetchMonitors = useCallback(async () => {
+    setMonitorsLoading(true);
+    try {
+      const monitorsData = await fetchJSON<MonitorInfo[]>("/api/monitors");
+      setMonitors(sortedMonitors(monitorsData.filter((m) => m.connected)));
+      setMonitorsError(null);
+    } catch (e) {
+      setMonitorsError("Failed to load monitors");
+    } finally {
+      setMonitorsLoading(false);
+    }
+  }, []);
+
+  const fetchLayouts = useCallback(async () => {
+    setLayoutsLoading(true);
+    try {
+      const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
+      setLayouts(layoutsData.layouts ?? []);
+      setCurrentLayout(layoutsData.current_layout ?? "");
+      setLayoutsError(null);
+    } catch (e) {
+      setLayoutsError("Failed to load layouts");
+    } finally {
+      setLayoutsLoading(false);
+    }
+  }, []);
+
+  const refresh = useCallback(() => {
+    fetchWakeTargets();
+    fetchMonitors();
+    fetchLayouts();
+  }, [fetchWakeTargets, fetchMonitors, fetchLayouts]);
 
   useEffect(() => {
     if (!authed) return;
-    fetchData(true);
-    const id = setInterval(() => fetchData(false), 10_000);
+    refresh();
+    // Silent refresh every 10s
+    const id = setInterval(() => {
+      // We could implement silent refresh here, but for now we rely on manual refresh or initial load
+      // to avoid flickering loading states.
+    }, 10_000);
     return () => clearInterval(id);
-  }, [authed, fetchData]);
+  }, [authed, refresh]);
 
   const switchLayout = async (name: string) => {
     if (switching || name === currentLayout) return;
@@ -453,10 +471,10 @@ export default function App() {
         setCurrentLayout(data.current_layout);
         setTimeout(refresh, 1000);
       } else {
-        setError(data.message || "Switch failed");
+        alert(data.message || "Switch failed");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Switch failed");
+      alert(e instanceof Error ? e.message : "Switch failed");
     } finally {
       setSwitching(false);
     }
@@ -476,10 +494,10 @@ export default function App() {
         setNewLayoutEmoji("");
         refresh();
       } else {
-        setError(data.message || "Failed to save layout");
+        alert(data.message || "Failed to save layout");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save layout");
+      alert(e instanceof Error ? e.message : "Failed to save layout");
     }
   };
 
@@ -495,10 +513,10 @@ export default function App() {
       if (data.success) {
         refresh();
       } else {
-        setError(data.message || "Failed to remove layout");
+        alert(data.message || "Failed to remove layout");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to remove layout");
+      alert(e instanceof Error ? e.message : "Failed to remove layout");
     }
   };
 
@@ -524,8 +542,6 @@ export default function App() {
     setMonitors([]);
     setLayouts([]);
     setCurrentLayout("");
-    setLoading(true);
-    setError(null);
   };
 
   // Auth check pending
@@ -540,14 +556,6 @@ export default function App() {
   // Not authenticated — show login
   if (!authed) {
     return <LoginForm onSuccess={() => setAuthed(true)} />;
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
-        <div className="text-zinc-400 text-sm">Loading...</div>
-      </div>
-    );
   }
 
   return (
@@ -578,95 +586,112 @@ export default function App() {
           </div>
         </header>
 
-        {error && (
-          <div className="mb-6 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3">
-            {error}
-          </div>
-        )}
-
         {/* Wake on LAN */}
-        {wakeTargets.length > 0 && (
-          <section className="mb-10">
-            <h2 className="text-lg font-semibold text-zinc-200 mb-4">Wake on LAN</h2>
+        <section className="mb-10">
+          <h2 className="text-lg font-semibold text-zinc-200 mb-4">Wake on LAN</h2>
+          {wakeTargetsLoading && wakeTargets.length === 0 ? (
+            <div className="text-zinc-500 text-sm">Loading targets...</div>
+          ) : wakeTargetsError ? (
+            <div className="text-red-400 text-sm">{wakeTargetsError}</div>
+          ) : wakeTargets.length === 0 ? (
+            <div className="text-zinc-500 text-sm">No wake targets configured.</div>
+          ) : (
             <div className="flex flex-wrap gap-3">
               {wakeTargets.map((target) => (
                 <button
                   key={target.mac_address}
                   onClick={() => wake(target.name)}
-                  className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-4 hover:bg-zinc-800 transition-colors text-left min-w-[140px]"
+                  className={`rounded-xl border p-4 transition-colors text-left min-w-[140px] ${target.status === 'online'
+                      ? 'border-green-500/30 bg-green-500/10 hover:bg-green-500/20'
+                      : target.status === 'offline'
+                        ? 'border-red-500/30 bg-red-500/10 hover:bg-red-500/20'
+                        : 'border-zinc-700/50 bg-zinc-800/50 hover:bg-zinc-800'
+                    }`}
                 >
-                  <div className="font-medium text-zinc-200">{target.name}</div>
+                  <div className={`font-medium ${target.status === 'online' ? 'text-green-400' : target.status === 'offline' ? 'text-red-400' : 'text-zinc-200'}`}>
+                    {target.name}
+                  </div>
                   <div className="text-xs text-zinc-500 font-mono mt-1">{target.ip_address}</div>
                   <div className="text-[10px] text-zinc-600 font-mono">{target.mac_address}</div>
                 </button>
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
         {/* Layouts */}
-        {layouts.length > 0 && (() => {
-          const layoutScale = computeUniformScale(layouts, 500, 300);
-          return (
-            <section className="mb-10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-zinc-200">Layouts</h2>
-                <button
-                  onClick={() => setShowSaveForm(!showSaveForm)}
-                  className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
-                >
-                  {showSaveForm ? "Cancel" : "Save Current"}
-                </button>
-              </div>
+        <section className="mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-zinc-200">Layouts</h2>
+            {layouts.length > 0 && (
+              <button
+                onClick={() => setShowSaveForm(!showSaveForm)}
+                className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
+              >
+                {showSaveForm ? "Cancel" : "Save Current"}
+              </button>
+            )}
+          </div>
 
-              {showSaveForm && (
-                <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs text-zinc-500 mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={newLayoutName}
-                      onChange={(e) => setNewLayoutName(e.target.value)}
-                      className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
-                      placeholder="My Layout"
-                    />
+          {layoutsLoading && layouts.length === 0 ? (
+            <div className="text-zinc-500 text-sm">Loading layouts...</div>
+          ) : layoutsError ? (
+            <div className="text-red-400 text-sm">{layoutsError}</div>
+          ) : layouts.length === 0 ? (
+            <div className="text-zinc-500 text-sm">No layouts found.</div>
+          ) : (() => {
+            const layoutScale = computeUniformScale(layouts, 500, 300);
+            return (
+              <>
+                {showSaveForm && (
+                  <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                    <div className="flex-1 w-full">
+                      <label className="block text-xs text-zinc-500 mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={newLayoutName}
+                        onChange={(e) => setNewLayoutName(e.target.value)}
+                        className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+                        placeholder="My Layout"
+                      />
+                    </div>
+                    <div className="w-full sm:w-24">
+                      <label className="block text-xs text-zinc-500 mb-1">Emoji</label>
+                      <input
+                        type="text"
+                        value={newLayoutEmoji}
+                        onChange={(e) => setNewLayoutEmoji(e.target.value)}
+                        className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+                        placeholder="🖥️"
+                      />
+                    </div>
+                    <button
+                      onClick={() => saveCurrentLayout(newLayoutName, newLayoutEmoji)}
+                      disabled={!newLayoutName.trim()}
+                      className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Save
+                    </button>
                   </div>
-                  <div className="w-full sm:w-24">
-                    <label className="block text-xs text-zinc-500 mb-1">Emoji</label>
-                    <input
-                      type="text"
-                      value={newLayoutEmoji}
-                      onChange={(e) => setNewLayoutEmoji(e.target.value)}
-                      className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
-                      placeholder="🖥️"
+                )}
+
+                <div className="flex flex-wrap gap-3">
+                  {layouts.map((l) => (
+                    <LayoutCard
+                      key={l.id}
+                      layout={l}
+                      isCurrent={l.id === currentLayout}
+                      disabled={switching}
+                      scale={layoutScale}
+                      onClick={() => switchLayout(l.id)}
+                      onDelete={() => removeLayout(l.id)}
                     />
-                  </div>
-                  <button
-                    onClick={() => saveCurrentLayout(newLayoutName, newLayoutEmoji)}
-                    disabled={!newLayoutName.trim()}
-                    className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Save
-                  </button>
+                  ))}
                 </div>
-              )}
-
-              <div className="flex flex-wrap gap-3">
-                {layouts.map((l) => (
-                  <LayoutCard
-                    key={l.id}
-                    layout={l}
-                    isCurrent={l.id === currentLayout}
-                    disabled={switching}
-                    scale={layoutScale}
-                    onClick={() => switchLayout(l.id)}
-                    onDelete={() => removeLayout(l.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })()}
+              </>
+            );
+          })()}
+        </section>
 
         {/* Monitors */}
         <section>
@@ -676,7 +701,11 @@ export default function App() {
               {monitors.length} connected
             </span>
           </div>
-          {monitors.length === 0 ? (
+          {monitorsLoading && monitors.length === 0 ? (
+            <div className="text-zinc-500 text-sm">Loading monitors...</div>
+          ) : monitorsError ? (
+            <div className="text-red-400 text-sm">{monitorsError}</div>
+          ) : monitors.length === 0 ? (
             <p className="text-zinc-500 text-sm">No monitors detected.</p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
