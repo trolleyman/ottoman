@@ -100,6 +100,7 @@ ottoman config init      # Create default config file
 - `GET /health` - Health check
 - `GET /api/status` - Status with uptime
 - `POST /api/wake` - Send WoL packet (auth required)
+- `GET /api/wake/targets` - List wake targets with status (auth required)
 - `GET /api/layouts` - Proxy to client layouts
 - `POST /api/layouts/switch` - Proxy layout switch
 

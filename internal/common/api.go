@@ -3,7 +3,6 @@ package common
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/web"
@@ -123,19 +122,6 @@ func SetupSPAHandler(router *http.ServeMux) error {
 		return errors.Wrap(err, "failed to create dist/ FS")
 	}
 
-	fileServer := http.FileServer(http.FS(clientFS))
-
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		if path == "" {
-			path = "index.html"
-		}
-
-		if _, err := clientFS.Open(path); err != nil {
-			r.URL.Path = "/"
-		}
-
-		fileServer.ServeHTTP(w, r)
-	})
+	router.Handle("/", http.FileServerFS(clientFS))
 	return nil
 }
