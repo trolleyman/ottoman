@@ -1,13 +1,14 @@
 package display
 
 import (
+	"slices"
+
 	"github.com/trolleyman/ottoman/internal/common"
 )
 
 // Manager handles display configuration switching
 type Manager interface {
 	ListMonitors() ([]MonitorInfo, error)
-	GetCurrentLayout(layouts *Layouts) (string, error)
 	ApplyLayoutConfig(layout common.Layout) error
 }
 
@@ -102,6 +103,82 @@ func (s *Layouts) FindByIDOrAlias(query string) []common.Layout {
 		}
 	}
 	return matches
+}
+
+// GetClosest returns the layout that matches the provided monitors
+func (s *Layouts) GetClosest(monitors []MonitorInfo) (string, bool) {
+	for _, layout := range s.layouts {
+		if matches(monitors, layout) {
+			return layout.ID, true
+		}
+	}
+	return "", false
+}
+
+func matches(monitors []MonitorInfo, layout common.Layout) bool {
+	// Count enabled monitors in layout
+	enabledLayoutMonitors := 0
+	for _, lm := range layout.Monitors {
+		if lm.Enabled {
+			enabledLayoutMonitors++
+		}
+	}
+
+	// Count active monitors (connected and configured)
+	activeMonitorsCount := 0
+	for _, m := range monitors {
+		if m.Connected && m.Width > 0 {
+			activeMonitorsCount++
+		}
+	}
+
+	if enabledLayoutMonitors != activeMonitorsCount {
+		return false
+	}
+
+	used := make([]bool, len(monitors))
+
+	// Check each layout monitor matches a physical monitor
+	for _, lm := range layout.Monitors {
+		if !lm.Enabled {
+			continue
+		}
+
+		found := false
+		for i, m := range monitors {
+			if !m.Connected || used[i] {
+				continue
+			}
+
+			// Match by EDID first, then by port
+			if lm.EDID != "" {
+				if lm.EDID != m.EDID {
+					continue
+				}
+			} else if lm.Port != "" {
+				if lm.Port != m.Port {
+					continue
+				}
+			}
+
+			// Check geometry
+			if lm.Width != m.Width || lm.Height != m.Height {
+				continue
+			}
+			if lm.PositionX != m.PositionX || lm.PositionY != m.PositionY {
+				continue
+			}
+
+			used[i] = true
+			found = true
+			break
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
 }
 
 // AddAlias adds an alias to a layout
