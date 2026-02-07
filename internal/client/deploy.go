@@ -168,7 +168,7 @@ const autohotkeyScript = `#Requires AutoHotkey v2.0
 
 ; Define the function once
 ApplyLayout(num) {
-    Run(A_ScriptDir "\ottoman.exe client layout apply " num)
+    Run(A_ScriptDir "\ottoman.exe client layout apply " num, , "Hide")
 }
 
 ; Call the function for each hotkey
@@ -185,6 +185,10 @@ ApplyLayout(num) {
 
 const windowsAHKStartupVbs = `Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run """%s""", 1, False
+`
+
+const windowsClientVbs = `Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run """%s"" client run", 0, True
 `
 
 // installWindowsService creates a startup shortcut/script for Windows
@@ -215,6 +219,13 @@ func installWindowsService() error {
 	exec.Command("schtasks", "/End", "/TN", "OttomanHotkeys").Run()
 	exec.Command("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F").Run()
 
+	// Create VBS launcher for Client (to hide window)
+	clientVbsPath := filepath.Join(configDir, "ottoman-client.vbs")
+	clientVbsContent := fmt.Sprintf(windowsClientVbs, binPath)
+	if err := os.WriteFile(clientVbsPath, []byte(clientVbsContent), 0644); err != nil {
+		return errors.Wrap(err, "failed to write client startup script")
+	}
+
 	// --- Install Scheduled Task (Main Client) ---
 
 	currentUser, err := user.Current()
@@ -223,7 +234,7 @@ func installWindowsService() error {
 	}
 
 	// Create XML definition
-	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Client", currentUser.Username, binPath, "client run")
+	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Client", currentUser.Username, "wscript.exe", fmt.Sprintf(`//nologo "%s"`, clientVbsPath))
 	xmlPath := filepath.Join(configDir, "ottoman_task.xml")
 	if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write task XML")

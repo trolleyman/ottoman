@@ -732,6 +732,22 @@ func DeployClient() error {
 		return fmt.Errorf("failed to register service: %w", err)
 	}
 
+	// Start services on Windows
+	if runtime.GOOS == "windows" {
+		fmt.Println("Starting OttomanClient task...")
+		if err := exec.Command("schtasks", "/Run", "/TN", "OttomanClient").Run(); err != nil {
+			fmt.Printf("Warning: failed to start task: %v\n", err)
+		}
+
+		fmt.Println("Starting AHK script...")
+		if appData := os.Getenv("APPDATA"); appData != "" {
+			ahkVbsPath := filepath.Join(appData, "ottoman", "ottoman-ahk.vbs")
+			if err := exec.Command("wscript", "//nologo", ahkVbsPath).Start(); err != nil {
+				fmt.Printf("Warning: failed to start AHK script: %v\n", err)
+			}
+		}
+	}
+
 	fmt.Println("\n=== Client deployment complete! ===")
 	return nil
 }
