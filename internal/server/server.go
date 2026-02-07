@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -86,7 +87,6 @@ func (s *Server) setupRoutes() error {
 
 	// Client status
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
-	s.router.HandleFunc("GET /health/client", s.requireAuth(s.handleClientHealth))
 
 	if err := common.SetupSPAHandler(s.router); err != nil {
 		return errors.Wrap(err, "")
@@ -240,14 +240,49 @@ func (s *Server) handleWake(w http.ResponseWriter, r *http.Request) {
 // handleListWakeTargets returns available wake targets
 func (s *Server) handleListWakeTargets(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	targets := make([]WakeTarget, 0, len(s.wakeTargets))
 	for _, target := range s.wakeTargets {
 		targets = append(targets, target)
 	}
+	s.mu.RUnlock()
 
-	common.WriteJSON(w, http.StatusOK, targets)
+	type WakeTargetStatus struct {
+		WakeTarget
+		Status string `json:"status"`
+	}
+
+	results := make([]WakeTargetStatus, len(targets))
+	var wg sync.WaitGroup
+
+	// Check status in parallel
+	for i, t := range targets {
+		wg.Add(1)
+		go func(i int, target WakeTarget) {
+			defer wg.Done()
+			status := "offline"
+
+			// Try to connect to the client port on the target IP
+			// We assume the client is running on the configured port
+			_, port, _ := net.SplitHostPort(s.config.ClientAddr)
+			if port == "" {
+				port = "8081" // Default fallback
+			}
+
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(target.IPAddress, port), 500*time.Millisecond)
+			if err == nil {
+				status = "online"
+				conn.Close()
+			}
+
+			results[i] = WakeTargetStatus{
+				WakeTarget: target,
+				Status:     status,
+			}
+		}(i, t)
+	}
+	wg.Wait()
+
+	common.WriteJSON(w, http.StatusOK, results)
 }
 
 // handleListLayouts proxies to client to get available layouts
