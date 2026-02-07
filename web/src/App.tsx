@@ -49,6 +49,12 @@ interface SwitchResponse {
   message: string;
 }
 
+interface WakeTarget {
+  name: string;
+  mac_address: string;
+  ip_address: string;
+}
+
 // --- API helpers ---
 
 async function fetchJSON<T>(url: string): Promise<T> {
@@ -329,7 +335,7 @@ function LoginForm({
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <form onSubmit={submit} className="w-full max-w-sm px-6">
-        <h1 className="text-3xl font-bold font-serif tracking-tight text-zinc-100 mb-1">
+        <h1 className="text-3xl font-bold font-serif tracking-tight text-zinc-100">
           Ottoman
         </h1>
         <p className="text-zinc-500 text-sm mb-6">
@@ -376,6 +382,7 @@ export default function App() {
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [newLayoutName, setNewLayoutName] = useState("");
   const [newLayoutEmoji, setNewLayoutEmoji] = useState("");
+  const [wakeTargets, setWakeTargets] = useState<WakeTarget[]>([]);
 
   // Check auth on mount
   useEffect(() => {
@@ -386,6 +393,17 @@ export default function App() {
 
   const fetchData = useCallback(async (clearError: boolean) => {
     try {
+      // Try to fetch wake targets (only available on server)
+      try {
+        const res = await fetch("/api/wake/targets");
+        if (res.ok) {
+          const targets = await res.json();
+          setWakeTargets(targets);
+        }
+      } catch {
+        // Ignore errors, likely running on client
+      }
+
       const [monitorsData, layoutsData] = await Promise.all([
         fetchJSON<MonitorInfo[]>("/api/monitors"),
         fetchJSON<LayoutsResponse>("/api/layouts"),
@@ -395,6 +413,16 @@ export default function App() {
       setCurrentLayout(layoutsData.current_layout ?? "");
       if (clearError) setError(null);
     } catch (e) {
+      // Check if client is offline (only if we are on server)
+      try {
+        const health = await fetch("/health/client");
+        if (health.status === 503) {
+          setError("Desktop is offline");
+          setLoading(false);
+          return;
+        }
+      } catch {}
+
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
       setLoading(false);
@@ -473,6 +501,22 @@ export default function App() {
     }
   };
 
+  const wake = async (target: string) => {
+    try {
+      const res = await fetch("/api/wake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert("Failed: " + data.message);
+      }
+    } catch {
+      alert("Failed to send wake packet");
+    }
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setAuthed(false);
@@ -499,8 +543,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-zinc-500 text-sm">Loading...</div>
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
+        <div className="text-zinc-400 text-sm">Loading...</div>
       </div>
     );
   }
@@ -514,7 +558,7 @@ export default function App() {
             <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
             <div>
               <h1 className="text-3xl font-bold font-serif tracking-tight">Ottoman</h1>
-              <p className="text-zinc-500 italic text-sm mt-1">Display Management</p>
+              <p className="text-zinc-500 italic text-sm">Display Management</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -537,6 +581,26 @@ export default function App() {
           <div className="mb-6 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3">
             {error}
           </div>
+        )}
+
+        {/* Wake on LAN */}
+        {wakeTargets.length > 0 && (
+          <section className="mb-10">
+            <h2 className="text-lg font-semibold text-zinc-200 mb-4">Wake on LAN</h2>
+            <div className="flex flex-wrap gap-3">
+              {wakeTargets.map((target) => (
+                <button
+                  key={target.mac_address}
+                  onClick={() => wake(target.name)}
+                  className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-4 hover:bg-zinc-800 transition-colors text-left min-w-[140px]"
+                >
+                  <div className="font-medium text-zinc-200">{target.name}</div>
+                  <div className="text-xs text-zinc-500 font-mono mt-1">{target.ip_address}</div>
+                  <div className="text-[10px] text-zinc-600 font-mono">{target.mac_address}</div>
+                </button>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Layouts */}
