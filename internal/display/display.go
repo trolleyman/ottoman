@@ -88,26 +88,17 @@ func (s *Layouts) Delete(id string) {
 	delete(s.layouts, id)
 }
 
-// FindByIDOrAlias returns layouts matching the given ID, name, or alias
+// FindByIDOrAlias returns the layout matching the given ID, or a list of layouts with that alias
 func (s *Layouts) FindByIDOrAlias(query string) []common.Layout {
 	var matches []common.Layout
 	for _, layout := range s.layouts {
 		// Check ID
 		if layout.ID == query {
-			matches = append(matches, layout)
-			continue
-		}
-		// Check name
-		if layout.Name == query {
-			matches = append(matches, layout)
-			continue
+			return []common.Layout{layout}
 		}
 		// Check aliases
-		for _, alias := range layout.Aliases {
-			if alias == query {
-				matches = append(matches, layout)
-				break
-			}
+		if slices.Contains(layout.Aliases, query) {
+			matches = append(matches, layout)
 		}
 	}
 	return matches

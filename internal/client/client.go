@@ -252,11 +252,17 @@ func (c *Client) handleSwitchLayout(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Switching to layout: %s", req.Layout)
 
-	layout, ok := c.layouts.Get(req.Layout)
-	if !ok {
+	layouts := c.layouts.FindByIDOrAlias(req.Layout)
+	if len(layouts) == 0 {
 		common.WriteError(w, http.StatusNotFound, fmt.Sprintf("layout %q not found", req.Layout))
 		return
 	}
+	if len(layouts) > 1 {
+		common.WriteError(w, http.StatusBadRequest, fmt.Sprintf("layout %q is ambiguous", req.Layout))
+		return
+	}
+
+	layout := layouts[0]
 
 	if err := c.displayMgr.ApplyLayoutConfig(layout); err != nil {
 		log.Printf("Failed to apply layout: %v", err)
