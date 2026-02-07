@@ -86,6 +86,7 @@ func (s *Server) setupRoutes() error {
 
 	// Client status
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
+	s.router.HandleFunc("GET /health/client", s.requireAuth(s.handleClientHealth))
 
 	if err := common.SetupSPAHandler(s.router); err != nil {
 		return errors.Wrap(err, "")
@@ -368,6 +369,27 @@ func (s *Server) handleClientStatus(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
 		Status: "ok",
 	})
+}
+
+// handleClientHealth checks if client is reachable with a short timeout
+func (s *Server) handleClientHealth(w http.ResponseWriter, r *http.Request) {
+	// Use a client with short timeout
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	url := fmt.Sprintf("http://%s/health", s.config.ClientAddr)
+	resp, err := client.Get(url)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Client offline"))
+		return
+	}
+	defer resp.Body.Close()
+
+	// Forward status code and body
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // proxyToClient sends a request to the client
