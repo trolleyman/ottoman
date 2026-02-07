@@ -368,7 +368,9 @@ func moveFile(src, dst string) error {
 }
 
 // Build the web files (bun install + bun run build).
-func buildWebFiles(webDir string) error {
+func buildWebFiles() error {
+	webDir := "web"
+
 	// Run bun install if node_modules doesn't exist
 	if _, err := os.Stat(filepath.Join(webDir, "node_modules")); os.IsNotExist(err) {
 		if err := runInDir(webDir, "bun", "install"); err != nil {
@@ -382,28 +384,8 @@ func buildWebFiles(webDir string) error {
 	return nil
 }
 
-func getWebClientPath() string {
-	return filepath.Join("web", "client")
-}
-
-func getWebServerPath() string {
-	return filepath.Join("web", "server")
-}
-
-func buildWebClientFiles() error {
-	return buildWebFiles(getWebClientPath())
-}
-
-func buildWebServerFiles() error {
-	return buildWebFiles(getWebServerPath())
-}
-
-func BuildWebClient() error {
-	return buildWebClientFiles()
-}
-
-func BuildWebServer() error {
-	return buildWebServerFiles()
+func BuildWeb() error {
+	return buildWebFiles()
 }
 
 // buildTarget compiles for a specific target.
@@ -423,7 +405,7 @@ func buildTarget(target BuildTarget, version string) error {
 }
 
 func buildDeps() {
-	mg.SerialDeps(ensureBuildDir, buildWebClientFiles, buildWebServerFiles)
+	mg.SerialDeps(ensureBuildDir, buildWebFiles)
 }
 
 // Build builds the client for the current platform.
@@ -521,15 +503,24 @@ func Lint() error {
 
 // RunServer runs the server locally.
 func RunServer() error {
-	mg.Deps(buildWebServerFiles)
+	mg.Deps(buildWebFiles)
+	serverConfigFile := filepath.Join("magefiles", "server_dev.toml")
+	_, err := os.Stat(serverConfigFile)
+	if os.IsNotExist(err) {
+		err = runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigFile)
+	} else if err != nil {
+		return fmt.Errorf("failed to read %q: %w", serverConfigFile, err)
+	} else {
+		fmt.Printf("Loading existing config: %s\n", serverConfigFile)
+	}
 	return runV("go", "run", "./cmd/ottoman", "server", "run")
 }
 
 // RunClient runs the client locally.
 func RunClient() error {
-	mg.Deps(buildWebClientFiles)
+	mg.Deps(buildWebFiles)
 	clientConfigFile := filepath.Join("magefiles", "client_dev.toml")
-	_, err := os.Stat(deployConfigPath)
+	_, err := os.Stat(clientConfigFile)
 	if os.IsNotExist(err) {
 		err = runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile)
 		if err != nil {
