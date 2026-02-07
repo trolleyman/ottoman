@@ -54,14 +54,6 @@ type ListLayoutsResponse struct {
 	CurrentLayout string   `json:"current_layout,omitempty"`
 }
 
-// PingRequest is sent to the external API for IP registration
-type PingRequest struct {
-	DeviceID   string `json:"device_id"`
-	ExternalIP string `json:"external_ip"`
-	LocalIP    string `json:"local_ip,omitempty"`
-	Timestamp  int64  `json:"timestamp"`
-}
-
 // AuthRequest is used for login
 type AuthRequest struct {
 	Username string `json:"username,omitempty"`

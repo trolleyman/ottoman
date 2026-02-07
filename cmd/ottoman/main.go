@@ -7,7 +7,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -558,7 +557,6 @@ func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
 	cfg := &config.ServerConfig{
 		ListenAddr: ":17293",
 		ClientAddr: "localhost:17294",
-		DeviceID:   "ottoman",
 	}
 	if existing != nil {
 		cfg = &existing.Server
@@ -577,23 +575,6 @@ func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
 	}
 	cfg.ListenAddr = promptInput(reader, "Listen address", cfg.ListenAddr)
 	cfg.ClientAddr = promptInput(reader, "Client address", cfg.ClientAddr)
-	cfg.DeviceID = promptInput(reader, "Device ID", cfg.DeviceID)
-
-	// Ping (optional)
-	cfg.Ping.URL = promptInput(reader, "Ping URL (optional)", cfg.Ping.URL)
-	if cfg.Ping.URL != "" {
-		if cfg.Ping.Interval == 0 {
-			cfg.Ping.Interval = 5 * time.Minute
-		}
-		intervalStr := promptInput(reader, "Ping interval", cfg.Ping.Interval.String())
-		// Store as string and let Viper parse it on load; for saving, parse it here
-		parsed, parseErr := parseDuration(intervalStr)
-		if parseErr != nil {
-			return nil, fmt.Errorf("invalid ping interval %q: %w", intervalStr, parseErr)
-		}
-		cfg.Ping.Interval = parsed
-		cfg.Ping.AuthToken = promptInput(reader, "Ping auth token (optional)", cfg.Ping.AuthToken)
-	}
 
 	// Wake target
 	fmt.Println("\n--- Wake-on-LAN Target ---")
@@ -615,15 +596,6 @@ func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
 	wt.IPAddress = promptInput(reader, "IP address", wt.IPAddress)
 
 	return cfg, nil
-}
-
-// parseDuration parses a duration string like "5m", "1h30m", etc.
-func parseDuration(s string) (time.Duration, error) {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, err
-	}
-	return d, nil
 }
 
 // getLocalIP returns the local machine's IP address
