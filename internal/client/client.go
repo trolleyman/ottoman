@@ -194,6 +194,13 @@ func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (c *Client) handleListLayouts(w http.ResponseWriter, r *http.Request) {
 	allLayouts := c.layouts.List()
 
+	// Update current layout from display manager to ensure it's fresh
+	if monitors, err := c.displayMgr.ListMonitors(); err == nil {
+		if current, ok := c.layouts.GetClosest(monitors); ok {
+			c.currentLayout = current
+		}
+	}
+
 	// Sort by minimum integer alias (if any), then by ID
 	sort.Slice(allLayouts, func(i, j int) bool {
 		ai := minIntAlias(allLayouts[i].Aliases)
@@ -271,12 +278,17 @@ func (c *Client) handleSwitchLayout(w http.ResponseWriter, r *http.Request) {
 
 // handleCurrentLayout returns the current layout
 func (c *Client) handleCurrentLayout(w http.ResponseWriter, r *http.Request) {
-	currentLayout, err := c.displayMgr.GetCurrentLayout(c.layouts)
+	var currentLayout string
+	monitors, err := c.displayMgr.ListMonitors()
 	if err != nil {
-		log.Printf("Failed to get current layout: %v", err)
+		log.Printf("Failed to list monitors: %v", err)
+		currentLayout = c.currentLayout
+	} else {
+		if layout, ok := c.layouts.GetClosest(monitors); ok {
+			currentLayout = layout
+		}
 	}
 
-	// Fall back to cached value
 	if currentLayout == "" {
 		currentLayout = c.currentLayout
 	}
