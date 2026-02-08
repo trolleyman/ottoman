@@ -71,8 +71,8 @@ func TestExampleClientConfig(t *testing.T) {
 func TestExampleConfigsLoadWithViper(t *testing.T) {
 	// Test that example configs can be loaded by the actual config system
 	examples := []struct {
-		name     string
-		file     string
+		name      string
+		file      string
 		hasServer bool
 		hasClient bool
 	}{

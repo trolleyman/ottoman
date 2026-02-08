@@ -53,27 +53,27 @@ type DEVMODEW struct {
 
 // Query Display Config flags
 const (
-	QDC_ALL_PATHS           = 0x00000001
-	QDC_ONLY_ACTIVE_PATHS   = 0x00000002
-	QDC_DATABASE_CURRENT    = 0x00000004
-	QDC_VIRTUAL_MODE_AWARE  = 0x00000010
+	QDC_ALL_PATHS          = 0x00000001
+	QDC_ONLY_ACTIVE_PATHS  = 0x00000002
+	QDC_DATABASE_CURRENT   = 0x00000004
+	QDC_VIRTUAL_MODE_AWARE = 0x00000010
 )
 
 // Set Display Config flags
 const (
-	SDC_TOPOLOGY_INTERNAL          = 0x00000001
-	SDC_TOPOLOGY_CLONE             = 0x00000002
-	SDC_TOPOLOGY_EXTEND            = 0x00000004
-	SDC_TOPOLOGY_EXTERNAL          = 0x00000008
-	SDC_APPLY                      = 0x00000080
-	SDC_NO_OPTIMIZATION            = 0x00000100
-	SDC_SAVE_TO_DATABASE           = 0x00000200
-	SDC_ALLOW_CHANGES              = 0x00000400
-	SDC_PATH_PERSIST_IF_REQUIRED   = 0x00000800
+	SDC_TOPOLOGY_INTERNAL           = 0x00000001
+	SDC_TOPOLOGY_CLONE              = 0x00000002
+	SDC_TOPOLOGY_EXTEND             = 0x00000004
+	SDC_TOPOLOGY_EXTERNAL           = 0x00000008
+	SDC_APPLY                       = 0x00000080
+	SDC_NO_OPTIMIZATION             = 0x00000100
+	SDC_SAVE_TO_DATABASE            = 0x00000200
+	SDC_ALLOW_CHANGES               = 0x00000400
+	SDC_PATH_PERSIST_IF_REQUIRED    = 0x00000800
 	SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x00000020
-	SDC_VALIDATE                   = 0x00000040
-	SDC_FORCE_MODE_ENUMERATION     = 0x00001000
-	SDC_ALLOW_PATH_ORDER_CHANGES   = 0x00002000
+	SDC_VALIDATE                    = 0x00000040
+	SDC_FORCE_MODE_ENUMERATION      = 0x00001000
+	SDC_ALLOW_PATH_ORDER_CHANGES    = 0x00002000
 )
 
 // Path flags
@@ -83,24 +83,24 @@ const (
 
 // Mode info type
 const (
-	DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE  = 1
-	DISPLAYCONFIG_MODE_INFO_TYPE_TARGET  = 2
+	DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE        = 1
+	DISPLAYCONFIG_MODE_INFO_TYPE_TARGET        = 2
 	DISPLAYCONFIG_MODE_INFO_TYPE_DESKTOP_IMAGE = 3
 )
 
 // Device info type for DisplayConfigGetDeviceInfo
 const (
-	DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME       = 1
-	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME       = 2
-	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE = 3
-	DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME      = 4
-	DISPLAYCONFIG_DEVICE_INFO_SET_TARGET_PERSISTENCE = 5
-	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_BASE_TYPE  = 6
+	DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME                = 1
+	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME                = 2
+	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE      = 3
+	DISPLAYCONFIG_DEVICE_INFO_GET_ADAPTER_NAME               = 4
+	DISPLAYCONFIG_DEVICE_INFO_SET_TARGET_PERSISTENCE         = 5
+	DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_BASE_TYPE           = 6
 	DISPLAYCONFIG_DEVICE_INFO_GET_SUPPORT_VIRTUAL_RESOLUTION = 7
 	DISPLAYCONFIG_DEVICE_INFO_SET_SUPPORT_VIRTUAL_RESOLUTION = 8
-	DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO = 9
-	DISPLAYCONFIG_DEVICE_INFO_SET_ADVANCED_COLOR_STATE = 10
-	DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL   = 11
+	DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO        = 9
+	DISPLAYCONFIG_DEVICE_INFO_SET_ADVANCED_COLOR_STATE       = 10
+	DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL            = 11
 )
 
 // Output technology types (using int32 to match Windows API)
@@ -182,13 +182,13 @@ type DISPLAYCONFIG_PATH_INFO struct {
 
 // DISPLAYCONFIG_VIDEO_SIGNAL_INFO contains video signal info
 type DISPLAYCONFIG_VIDEO_SIGNAL_INFO struct {
-	PixelRate          uint64
-	HSyncFreq          DISPLAYCONFIG_RATIONAL
-	VSyncFreq          DISPLAYCONFIG_RATIONAL
-	ActiveSize         DISPLAYCONFIG_2DREGION
-	TotalSize          DISPLAYCONFIG_2DREGION
+	PixelRate           uint64
+	HSyncFreq           DISPLAYCONFIG_RATIONAL
+	VSyncFreq           DISPLAYCONFIG_RATIONAL
+	ActiveSize          DISPLAYCONFIG_2DREGION
+	TotalSize           DISPLAYCONFIG_2DREGION
 	VideoStandardPacked uint32 // Union containing videoStandard and vSyncFreqDivider
-	ScanLineOrdering   uint32
+	ScanLineOrdering    uint32
 }
 
 // DISPLAYCONFIG_SOURCE_MODE contains source mode info
@@ -207,10 +207,10 @@ type DISPLAYCONFIG_TARGET_MODE struct {
 // DISPLAYCONFIG_MODE_INFO contains mode information
 // Note: This is a union in C, we use the largest variant
 type DISPLAYCONFIG_MODE_INFO struct {
-	InfoType   uint32
-	Id         uint32
-	AdapterId  LUID
-	ModeUnion  [48]byte // Union of source/target mode (48 bytes = 64 total - 16 header)
+	InfoType  uint32
+	Id        uint32
+	AdapterId LUID
+	ModeUnion [48]byte // Union of source/target mode (48 bytes = 64 total - 16 header)
 }
 
 // DISPLAYCONFIG_DEVICE_INFO_HEADER is the header for device info requests
@@ -223,7 +223,7 @@ type DISPLAYCONFIG_DEVICE_INFO_HEADER struct {
 
 // DISPLAYCONFIG_SOURCE_DEVICE_NAME contains source device name
 type DISPLAYCONFIG_SOURCE_DEVICE_NAME struct {
-	Header         DISPLAYCONFIG_DEVICE_INFO_HEADER
+	Header            DISPLAYCONFIG_DEVICE_INFO_HEADER
 	ViewGdiDeviceName [32]uint16
 }
 
@@ -241,10 +241,10 @@ type DISPLAYCONFIG_TARGET_DEVICE_NAME struct {
 
 // DISPLAYCONFIG_TARGET_PREFERRED_MODE contains preferred mode info
 type DISPLAYCONFIG_TARGET_PREFERRED_MODE struct {
-	Header            DISPLAYCONFIG_DEVICE_INFO_HEADER
-	Width             uint32
-	Height            uint32
-	TargetMode        DISPLAYCONFIG_TARGET_MODE
+	Header     DISPLAYCONFIG_DEVICE_INFO_HEADER
+	Width      uint32
+	Height     uint32
+	TargetMode DISPLAYCONFIG_TARGET_MODE
 }
 
 // WindowsManager implements display management on Windows using native APIs
@@ -682,10 +682,10 @@ func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
 
 	// Collect mode data for each enabled monitor
 	type monitorModeData struct {
-		edid            string
-		layoutMon       common.Monitor
-		info            *displayPathInfo
-		sourceId        uint32
+		edid      string
+		layoutMon common.Monitor
+		info      *displayPathInfo
+		sourceId  uint32
 	}
 	var monitorData []monitorModeData
 	sourceIdCounter := uint32(0)
