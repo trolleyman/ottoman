@@ -92,6 +92,17 @@ type RemoveLayoutResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+// ShutdownRequest is sent to shut down a device
+type ShutdownRequest struct {
+	Target string `json:"target"` // Target name
+}
+
+// ShutdownResponse is returned after a shutdown attempt
+type ShutdownResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // JSON helper functions
 
 // WriteJSON writes a JSON response

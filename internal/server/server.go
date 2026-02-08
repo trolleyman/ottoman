@@ -85,6 +85,9 @@ func (s *Server) setupRoutes() error {
 	s.router.HandleFunc("POST /api/layouts/remove", s.requireAuth(s.handleRemoveLayout))
 	s.router.HandleFunc("GET /api/monitors", s.requireAuth(s.handleListMonitors))
 
+	// Shutdown (proxied to client)
+	s.router.HandleFunc("POST /api/shutdown", s.requireAuth(s.handleShutdown))
+
 	// Client status
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
 
@@ -379,6 +382,20 @@ func (s *Server) handleRemoveLayout(w http.ResponseWriter, r *http.Request) {
 
 	body, _ := json.Marshal(req)
 	resp, err := s.proxyToClient("POST", "/api/layouts/remove", body)
+	if err != nil {
+		common.WriteError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// handleShutdown proxies shutdown request to client
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.proxyToClient("POST", "/api/shutdown", nil)
 	if err != nil {
 		common.WriteError(w, http.StatusBadGateway, err.Error())
 		return

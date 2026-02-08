@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -85,6 +87,9 @@ func (c *Client) setupRoutes() error {
 
 	// Monitor info
 	c.router.HandleFunc("GET /api/monitors", c.requireAuth(c.handleListMonitors))
+
+	// Shutdown
+	c.router.HandleFunc("POST /api/shutdown", c.requireAuth(c.handleShutdown))
 
 	if err := common.SetupSPAHandler(c.router); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")
@@ -415,6 +420,37 @@ func (c *Client) handleListMonitors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	common.WriteJSON(w, http.StatusOK, monitors)
+}
+
+// handleShutdown initiates an OS shutdown
+func (c *Client) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	log.Println("Shutdown requested via API")
+
+	// Respond before shutting down
+	common.WriteJSON(w, http.StatusOK, common.ShutdownResponse{
+		Success: true,
+		Message: "Shutdown initiated",
+	})
+
+	// Flush response, then shut down after a brief delay
+	go func() {
+		time.Sleep(1 * time.Second)
+
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "windows":
+			cmd = exec.Command("shutdown", "/s", "/t", "0")
+		case "linux":
+			cmd = exec.Command("systemctl", "poweroff")
+		default:
+			log.Printf("Shutdown not supported on %s", runtime.GOOS)
+			return
+		}
+
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("Shutdown command failed: %v: %s", err, string(out))
+		}
+	}()
 }
 
 // Run starts the client

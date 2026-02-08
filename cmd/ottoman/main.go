@@ -723,7 +723,7 @@ func init() {
 	// Server commands
 	serverCmd.AddCommand(serverRunCmd)
 	serverSimulateCmd.Flags().String("client-config", "", "path to client config for layout/monitor data (required)")
-	serverSimulateCmd.Flags().Duration("boot-delay", 15*time.Second, "simulated boot delay after WoL")
+	serverSimulateCmd.Flags().Duration("boot-delay", 5*time.Second, "simulated boot delay after WoL")
 	serverSimulateCmd.Flags().Bool("start-online", false, "start with simulated client already online")
 	serverCmd.AddCommand(serverSimulateCmd)
 	serverCmd.AddCommand(serverInstallCmd)

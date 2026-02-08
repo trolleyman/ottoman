@@ -198,6 +198,9 @@ func (s *SimulatedServer) setupRoutes() error {
 	s.router.HandleFunc("POST /api/layouts/remove", s.requireAuth(s.handleRemoveLayout))
 	s.router.HandleFunc("GET /api/monitors", s.requireAuth(s.handleListMonitors))
 
+	// Shutdown (simulated)
+	s.router.HandleFunc("POST /api/shutdown", s.requireAuth(s.handleShutdown))
+
 	// Client status (simulated)
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
 
@@ -420,6 +423,26 @@ func (s *SimulatedServer) handleListWakeTargets(w http.ResponseWriter, r *http.R
 }
 
 // --- Simulated display handlers ---
+
+func (s *SimulatedServer) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if !s.clientOnlineOrError(w, "/api/shutdown") {
+		return
+	}
+
+	s.mu.Lock()
+	if s.bootTimer != nil {
+		s.bootTimer.Stop()
+		s.bootTimer = nil
+	}
+	s.state = clientOffline
+	s.mu.Unlock()
+
+	log.Printf("[SIM] Client shut down via API — now OFFLINE")
+	common.WriteJSON(w, http.StatusOK, common.ShutdownResponse{
+		Success: true,
+		Message: "Shutdown initiated",
+	})
+}
 
 func (s *SimulatedServer) handleClientStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()

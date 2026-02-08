@@ -450,6 +450,7 @@ export default function App() {
   const [wakeTargetsLoading, setWakeTargetsLoading] = useState(false);
   const [wakeTargetsError, setWakeTargetsError] = useState<string | null>(null);
   const [wakingTargets, setWakingTargets] = useState<Set<string>>(new Set());
+  const [shuttingDownTargets, setShuttingDownTargets] = useState<Set<string>>(new Set());
 
   // Check auth on mount
   useEffect(() => {
@@ -512,9 +513,9 @@ export default function App() {
     refresh();
   }, [authed, refresh]);
 
-  // Poll wake targets while any target is waking
+  // Poll wake targets while any target is waking or shutting down
   useEffect(() => {
-    if (wakingTargets.size === 0) return;
+    if (wakingTargets.size === 0 && shuttingDownTargets.size === 0) return;
 
     const poll = async () => {
       try {
@@ -527,10 +528,30 @@ export default function App() {
           const nowOnline = targets.filter((t) => t.status === "online").map((t) => t.name);
           setWakingTargets((prev) => {
             const next = new Set(prev);
-            for (const name of nowOnline) next.delete(name);
-            if (next.size === prev.size) return prev;
+            let changed = false;
+            for (const name of nowOnline) {
+              if (next.delete(name)) changed = true;
+            }
+            if (!changed) return prev;
             if (next.size === 0) {
               // Client just came online — refresh everything
+              fetchMonitors();
+              fetchLayouts();
+            }
+            return next;
+          });
+
+          // Clear shutting down state for targets that went offline
+          const nowOffline = targets.filter((t) => t.status === "offline").map((t) => t.name);
+          setShuttingDownTargets((prev) => {
+            const next = new Set(prev);
+            let changed = false;
+            for (const name of nowOffline) {
+              if (next.delete(name)) changed = true;
+            }
+            if (!changed) return prev;
+            if (next.size === 0) {
+              // Client just went offline — refresh everything
               fetchMonitors();
               fetchLayouts();
             }
@@ -543,7 +564,7 @@ export default function App() {
     const id = setInterval(poll, 3000);
     poll(); // immediate first poll
     return () => clearInterval(id);
-  }, [wakingTargets, fetchMonitors, fetchLayouts]);
+  }, [wakingTargets, shuttingDownTargets, fetchMonitors, fetchLayouts]);
 
   const switchLayout = async (name: string) => {
     if (switching || name === currentLayout) return;
@@ -626,6 +647,24 @@ export default function App() {
     }
   };
 
+  const shutdown = async (target: string) => {
+    if (!confirm(`Are you sure you want to shut down ${target}?`)) return;
+    try {
+      const res = await fetch("/api/shutdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShuttingDownTargets((prev) => new Set(prev).add(target));
+      } else {
+        alert("Failed: " + data.message);
+      }
+    } catch {
+      alert("Failed to send shutdown command");
+    }
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setAuthed(false);
@@ -685,17 +724,23 @@ export default function App() {
             <div className="flex flex-wrap gap-3">
               {wakeTargets.map((target) => {
                 const isWaking = wakingTargets.has(target.name);
+                const isShuttingDown = shuttingDownTargets.has(target.name);
                 const isOnline = target.status === "online";
                 const isOffline = target.status === "offline";
+                const isBusy = isWaking || isShuttingDown;
 
                 return (
                   <button
                     key={target.mac_address}
-                    onClick={() => wake(target.name)}
+                    onClick={() => {
+                      if (isBusy) return;
+                      if (isOffline) wake(target.name);
+                      if (isOnline) shutdown(target.name);
+                    }}
                     className={`rounded-xl border p-4 transition-colors text-left min-w-[140px] cursor-pointer ${
                       isOnline
                         ? "border-green-500/30 bg-green-500/10 hover:bg-green-500/20"
-                        : isWaking
+                        : isBusy
                           ? "border-zinc-500/30 bg-zinc-500/10 hover:bg-zinc-500/20"
                           : isOffline
                             ? "border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
@@ -704,11 +749,11 @@ export default function App() {
                   >
                     <div className="flex items-center gap-2">
                       <span className={`font-medium ${
-                        isOnline ? "text-green-400" : isWaking ? "text-zinc-300" : isOffline ? "text-red-400" : "text-zinc-200"
+                        isOnline ? "text-green-400" : isBusy ? "text-zinc-300" : isOffline ? "text-red-400" : "text-zinc-200"
                       }`}>
                         {target.name}
                       </span>
-                      {isWaking && (
+                      {isBusy && (
                         <svg className="animate-spin h-3.5 w-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
