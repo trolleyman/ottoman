@@ -228,6 +228,22 @@ function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; sca
   );
 }
 
+/** Sort layouts: #, if one of the aliases is a number, then by ID */
+function sortedLayouts(layouts: Layout[]): Layout[] {
+  return [...layouts].sort((a, b) => {
+    const aNum = a.aliases?.find((alias) => !isNaN(Number(alias)));
+    const bNum = b.aliases?.find((alias) => !isNaN(Number(alias)));
+    if (aNum && bNum) {
+      const aNumVal = Number(aNum);
+      const bNumVal = Number(bNum);
+      if (aNumVal !== bNumVal) return aNumVal - bNumVal;
+    }
+    if (a.id !== b.id) return a.id.localeCompare(b.id);
+    return 0;
+  });
+}
+
+
 /** Sort monitors: active first, then left-to-right, top-to-bottom */
 function sortedMonitors(monitors: MonitorInfo[]): MonitorInfo[] {
   return [...monitors].sort((a, b) => {
@@ -474,7 +490,7 @@ export default function App() {
     setLayoutsLoading(true);
     try {
       const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
-      setLayouts(layoutsData.layouts ?? []);
+      setLayouts(sortedLayouts(layoutsData.layouts ?? []));
       setCurrentLayout(layoutsData.current_layout ?? "");
       setLayoutsError(null);
     } catch (e) {
