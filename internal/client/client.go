@@ -333,17 +333,16 @@ func (c *Client) handleSaveCurrentLayout(w http.ResponseWriter, r *http.Request)
 	// Convert MonitorInfo to Monitor config
 	var monitorConfigs []common.Monitor
 	for _, m := range monitors {
-		if m.Connected {
+		if m.Active != nil {
 			monitorConfigs = append(monitorConfigs, common.Monitor{
 				Name:        m.Name,
 				EDID:        m.EDID,
-				Width:       m.Width,
-				Height:      m.Height,
-				RefreshRate: m.RefreshRate,
-				PositionX:   m.PositionX,
-				PositionY:   m.PositionY,
-				Primary:     m.Primary,
-				Enabled:     true,
+				Width:       m.Active.Width,
+				Height:      m.Active.Height,
+				RefreshRate: m.Active.RefreshRate,
+				PositionX:   m.Active.PositionX,
+				PositionY:   m.Active.PositionY,
+				Primary:     m.Active.Primary,
 			})
 		}
 	}

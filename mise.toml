@@ -15,19 +15,19 @@ run = "mage build"
 
 [tasks."build:all"]
 description = "Build for all platforms"
-run = "mage buildall"
+run = "mage buildAll"
 
 [tasks."build:pi"]
 description = "Build for Raspberry Pi (linux/arm)"
-run = "mage buildpi"
+run = "mage buildPi"
 
 [tasks."build:windows"]
 description = "Build for Windows (windows/amd64)"
-run = "mage buildwindows"
+run = "mage buildWindows"
 
 [tasks."build:linux"]
 description = "Build for Linux desktop (linux/amd64)"
-run = "mage buildlinux"
+run = "mage buildLinux"
 
 [tasks.clean]
 description = "Remove build artifacts"
@@ -41,21 +41,33 @@ run = "mage test"
 description = "Run linter"
 run = "mage lint"
 
+[tasks.format]
+description = "Run formatter"
+run = "mage format"
+
 [tasks."run:server"]
 description = "Run server locally"
-run = "mage runserver"
+run = "mage runServer"
 
 [tasks."run:client"]
 description = "Run client locally"
-run = "mage runclient"
+run = "mage runClient"
+
+[tasks."run:simulated-client"]
+description = "Run simulated client locally"
+run = "mage runSimulatedClient"
 
 [tasks."deploy:pi"]
 description = "Deploy server to Raspberry Pi"
-run = "mage deploypi"
+run = "mage deployServer"
 
 [tasks."deploy:client"]
 description = "Deploy client locally"
-run = "mage deployclient"
+run = "mage deployClient"
+
+[tasks."deploy:all"]
+description = "Deploy all"
+run = "mage deployAll"
 
 [tasks.deps]
 description = "Install Go dependencies"

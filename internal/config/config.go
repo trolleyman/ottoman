@@ -232,7 +232,6 @@ func SaveClient(cfg *ClientConfig, path string) error {
 						"position_x":   m.PositionX,
 						"position_y":   m.PositionY,
 						"primary":      m.Primary,
-						"enabled":      m.Enabled,
 					}
 				}
 				layout["monitors"] = monitors
@@ -363,7 +362,6 @@ func Save(cfg *Config, path string) error {
 						"position_x":   m.PositionX,
 						"position_y":   m.PositionY,
 						"primary":      m.Primary,
-						"enabled":      m.Enabled,
 					}
 				}
 				layout["monitors"] = monitors

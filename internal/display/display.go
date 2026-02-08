@@ -12,7 +12,7 @@ type Manager interface {
 	ApplyLayoutConfig(layout common.Layout) error
 }
 
-// MonitorInfo contains information about a connected monitor
+// MonitorInfo contains information about a monitor (connected or not)
 type MonitorInfo struct {
 	// Identification
 	EDID string `json:"edid,omitempty"` // EDID "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2"
@@ -21,16 +21,20 @@ type MonitorInfo struct {
 	// Display info
 	Name         string `json:"name,omitempty"`
 	Manufacturer string `json:"manufacturer,omitempty"`
-	Model        string `json:"model,omitempty"`
 
-	// Current configuration
+	// Active configuration (nil if monitor is not active/connected)
+	Active *ConnectedInfo `json:"active,omitempty"`
+}
+
+// ConnectedInfo contains the configuration of an active monitor
+type ConnectedInfo struct {
 	Width       int     `json:"width"`
 	Height      int     `json:"height"`
 	RefreshRate float64 `json:"refresh_rate"`
 	PositionX   int     `json:"position_x"`
 	PositionY   int     `json:"position_y"`
 	Primary     bool    `json:"primary"`
-	Connected   bool    `json:"connected"`
+	Model       string  `json:"model,omitempty"`
 }
 
 // Layouts manages display layout configurations
@@ -116,23 +120,15 @@ func (s *Layouts) GetClosest(monitors []MonitorInfo) (string, bool) {
 }
 
 func matches(monitors []MonitorInfo, layout common.Layout) bool {
-	// Count enabled monitors in layout
-	enabledLayoutMonitors := 0
-	for _, lm := range layout.Monitors {
-		if lm.Enabled {
-			enabledLayoutMonitors++
-		}
-	}
-
 	// Count active monitors (connected and configured)
 	activeMonitorsCount := 0
 	for _, m := range monitors {
-		if m.Connected && m.Width > 0 {
+		if m.Active != nil {
 			activeMonitorsCount++
 		}
 	}
 
-	if enabledLayoutMonitors != activeMonitorsCount {
+	if len(layout.Monitors) != activeMonitorsCount {
 		return false
 	}
 
@@ -140,13 +136,9 @@ func matches(monitors []MonitorInfo, layout common.Layout) bool {
 
 	// Check each layout monitor matches a physical monitor
 	for _, lm := range layout.Monitors {
-		if !lm.Enabled {
-			continue
-		}
-
 		found := false
 		for i, m := range monitors {
-			if !m.Connected || used[i] {
+			if m.Active == nil || used[i] {
 				continue
 			}
 
@@ -162,10 +154,10 @@ func matches(monitors []MonitorInfo, layout common.Layout) bool {
 			}
 
 			// Check geometry
-			if lm.Width != m.Width || lm.Height != m.Height {
+			if lm.Width != m.Active.Width || lm.Height != m.Active.Height {
 				continue
 			}
-			if lm.PositionX != m.PositionX || lm.PositionY != m.PositionY {
+			if lm.PositionX != m.Active.PositionX || lm.PositionY != m.Active.PositionY {
 				continue
 			}
 

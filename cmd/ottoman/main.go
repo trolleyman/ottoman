@@ -133,6 +133,55 @@ It also creates a default configuration file if one doesn't exist.`,
 	},
 }
 
+// Monitor commands
+var monitorCmd = &cobra.Command{
+	Use:   "monitor",
+	Short: "Monitor management commands",
+}
+
+var monitorListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List connected monitors with detailed info",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		layouts := display.NewLayouts()
+		mgr, err := display.NewManager(layouts)
+		if err != nil {
+			return errors.Wrap(err, "failed to create display manager")
+		}
+
+		monitors, err := mgr.ListMonitors()
+		if err != nil {
+			return errors.Wrap(err, "failed to list monitors")
+		}
+
+		if len(monitors) == 0 {
+			fmt.Println("No monitors detected")
+			return nil
+		}
+
+		for _, m := range monitors {
+			status := "inactive"
+			if m.Active != nil {
+				status = "active"
+			}
+			primary := ""
+			if m.Active != nil && m.Active.Primary {
+				primary = " [PRIMARY]"
+			}
+			fmt.Printf("%s (%s) - %s%s\n", m.EDID, m.Name, status, primary)
+			fmt.Printf("  Port:       %s\n", m.Port)
+			if m.Active != nil {
+				fmt.Printf("  Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
+				fmt.Printf("  Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
+				if m.Active.Model != "" {
+					fmt.Printf("  Model:      %s\n", m.Active.Model)
+				}
+			}
+		}
+		return nil
+	},
+}
+
 // Layout commands
 var layoutCmd = &cobra.Command{
 	Use:   "layout",
@@ -167,17 +216,16 @@ var layoutAddCmd = &cobra.Command{
 		// Convert to layout monitors
 		var monitorConfigs []common.Monitor
 		for _, m := range monitors {
-			if m.Connected {
+			if m.Active != nil {
 				monitorConfigs = append(monitorConfigs, common.Monitor{
 					Name:        m.Name,
 					EDID:        m.EDID,
-					Width:       m.Width,
-					Height:      m.Height,
-					RefreshRate: m.RefreshRate,
-					PositionX:   m.PositionX,
-					PositionY:   m.PositionY,
-					Primary:     m.Primary,
-					Enabled:     true,
+					Width:       m.Active.Width,
+					Height:      m.Active.Height,
+					RefreshRate: m.Active.RefreshRate,
+					PositionX:   m.Active.PositionX,
+					PositionY:   m.Active.PositionY,
+					Primary:     m.Active.Primary,
 				})
 			}
 		}
@@ -255,16 +303,16 @@ var layoutShowCmd = &cobra.Command{
 
 		fmt.Println("Current display configuration:")
 		for _, m := range monitors {
-			if !m.Connected {
+			if m.Active == nil {
 				continue
 			}
 			primary := ""
-			if m.Primary {
+			if m.Active.Primary {
 				primary = " [PRIMARY]"
 			}
 			fmt.Printf("  %s (%s)%s\n", m.EDID, m.Name, primary)
-			fmt.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Width, m.Height, m.RefreshRate)
-			fmt.Printf("    Position:   (%d, %d)\n", m.PositionX, m.PositionY)
+			fmt.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
+			fmt.Printf("    Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
 		}
 		return nil
 	},
@@ -643,8 +691,12 @@ func init() {
 	// Client commands
 	clientCmd.AddCommand(clientRunCmd)
 	clientCmd.AddCommand(layoutCmd)
+	clientCmd.AddCommand(monitorCmd)
 	clientCmd.AddCommand(clientInstallCmd)
 	clientCmd.AddCommand(clientUninstallCmd)
+
+	// Monitor commands
+	monitorCmd.AddCommand(monitorListCmd)
 
 	// Layout commands
 	layoutCmd.AddCommand(layoutAddCmd)

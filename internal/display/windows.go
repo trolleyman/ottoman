@@ -5,6 +5,7 @@ package display
 import (
 	"fmt"
 	"log"
+	"slices"
 	"syscall"
 	"unsafe"
 
@@ -127,12 +128,6 @@ const (
 	DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL int32 = -2147483648
 )
 
-// LUID represents a locally unique identifier
-type LUID struct {
-	LowPart  uint32
-	HighPart int32
-}
-
 // DISPLAYCONFIG_RATIONAL represents a fractional value
 type DISPLAYCONFIG_RATIONAL struct {
 	Numerator   uint32
@@ -153,7 +148,7 @@ type POINTL struct {
 
 // DISPLAYCONFIG_PATH_SOURCE_INFO contains source info for a path
 type DISPLAYCONFIG_PATH_SOURCE_INFO struct {
-	AdapterId   LUID
+	AdapterId   windows.LUID
 	Id          uint32
 	ModeInfoIdx uint32 // Union with cloneGroupId
 	StatusFlags uint32
@@ -161,7 +156,7 @@ type DISPLAYCONFIG_PATH_SOURCE_INFO struct {
 
 // DISPLAYCONFIG_PATH_TARGET_INFO contains target info for a path
 type DISPLAYCONFIG_PATH_TARGET_INFO struct {
-	AdapterId        LUID
+	AdapterId        windows.LUID
 	Id               uint32
 	ModeInfoIdx      uint32 // Union with desktopModeInfoIdx
 	OutputTechnology int32
@@ -209,7 +204,7 @@ type DISPLAYCONFIG_TARGET_MODE struct {
 type DISPLAYCONFIG_MODE_INFO struct {
 	InfoType  uint32
 	Id        uint32
-	AdapterId LUID
+	AdapterId windows.LUID
 	ModeUnion [48]byte // Union of source/target mode (48 bytes = 64 total - 16 header)
 }
 
@@ -217,7 +212,7 @@ type DISPLAYCONFIG_MODE_INFO struct {
 type DISPLAYCONFIG_DEVICE_INFO_HEADER struct {
 	Type      uint32
 	Size      uint32
-	AdapterId LUID
+	AdapterId windows.LUID
 	Id        uint32
 }
 
@@ -307,7 +302,7 @@ func queryDisplayConfig(flags uint32) ([]DISPLAYCONFIG_PATH_INFO, []DISPLAYCONFI
 }
 
 // getTargetDeviceName gets the device name for a target
-func getTargetDeviceName(adapterId LUID, targetId uint32) (*DISPLAYCONFIG_TARGET_DEVICE_NAME, error) {
+func getTargetDeviceName(adapterId windows.LUID, targetId uint32) (*DISPLAYCONFIG_TARGET_DEVICE_NAME, error) {
 	var name DISPLAYCONFIG_TARGET_DEVICE_NAME
 	name.Header.Type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME
 	name.Header.Size = uint32(unsafe.Sizeof(name))
@@ -322,7 +317,7 @@ func getTargetDeviceName(adapterId LUID, targetId uint32) (*DISPLAYCONFIG_TARGET
 }
 
 // getSourceDeviceName gets the device name for a source
-func getSourceDeviceName(adapterId LUID, sourceId uint32) (*DISPLAYCONFIG_SOURCE_DEVICE_NAME, error) {
+func getSourceDeviceName(adapterId windows.LUID, sourceId uint32) (*DISPLAYCONFIG_SOURCE_DEVICE_NAME, error) {
 	var name DISPLAYCONFIG_SOURCE_DEVICE_NAME
 	name.Header.Type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME
 	name.Header.Size = uint32(unsafe.Sizeof(name))
@@ -337,7 +332,7 @@ func getSourceDeviceName(adapterId LUID, sourceId uint32) (*DISPLAYCONFIG_SOURCE
 }
 
 // getTargetPreferredMode gets the preferred mode for a target
-func getTargetPreferredMode(adapterId LUID, targetId uint32) (*DISPLAYCONFIG_TARGET_PREFERRED_MODE, error) {
+func getTargetPreferredMode(adapterId windows.LUID, targetId uint32) (*DISPLAYCONFIG_TARGET_PREFERRED_MODE, error) {
 	var mode DISPLAYCONFIG_TARGET_PREFERRED_MODE
 	mode.Header.Type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_PREFERRED_MODE
 	mode.Header.Size = uint32(unsafe.Sizeof(mode))
@@ -398,54 +393,84 @@ func outputTechnologyToString(tech int32) string {
 	case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL:
 		return "Internal"
 	default:
-		return fmt.Sprintf("Unknown(%d)", tech)
+		return fmt.Sprintf("Unknown(%x)", tech)
 	}
 }
 
-// ListMonitors returns information about connected monitors using Windows Display Config API
+// ListMonitors returns information about all monitors (active and inactive) using Windows Display Config API
 func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
-	paths, modes, err := queryDisplayConfig(QDC_ONLY_ACTIVE_PATHS)
+	// Query all paths to discover every target (connected or not)
+	allPaths, allModes, err := queryDisplayConfig(QDC_ALL_PATHS)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query display config")
+		return nil, errors.Wrap(err, "failed to query all display paths")
 	}
 
-	var monitors []MonitorInfo
+	// Build map of all monitors keyed by target identity, deduplicating by EDID
+	type targetKey struct {
+		AdapterId windows.LUID
+		Id        uint32
+	}
+	monitors := make(map[targetKey]MonitorInfo)
 
-	for _, path := range paths {
-		if path.Flags&DISPLAYCONFIG_PATH_ACTIVE == 0 {
+	for _, path := range allPaths {
+		if path.TargetInfo.TargetAvailable == 0 {
+			continue
+		}
+
+		key := targetKey{
+			AdapterId: path.TargetInfo.AdapterId,
+			Id:        path.TargetInfo.Id,
+		}
+
+		// Skip if we already have this target
+		if _, ok := monitors[key]; ok {
 			continue
 		}
 
 		// Get target device name (contains EDID info)
 		targetName, err := getTargetDeviceName(path.TargetInfo.AdapterId, path.TargetInfo.Id)
-		if err != nil {
+		if err != nil || targetName.EdidManufactureId == 0 {
 			continue
 		}
 
-		// Get source device name (GDI device name like \\.\DISPLAY1)
+		edid := fmt.Sprintf("%s:%04X", decodeEdidManufacturer(targetName.EdidManufactureId), targetName.EdidProductCodeId)
+		friendlyName := utf16ToString(targetName.MonitorFriendlyDeviceName[:])
+		port := fmt.Sprintf("%s-%d", outputTechnologyToString(int32(targetName.OutputTechnology)), targetName.ConnectorInstance)
+
+		monitors[key] = MonitorInfo{
+			EDID:         edid,
+			Port:         port,
+			Name:         friendlyName,
+			Manufacturer: decodeEdidManufacturer(targetName.EdidManufactureId),
+			Active:       nil,
+		}
+	}
+
+	// Go through active paths and populate ConnectedInfo from source modes
+	for _, path := range allPaths {
+		if path.Flags&DISPLAYCONFIG_PATH_ACTIVE == 0 {
+			continue
+		}
+
+		key := targetKey{
+			AdapterId: path.TargetInfo.AdapterId,
+			Id:        path.TargetInfo.Id,
+		}
+
+		// Find or create the monitor monitor (it should already exist from pass 1)
+		monitor, ok := monitors[key]
+		if !ok {
+			continue
+		}
+
+		// Get source device name for EnumDisplaySettings
 		sourceName, err := getSourceDeviceName(path.SourceInfo.AdapterId, path.SourceInfo.Id)
 		if err != nil {
 			continue
 		}
-
-		// Build EDID string from manufacturer ID and product code
-		edid := ""
-		if targetName.EdidManufactureId != 0 {
-			// EDID manufacturer ID is encoded as 3 5-bit characters
-			mfg := decodeEdidManufacturer(targetName.EdidManufactureId)
-			edid = fmt.Sprintf("%s:%04X", mfg, targetName.EdidProductCodeId)
-		}
-
-		// Get friendly name
-		friendlyName := utf16ToString(targetName.MonitorFriendlyDeviceName[:])
-
-		// Get GDI device name
 		gdiName := utf16ToString(sourceName.ViewGdiDeviceName[:])
 
-		// Build port/connector string
-		port := fmt.Sprintf("%s-%d", outputTechnologyToString(int32(targetName.OutputTechnology)), targetName.ConnectorInstance)
-
-		// Get resolution, refresh rate, and position using EnumDisplaySettings (most reliable)
+		// Get resolution, refresh rate, and position from EnumDisplaySettings (most reliable)
 		var width, height int
 		var posX, posY int
 		var refreshRate float64
@@ -458,11 +483,11 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 			refreshRate = float64(devMode.DmDisplayFrequency)
 		}
 
-		// Fallback to DisplayConfig mode info if EnumDisplaySettings failed
+		// Fallback to DisplayConfig mode info
 		if width == 0 || height == 0 {
 			targetModeIdx := path.TargetInfo.ModeInfoIdx & 0xFFFF
-			if targetModeIdx != 0xFFFF && int(targetModeIdx) < len(modes) {
-				modeInfo := modes[targetModeIdx]
+			if targetModeIdx != 0xFFFF && int(targetModeIdx) < len(allModes) {
+				modeInfo := allModes[targetModeIdx]
 				if modeInfo.InfoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET {
 					targetMode := (*DISPLAYCONFIG_TARGET_MODE)(unsafe.Pointer(&modeInfo.ModeUnion[0]))
 					width = int(targetMode.TargetVideoSignalInfo.ActiveSize.Cx)
@@ -483,26 +508,45 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 			}
 		}
 
-		// Check if this is the primary display (position 0,0 is typically primary)
 		primary := posX == 0 && posY == 0
 
-		monitors = append(monitors, MonitorInfo{
-			EDID:         edid,
-			Port:         port,
-			Name:         friendlyName,
-			Manufacturer: decodeEdidManufacturer(targetName.EdidManufactureId),
-			Model:        gdiName,
-			Width:        width,
-			Height:       height,
-			RefreshRate:  refreshRate,
-			PositionX:    posX,
-			PositionY:    posY,
-			Primary:      primary,
-			Connected:    true,
-		})
+		monitor.Active = &ConnectedInfo{
+			Width:       width,
+			Height:      height,
+			RefreshRate: refreshRate,
+			PositionX:   posX,
+			PositionY:   posY,
+			Primary:     primary,
+			Model:       gdiName,
+		}
+		monitors[key] = monitor
 	}
 
-	return monitors, nil
+	// Collect results
+	var monitorsList []MonitorInfo
+	for _, monitor := range monitors {
+		monitorsList = append(monitorsList, monitor)
+	}
+
+	slices.SortFunc(monitorsList, func(a, b MonitorInfo) int {
+		if a.Active == nil && b.Active != nil {
+			return 1
+		}
+		if a.Active != nil && b.Active == nil {
+			return -1
+		}
+		if a.Active == nil && b.Active == nil {
+			return slices.Compare([]rune(a.EDID), []rune(b.EDID))
+		}
+		ax := a.Active.PositionX
+		bx := b.Active.PositionX
+		if ax != bx {
+			return ax - bx
+		}
+		return slices.Compare([]rune(a.EDID), []rune(b.EDID))
+	})
+
+	return monitorsList, nil
 }
 
 // decodeEdidManufacturer decodes the EDID manufacturer ID to a 3-letter string
@@ -518,65 +562,6 @@ func decodeEdidManufacturer(id uint16) string {
 	return string([]byte{byte(c1), byte(c2), byte(c3)})
 }
 
-// GetCurrentLayout attempts to identify the current layout
-func (m *WindowsManager) GetCurrentLayout(layouts *Layouts) (string, error) {
-	monitors, err := m.ListMonitors()
-	if err != nil {
-		return "", err
-	}
-
-	// Try to match current state to a known layout
-	for _, layout := range layouts.List() {
-		if m.matchesLayout(monitors, layout) {
-			return layout.ID, nil
-		}
-	}
-
-	return "", nil
-}
-
-// matchesLayout checks if current monitors match a layout
-func (m *WindowsManager) matchesLayout(monitors []MonitorInfo, layout common.Layout) bool {
-	enabledCount := 0
-	for _, lm := range layout.Monitors {
-		if lm.Enabled {
-			enabledCount++
-		}
-	}
-
-	connectedCount := 0
-	for _, mon := range monitors {
-		if mon.Connected && mon.Width > 0 {
-			connectedCount++
-		}
-	}
-
-	if connectedCount != enabledCount {
-		return false
-	}
-
-	// Check each layout monitor matches a physical monitor by EDID
-	for _, lm := range layout.Monitors {
-		if !lm.Enabled {
-			continue
-		}
-		found := false
-		for _, mon := range monitors {
-			if lm.EDID != "" && lm.EDID == mon.EDID {
-				if mon.Width == lm.Width && mon.Height == lm.Height {
-					found = true
-					break
-				}
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
-	return true
-}
-
 // Status flags
 const (
 	DISPLAYCONFIG_SOURCE_IN_USE = 0x00000001
@@ -587,9 +572,9 @@ const (
 type displayPathInfo struct {
 	edid            string
 	friendlyName    string
-	sourceAdapterId LUID
+	sourceAdapterId windows.LUID
 	sourceId        uint32
-	targetAdapterId LUID
+	targetAdapterId windows.LUID
 	targetId        uint32
 	targetMode      DISPLAYCONFIG_TARGET_MODE
 	outputTech      int32
@@ -667,11 +652,9 @@ func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
 	log.Printf("Applying layout: %s (%s)", layout.ID, layout.Name)
 
 	// Build map of EDIDs that should be enabled with their config
-	enabledMonitors := make(map[string]common.Monitor)
+	monitorsByEdid := make(map[string]common.Monitor)
 	for _, mon := range layout.Monitors {
-		if mon.Enabled {
-			enabledMonitors[mon.EDID] = mon
-		}
+		monitorsByEdid[mon.EDID] = mon
 	}
 
 	// Get all display path info
@@ -690,7 +673,7 @@ func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
 	var monitorData []monitorModeData
 	sourceIdCounter := uint32(0)
 
-	for edid, layoutMon := range enabledMonitors {
+	for edid, layoutMon := range monitorsByEdid {
 		// Find the path info for this EDID
 		var info *displayPathInfo
 		for i := range pathInfos {

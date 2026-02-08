@@ -50,6 +50,7 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	var currentMonitor *MonitorInfo
+	var currentActive *ConnectedInfo
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -58,6 +59,9 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 		if matches := outputPattern.FindStringSubmatch(line); len(matches) > 0 {
 			// Save previous monitor if any
 			if currentMonitor != nil {
+				if currentActive != nil {
+					currentMonitor.Active = currentActive
+				}
 				monitors = append(monitors, *currentMonitor)
 			}
 
@@ -66,31 +70,36 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 			primary := matches[3] == "primary"
 
 			currentMonitor = &MonitorInfo{
-				Port:      port,
-				Name:      port, // Use port as name on Linux
-				Connected: connected,
-				Primary:   primary,
+				Port: port,
+				Name: port, // Use port as name on Linux
+			}
+			currentActive = nil
+
+			if connected {
+				currentActive = &ConnectedInfo{
+					Primary: primary,
+				}
 			}
 
 			// Parse geometry if present (e.g., "2560x1440+0+0")
-			if len(matches) > 4 && matches[4] != "" {
+			if currentActive != nil && len(matches) > 4 && matches[4] != "" {
 				geom := matches[4]
 				parts := strings.Split(geom, "+")
 				if len(parts) >= 3 {
 					res := strings.Split(parts[0], "x")
 					if len(res) == 2 {
-						currentMonitor.Width, _ = strconv.Atoi(res[0])
-						currentMonitor.Height, _ = strconv.Atoi(res[1])
+						currentActive.Width, _ = strconv.Atoi(res[0])
+						currentActive.Height, _ = strconv.Atoi(res[1])
 					}
-					currentMonitor.PositionX, _ = strconv.Atoi(parts[1])
-					currentMonitor.PositionY, _ = strconv.Atoi(parts[2])
+					currentActive.PositionX, _ = strconv.Atoi(parts[1])
+					currentActive.PositionY, _ = strconv.Atoi(parts[2])
 				}
 			}
 			continue
 		}
 
 		// Check for mode line (resolution and refresh rate)
-		if currentMonitor != nil && currentMonitor.RefreshRate == 0 {
+		if currentActive != nil && currentActive.RefreshRate == 0 {
 			if matches := modePattern.FindStringSubmatch(line); len(matches) > 0 {
 				// Check if this is the active mode (marked with *)
 				if len(matches) > 4 && matches[4] == "*" {
@@ -99,11 +108,11 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 					refreshRate, _ := strconv.ParseFloat(matches[3], 64)
 
 					// Only update if not already set from geometry
-					if currentMonitor.Width == 0 {
-						currentMonitor.Width = width
-						currentMonitor.Height = height
+					if currentActive.Width == 0 {
+						currentActive.Width = width
+						currentActive.Height = height
 					}
-					currentMonitor.RefreshRate = refreshRate
+					currentActive.RefreshRate = refreshRate
 				}
 			}
 		}
@@ -111,6 +120,9 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 
 	// Don't forget the last monitor
 	if currentMonitor != nil {
+		if currentActive != nil {
+			currentMonitor.Active = currentActive
+		}
 		monitors = append(monitors, *currentMonitor)
 	}
 
@@ -141,10 +153,11 @@ func (m *LinuxManager) buildXrandrArgs(layout common.Layout) []string {
 
 		args = append(args, "--output", outputName)
 
-		if !mon.Enabled {
-			args = append(args, "--off")
-			continue
-		}
+		// TODO: Add --off for monitors that are currently connected but shouldn't be
+		// if !mon.Enabled {
+		// 	args = append(args, "--off")
+		// 	continue
+		// }
 
 		// Set mode (resolution)
 		mode := fmt.Sprintf("%dx%d", mon.Width, mon.Height)

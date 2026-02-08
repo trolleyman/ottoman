@@ -29,7 +29,6 @@ type Monitor struct {
 	PositionX   int     `json:"position_x" mapstructure:"position_x"`
 	PositionY   int     `json:"position_y" mapstructure:"position_y"`
 	Primary     bool    `json:"primary,omitempty" mapstructure:"primary"`
-	Enabled     bool    `json:"enabled" mapstructure:"enabled"`
 }
 
 // LayoutsConfig holds all available display layouts (for file format)
