@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -66,6 +67,42 @@ var serverRunCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 		return server.Run(cfg)
+	},
+}
+
+var serverSimulateCmd = &cobra.Command{
+	Use:   "simulate",
+	Short: "Run simulated server with mock client (for frontend testing)",
+	Long: `Run a simulated server that serves the real web frontend with mocked API
+endpoints. The simulated client starts offline — use Wake-on-LAN in the UI
+to trigger a simulated boot sequence. Layouts and monitors are loaded from
+a client config file.
+
+Admin endpoints (no auth):
+  POST /api/sim/reset      Reset client to offline
+  GET  /api/sim/state      Get current simulated state
+  POST /api/sim/set-state  Set state directly (offline/booting/online)`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		clientConfigFile, _ := cmd.Flags().GetString("client-config")
+		bootDelay, _ := cmd.Flags().GetDuration("boot-delay")
+		startOnline, _ := cmd.Flags().GetBool("start-online")
+
+		// Load server config
+		serverCfg, err := server.LoadConfig(configFile)
+		if err != nil {
+			return errors.Wrap(err, "failed to load server config")
+		}
+
+		// Load client config for layout/monitor data
+		if clientConfigFile == "" {
+			return errors.New("--client-config is required")
+		}
+		clientCfg, err := client.LoadConfig(clientConfigFile)
+		if err != nil {
+			return errors.Wrap(err, "failed to load client config")
+		}
+
+		return server.RunSimulated(serverCfg, clientCfg, bootDelay, startOnline)
 	},
 }
 
@@ -685,6 +722,10 @@ func init() {
 
 	// Server commands
 	serverCmd.AddCommand(serverRunCmd)
+	serverSimulateCmd.Flags().String("client-config", "", "path to client config for layout/monitor data (required)")
+	serverSimulateCmd.Flags().Duration("boot-delay", 15*time.Second, "simulated boot delay after WoL")
+	serverSimulateCmd.Flags().Bool("start-online", false, "start with simulated client already online")
+	serverCmd.AddCommand(serverSimulateCmd)
 	serverCmd.AddCommand(serverInstallCmd)
 	serverCmd.AddCommand(serverUninstallCmd)
 

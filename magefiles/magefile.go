@@ -546,6 +546,37 @@ func RunClient() error {
 	return runV("go", "run", "./cmd/ottoman", "--config", clientConfigFile, "client", "run")
 }
 
+// RunSimulated runs a simulated server for frontend WoL testing.
+func RunSimulated() error {
+	mg.Deps(buildWebFiles)
+
+	serverConfigFile := filepath.Join("magefiles", "dev_server.toml")
+	clientConfigFile := filepath.Join("magefiles", "dev_client.toml")
+
+	// Ensure server config exists
+	if _, err := os.Stat(serverConfigFile); os.IsNotExist(err) {
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigFile); err != nil {
+			return fmt.Errorf("failed to init server config: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to read %q: %w", serverConfigFile, err)
+	}
+
+	// Ensure client config exists
+	if _, err := os.Stat(clientConfigFile); os.IsNotExist(err) {
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile); err != nil {
+			return fmt.Errorf("failed to init client config: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to read %q: %w", clientConfigFile, err)
+	}
+
+	return runV("go", "run", "./cmd/ottoman",
+		"--config", serverConfigFile,
+		"server", "simulate",
+		"--client-config", clientConfigFile)
+}
+
 // DeployConfig holds deployment configuration
 type DeployConfig struct {
 	Client ClientDeployConfig `toml:"client"`
