@@ -7,14 +7,17 @@ interface MonitorInfo {
   port: string;
   name: string;
   manufacturer: string;
-  model: string;
+  active?: ActiveMonitorInfo;
+}
+
+interface ActiveMonitorInfo {
   width: number;
   height: number;
   refresh_rate: number;
   position_x: number;
   position_y: number;
   primary: boolean;
-  connected: boolean;
+  model: string;
 }
 
 interface LayoutMonitor {
@@ -27,7 +30,6 @@ interface LayoutMonitor {
   position_x: number;
   position_y: number;
   primary: boolean;
-  enabled: boolean;
 }
 
 interface Layout {
@@ -67,31 +69,44 @@ async function fetchJSON<T>(url: string): Promise<T> {
 // --- Components ---
 
 function MonitorCard({ monitor }: { monitor: MonitorInfo }) {
+  const a = monitor.active;
   return (
-    <div className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-5 flex flex-col gap-3">
+    <div className={`rounded-xl border p-5 flex flex-col gap-3 ${
+      a
+        ? "border-zinc-700/50 bg-zinc-800/50"
+        : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
+    }`}>
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-zinc-100 truncate">
-          {monitor.name || monitor.model || monitor.port || "Unknown"}
+        <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
+          {monitor.name || monitor.port || "Unknown"}
         </h3>
-        {monitor.primary && (
-          <span className="text-xs font-medium bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
-            Primary
-          </span>
-        )}
+        <div className="flex gap-2">
+          {!a && (
+            <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
+              Inactive
+            </span>
+          )}
+          {a?.primary && (
+            <span className="text-xs font-medium bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+              Primary
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-        <Row label="Resolution" value={`${monitor.width}x${monitor.height}`} />
-        <Row
-          label="Refresh"
-          value={`${Number.isInteger(monitor.refresh_rate) ? monitor.refresh_rate : monitor.refresh_rate.toFixed(1)} Hz`}
-        />
+        {a && (
+          <>
+            <Row label="Resolution" value={`${a.width}x${a.height}`} />
+            <Row
+              label="Refresh"
+              value={`${Number.isInteger(a.refresh_rate) ? a.refresh_rate : a.refresh_rate.toFixed(1)} Hz`}
+            />
+            <Row label="Position" value={`${a.position_x}, ${a.position_y}`} />
+          </>
+        )}
         {monitor.port && <Row label="Port" value={monitor.port} />}
         {monitor.edid && <Row label="EDID" value={monitor.edid} />}
-        <Row
-          label="Position"
-          value={`${monitor.position_x}, ${monitor.position_y}`}
-        />
         {monitor.manufacturer && (
           <Row label="Manufacturer" value={monitor.manufacturer} />
         )}
@@ -118,10 +133,9 @@ function computeUniformScale(layouts: Layout[], maxW: number, maxH: number): num
   let globalMaxW = 0;
   let globalMaxH = 0;
   for (const layout of layouts) {
-    const enabled = (layout.monitors ?? []).filter((m) => m.enabled);
-    if (enabled.length === 0) continue;
+    if ((layout.monitors ?? []).length === 0) continue;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const m of enabled) {
+    for (const m of layout.monitors) {
       minX = Math.min(minX, m.position_x);
       minY = Math.min(minY, m.position_y);
       maxX = Math.max(maxX, m.position_x + m.width);
@@ -135,11 +149,10 @@ function computeUniformScale(layouts: Layout[], maxW: number, maxH: number): num
 }
 
 function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; scale: number }) {
-  const enabled = monitors.filter((m) => m.enabled);
-  if (enabled.length === 0) return null;
+  if (monitors.length === 0) return null;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const m of enabled) {
+  for (const m of monitors) {
     minX = Math.min(minX, m.position_x);
     minY = Math.min(minY, m.position_y);
     maxX = Math.max(maxX, m.position_x + m.width);
@@ -158,7 +171,7 @@ function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; sca
       className="relative mx-auto"
       style={{ width: scaledW, height: scaledH }}
     >
-      {enabled.map((m, i) => {
+      {monitors.map((m, i) => {
         const x = (m.position_x - minX) * scale;
         const y = (m.position_y - minY) * scale;
         const w = m.width * scale;
@@ -194,10 +207,21 @@ function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; sca
   );
 }
 
-/** Sort monitors: primary first, then left-to-right, top-to-bottom */
-function sortedMonitors<T extends { primary?: boolean; position_x: number; position_y: number }>(monitors: T[]): T[] {
+/** Sort monitors: active first, then left-to-right, top-to-bottom */
+function sortedMonitors(monitors: MonitorInfo[]): MonitorInfo[] {
   return [...monitors].sort((a, b) => {
-    // if (a.primary !== b.primary) return a.primary ? -1 : 1;
+    // Active monitors before inactive
+    if (!!a.active !== !!b.active) return a.active ? -1 : 1;
+    const ax = a.active?.position_x ?? 0;
+    const bx = b.active?.position_x ?? 0;
+    if (ax !== bx) return ax - bx;
+    return (a.active?.position_y ?? 0) - (b.active?.position_y ?? 0);
+  });
+}
+
+/** Sort layout monitors: left-to-right, top-to-bottom */
+function sortedLayoutMonitors(monitors: LayoutMonitor[]): LayoutMonitor[] {
+  return [...monitors].sort((a, b) => {
     if (a.position_x !== b.position_x) return a.position_x - b.position_x;
     return a.position_y - b.position_y;
   });
@@ -218,7 +242,7 @@ function LayoutCard({
   onClick: () => void;
   onDelete?: () => void;
 }) {
-  const enabled = sortedMonitors((layout.monitors ?? []).filter((m) => m.enabled));
+  const enabled = sortedLayoutMonitors(layout.monitors ?? []);
   const idAliases = [layout.id, ...(layout.aliases ?? [])].join(" \u00b7 ");
 
   return (
@@ -417,7 +441,7 @@ export default function App() {
     setMonitorsLoading(true);
     try {
       const monitorsData = await fetchJSON<MonitorInfo[]>("/api/monitors");
-      setMonitors(sortedMonitors(monitorsData.filter((m) => m.connected)));
+      setMonitors(sortedMonitors(monitorsData));
       setMonitorsError(null);
     } catch (e) {
       setMonitorsError("Failed to load monitors");
@@ -698,7 +722,7 @@ export default function App() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-zinc-200">Monitors</h2>
             <span className="text-xs text-zinc-500">
-              {monitors.length} connected
+              {monitors.filter((m) => m.active).length} active / {monitors.length} total
             </span>
           </div>
           {monitorsLoading && monitors.length === 0 ? (
