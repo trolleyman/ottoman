@@ -68,14 +68,35 @@ async function fetchJSON<T>(url: string): Promise<T> {
 
 // --- Components ---
 
+function OttomanTitle() {
+  return <h1 className="text-3xl font-bold font-serif tracking-[-0.075em] text-zinc-100">
+    Ottoman
+  </h1>
+}
+
+type OttomanWithLogoProps = React.PropsWithChildren<{
+  className?: string;
+}>;
+
+function OttomanWithLogo({ children, className }: OttomanWithLogoProps) {
+  return <>
+    <div className={`flex items-center gap-4 ${className}`}>
+      <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
+      <div>
+        <OttomanTitle />
+        {children}
+      </div>
+    </div>
+  </>
+}
+
 function MonitorCard({ monitor }: { monitor: MonitorInfo }) {
   const a = monitor.active;
   return (
-    <div className={`rounded-xl border p-5 flex flex-col gap-3 ${
-      a
-        ? "border-zinc-700/50 bg-zinc-800/50"
-        : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
-    }`}>
+    <div className={`rounded-xl border p-5 flex flex-col gap-3 ${a
+      ? "border-zinc-700/50 bg-zinc-800/50"
+      : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
+      }`}>
       <div className="flex items-center justify-between">
         <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
           {monitor.name || monitor.port || "Unknown"}
@@ -292,8 +313,8 @@ function LayoutCard({
               <div
                 key={m.port || m.edid || i}
                 className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${m.primary
-                    ? "bg-blue-500/10 border-blue-500/20"
-                    : "bg-zinc-900/40 border-transparent"
+                  ? "bg-blue-500/10 border-blue-500/20"
+                  : "bg-zinc-900/40 border-transparent"
                   }`}
               >
                 <span className="truncate text-zinc-300 font-medium" title={m.name || m.port}>
@@ -359,12 +380,11 @@ function LoginForm({
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <form onSubmit={submit} className="w-full max-w-sm px-6">
-        <h1 className="text-3xl font-bold font-serif tracking-tight text-zinc-100">
-          Ottoman
-        </h1>
-        <p className="text-zinc-500 text-sm mb-6">
-          Enter your auth token to continue.
-        </p>
+        <OttomanWithLogo className="mb-4">
+          <p className="text-zinc-500 text-sm">
+            Enter your auth token to continue.
+          </p>
+        </OttomanWithLogo>
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3">
@@ -587,13 +607,9 @@ export default function App() {
       <div className="max-w-4xl mx-auto px-6 py-10">
         {/* Header */}
         <header className="mb-10 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
-            <div>
-              <h1 className="text-3xl font-bold font-serif tracking-tight">Ottoman</h1>
-              <p className="text-zinc-500 italic text-sm">Display Management</p>
-            </div>
-          </div>
+          <OttomanWithLogo>
+            <p className="text-zinc-500 italic text-sm">Display Management</p>
+          </OttomanWithLogo>
           <div className="flex items-center gap-4">
             <button
               onClick={refresh}
@@ -626,10 +642,10 @@ export default function App() {
                   key={target.mac_address}
                   onClick={() => wake(target.name)}
                   className={`rounded-xl border p-4 transition-colors text-left min-w-[140px] ${target.status === 'online'
-                      ? 'border-green-500/30 bg-green-500/10 hover:bg-green-500/20'
-                      : target.status === 'offline'
-                        ? 'border-red-500/30 bg-red-500/10 hover:bg-red-500/20'
-                        : 'border-zinc-700/50 bg-zinc-800/50 hover:bg-zinc-800'
+                    ? 'border-green-500/30 bg-green-500/10 hover:bg-green-500/20'
+                    : target.status === 'offline'
+                      ? 'border-red-500/30 bg-red-500/10 hover:bg-red-500/20'
+                      : 'border-zinc-700/50 bg-zinc-800/50 hover:bg-zinc-800'
                     }`}
                 >
                   <div className={`font-medium ${target.status === 'online' ? 'text-green-400' : target.status === 'offline' ? 'text-red-400' : 'text-zinc-200'}`}>
