@@ -60,6 +60,7 @@ internal/
 magefiles/               # Mage build tasks (Go)
 examples/                # Config file templates (TOML)
 build/                   # Compiled binaries output
+web/                     # React frontend
 ```
 
 ## Key Conventions
@@ -110,3 +111,7 @@ ottoman config init      # Create default config file
 - `GET /api/layouts` - List available layouts (auth required)
 - `POST /api/layouts/switch` - Switch display layout (auth required)
 - `GET /api/monitors` - List connected monitors (auth required)
+
+# Debug
+When running you may encounter `unsupported OS: MINGW64_NT-10.0-26200` - ignore this.
+It's an artifact from running in MINGW64 - the command is successful or not depending on the exit code.
