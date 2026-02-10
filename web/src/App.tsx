@@ -81,7 +81,11 @@ type OttomanWithLogoProps = React.PropsWithChildren<{
 function OttomanWithLogo({ children, className }: OttomanWithLogoProps) {
   return <>
     <div className={`flex items-center gap-4 ${className}`}>
-      <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
+      <picture>
+        <source srcSet="/ottoman_logo.avif" type="image/avif" />
+        <source srcSet="/ottoman_logo.webp" type="image/webp" />
+        <img src="/ottoman_logo.png" alt="Ottoman" className="h-14 w-auto" />
+      </picture>
       <div>
         <OttomanTitle />
         {children}
