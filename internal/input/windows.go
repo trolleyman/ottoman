@@ -3,6 +3,7 @@
 package input
 
 import (
+	"runtime"
 	"unicode/utf16"
 	"unsafe"
 
@@ -28,26 +29,19 @@ type WindowsMouse struct {
 }
 
 const (
+	inputMouse    = 0
+	inputKeyboard = 1
+)
+
+const (
 	mouseEventFLeftDown = 0x0002
 	mouseEventFLeftUp   = 0x0004
 )
 
 const (
-	inputKeyboard    = 1
 	keyEventFKeyUp   = 0x0002
 	keyEventFUnicode = 0x0004
 )
-
-type input struct {
-	type_ uint32
-	// On 64-bit, the union is 32 bytes (max of MOUSEINPUT and KEYBDINPUT + padding)
-	// We only need KEYBDINPUT for SendInput here.
-	// KEYBDINPUT: wVk(2), wScan(2), dwFlags(4), time(4), dwExtraInfo(8) = 20 bytes.
-	// But we need to match the C union size/alignment.
-	// Let's use a byte array large enough to cover the union.
-	// 32 bytes should be safe for x64 (40 bytes total struct size).
-	padding [32]byte
-}
 
 type keybdInput struct {
 	wVk         uint16
@@ -114,52 +108,81 @@ func (m *WindowsMouse) MoveRelative(dx, dy float64) error {
 }
 
 func (m *WindowsMouse) LeftClick() error {
-	// mouse_event is deprecated but simpler and sufficient for basic clicks
-	procMouseEvent.Call(
-		uintptr(mouseEventFLeftDown),
-		0, 0, 0, 0,
-	)
-	procMouseEvent.Call(
-		uintptr(mouseEventFLeftUp),
-		0, 0, 0, 0,
-	)
+	// Use SendInput for mouse click as well for consistency
+	return m.sendMouseInput(mouseEventFLeftDown | mouseEventFLeftUp)
+}
+
+func (m *WindowsMouse) sendMouseInput(flags uint32) error {
+	size, unionOffset := getInputLayout()
+	buffer := make([]byte, size*2) // Enough for up to 2 events, though we might only use 1 or 2
+
+	// We'll send Down and Up separately if flags has both, or together?
+	// mouse_event allows ORing, SendInput usually expects separate events for clarity,
+	// but let's just send two events if it's a click (Down | Up).
+
+	count := 0
+	if flags&mouseEventFLeftDown != 0 {
+		*(*uint32)(unsafe.Pointer(&buffer[count*size])) = inputMouse
+		// Offset to union (MOUSEINPUT)
+		// MOUSEINPUT: dx, dy, mouseData, dwFlags, time, dwExtraInfo
+		// We only care about dwFlags at offset 12 (3 * 4 bytes) inside the union
+		*(*uint32)(unsafe.Pointer(&buffer[count*size+unionOffset+12])) = mouseEventFLeftDown
+		count++
+	}
+	if flags&mouseEventFLeftUp != 0 {
+		*(*uint32)(unsafe.Pointer(&buffer[count*size])) = inputMouse
+		*(*uint32)(unsafe.Pointer(&buffer[count*size+unionOffset+12])) = mouseEventFLeftUp
+		count++
+	}
+
+	if count > 0 {
+		ret, _, err := procSendInput.Call(
+			uintptr(count),
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(size),
+		)
+		if ret != uintptr(count) {
+			return errors.Wrap(err, "SendInput failed")
+		}
+	}
 	return nil
 }
 
 func (m *WindowsMouse) Type(text string) error {
 	// Use SendInput for Unicode support
 	utf16Chars := utf16.Encode([]rune(text))
+	size, unionOffset := getInputLayout()
 
 	for _, char := range utf16Chars {
-		var inputs [2]input
+		buffer := make([]byte, size*2)
 
 		// Key Down
-		inputs[0].type_ = inputKeyboard
-		kiDown := (*keybdInput)(unsafe.Pointer(&inputs[0].padding[0]))
+		*(*uint32)(unsafe.Pointer(&buffer[0])) = inputKeyboard
+		kiDown := (*keybdInput)(unsafe.Pointer(&buffer[unionOffset]))
 		kiDown.wScan = char
 		kiDown.dwFlags = keyEventFUnicode
 
 		// Key Up
-		inputs[1].type_ = inputKeyboard
-		kiUp := (*keybdInput)(unsafe.Pointer(&inputs[1].padding[0]))
+		*(*uint32)(unsafe.Pointer(&buffer[size])) = inputKeyboard
+		kiUp := (*keybdInput)(unsafe.Pointer(&buffer[size+unionOffset]))
 		kiUp.wScan = char
 		kiUp.dwFlags = keyEventFUnicode | keyEventFKeyUp
 
-		// Send both events
-		// We need to pass the size of the INPUT structure.
-		// On 64-bit Go, unsafe.Sizeof(input{}) should be 40 (4 + 4 padding + 32).
-		// On 32-bit Go, it might be smaller (4 + 28 = 32).
-		// Let's rely on Go's struct layout.
-		cbSize := unsafe.Sizeof(inputs[0])
-
 		ret, _, err := procSendInput.Call(
 			uintptr(2),
-			uintptr(unsafe.Pointer(&inputs[0])),
-			uintptr(cbSize),
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(size),
 		)
 		if ret != 2 {
 			return errors.Wrap(err, "SendInput failed")
 		}
 	}
 	return nil
+}
+
+func getInputLayout() (size int, unionOffset int) {
+	if runtime.GOARCH == "amd64" {
+		return 40, 8
+	}
+	return 28, 4
 }

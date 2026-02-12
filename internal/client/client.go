@@ -511,11 +511,18 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				var x, y int32
 				if !posReady.Swap(false) {
-					continue
+					// Poll current position to catch external movement
+					mx, my, err := c.mouse.GetPosition()
+					if err != nil {
+						continue
+					}
+					x, y = int32(mx), int32(my)
+				} else {
+					x = latestX.Load()
+					y = latestY.Load()
 				}
-				x := latestX.Load()
-				y := latestY.Load()
 				if x == lastSentX.Load() && y == lastSentY.Load() {
 					continue
 				}
@@ -558,6 +565,8 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			c.mouse.LeftClick()
 		case "k":
 			c.mouse.Type(msg.Text)
+		case "a":
+			c.mouse.MoveTo(msg.X, msg.Y)
 		}
 	}
 }

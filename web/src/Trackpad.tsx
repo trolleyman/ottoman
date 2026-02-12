@@ -80,6 +80,7 @@ function TouchArea({
   const touchStartTime = useRef(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const pointerActive = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -89,6 +90,7 @@ function TouchArea({
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
     send({ t: "s", touch: true });
+    inputRef.current?.focus();
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -135,6 +137,7 @@ function TouchArea({
     pointerActive.current = true;
     send({ t: "s", touch: false });
     trackpadRef.current?.requestPointerLock();
+    inputRef.current?.focus();
   };
 
   useEffect(() => {
@@ -188,7 +191,18 @@ function TouchArea({
       onTouchMove={connected ? onTouchMove : undefined}
       onTouchEnd={connected ? onTouchEnd : undefined}
       onPointerDown={connected ? onPointerDown : undefined}
+      onClick={() => inputRef.current?.focus()}
     >
+      <input
+        ref={inputRef}
+        type="text"
+        className="opacity-0 fixed top-0 left-0 h-0 w-0 pointer-events-none"
+        autoComplete="off"
+        onChange={(e) => {
+          if (e.target.value) send({ t: "k", text: e.target.value });
+          e.target.value = "";
+        }}
+      />
       {!connected && (
         <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
           {!silent ? (
@@ -259,6 +273,7 @@ export function Trackpad({
           cursorPos={cursorPos}
           connected={connected}
           loading={loading}
+          onSetPosition={(x, y) => send({ t: "a", x, y })}
         />
       </div>
     </section>

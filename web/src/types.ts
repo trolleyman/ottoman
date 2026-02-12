@@ -54,24 +54,12 @@ export interface WakeTarget {
   status?: string;
 }
 
-export type TrackpadSendArgs = {
-    t: "s",
-    touch?: boolean,
-} | {
-    t: "m"
-    dx: number
-    dy: number
-} | {
-    t: "e"
-} | {
-    t: "c"
-} | {
-    t: "k"
-    text: string
-}
+export type TrackpadRecvArgs = { t: "p"; x?: number; y?: number };
 
-export type TrackpadRecvArgs = {
-  t: "p",
-  x: number
-  y: number
-}
+export type TrackpadSendArgs =
+  | { t: "s"; touch: boolean }
+  | { t: "m"; dx: number; dy: number }
+  | { t: "e" }
+  | { t: "c" }
+  | { t: "k"; text: string }
+  | { t: "a"; x: number; y: number };

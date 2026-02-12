@@ -8,12 +8,14 @@ export function MonitorDisplay({
   cursorPos,
   connected,
   loading,
+  onSetPosition,
 }: {
   layouts: Layout[];
   currentLayout: string;
   cursorPos: { x: number; y: number } | null;
   connected: boolean;
   loading?: boolean;
+  onSetPosition?: (x: number, y: number) => void;
 }) {
   const [containerWidth, setContainerWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -85,6 +87,17 @@ export function MonitorDisplay({
           <div
             className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)]"
             style={{ left: dotX, top: dotY }}
+          />
+        )}
+        {onSetPosition && (
+          <div
+            className="absolute inset-0 cursor-crosshair z-20"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = Math.round((e.clientX - rect.left) / scale + minX);
+              const y = Math.round((e.clientY - rect.top) / scale + minY);
+              onSetPosition(x, y);
+            }}
           />
         )}
       </div>

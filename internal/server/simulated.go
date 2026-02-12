@@ -744,6 +744,16 @@ func (m *TopologyMouse) MoveRelative(dx, dy float64) error {
 	return m.Move(intX, intY)
 }
 
+func (m *TopologyMouse) MoveTo(x, y int) error {
+	m.s.mu.RLock()
+	defer m.s.mu.RUnlock()
+	if m.isValid(x, y) {
+		m.x, m.y = x, y
+		return m.MouseController.MoveTo(x, y)
+	}
+	return errors.New("invalid position")
+}
+
 func (m *TopologyMouse) Move(dx, dy int) error {
 	m.s.mu.RLock()
 	defer m.s.mu.RUnlock()
@@ -940,6 +950,8 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 			log.Printf("[SIM] Mouse Click")
 		case "k":
 			log.Printf("[SIM] Typed: %s", msg.Text)
+		case "a":
+			mouse.MoveTo(msg.X, msg.Y)
 		}
 	}
 
