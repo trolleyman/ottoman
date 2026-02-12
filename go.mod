@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/coder/websocket v1.8.14
 	github.com/go-ole/go-ole v1.3.0
 	github.com/magefile/mage v1.15.0
 	github.com/pelletier/go-toml/v2 v2.2.3

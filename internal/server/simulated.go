@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,13 +12,16 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
+	"github.com/trolleyman/ottoman/internal/input"
 )
 
 type clientState int
@@ -53,10 +57,11 @@ type SimulatedServer struct {
 	bootTimer *time.Timer
 	bootDelay time.Duration
 
-	wakeTargets   map[string]config.WakeTarget
-	layouts       *display.Layouts
-	currentLayout string
-	monitors      []display.MonitorInfo
+	wakeTargets     map[string]config.WakeTarget
+	layouts         *display.Layouts
+	currentLayout   string
+	monitors        []display.MonitorInfo
+	trackpadCancels []context.CancelFunc
 }
 
 // RunSimulated creates and starts a simulated server.
@@ -203,6 +208,9 @@ func (s *SimulatedServer) setupRoutes() error {
 
 	// Client status (simulated)
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
+
+	// Trackpad (WebSocket, simulated)
+	s.router.HandleFunc("GET /api/trackpad", s.requireAuth(s.handleTrackpad))
 
 	// Admin endpoints (no auth, for dev convenience)
 	s.router.HandleFunc("POST /api/sim/reset", s.handleSimReset)
@@ -616,6 +624,141 @@ func (s *SimulatedServer) handleListMonitors(w http.ResponseWriter, r *http.Requ
 	s.mu.RUnlock()
 
 	common.WriteJSON(w, http.StatusOK, monitors)
+}
+
+// --- Trackpad handler ---
+
+// computeScreenBounds returns the bounding box of all active monitors.
+func (s *SimulatedServer) computeScreenBounds() (minX, minY, maxX, maxY int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	first := true
+	for _, m := range s.monitors {
+		if m.Active != nil {
+			left := m.Active.PositionX
+			top := m.Active.PositionY
+			right := left + m.Active.Width
+			bottom := top + m.Active.Height
+			if first {
+				minX, minY, maxX, maxY = left, top, right, bottom
+				first = false
+			} else {
+				if left < minX {
+					minX = left
+				}
+				if top < minY {
+					minY = top
+				}
+				if right > maxX {
+					maxX = right
+				}
+				if bottom > maxY {
+					maxY = bottom
+				}
+			}
+		}
+	}
+	if first {
+		maxX = 1920
+		maxY = 1080
+	}
+	return
+}
+
+func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request) {
+	if !s.clientOnlineOrError(w, "/api/trackpad") {
+		return
+	}
+
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		log.Printf("[SIM] Trackpad WebSocket accept error: %v", err)
+		return
+	}
+	defer conn.CloseNow()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	s.mu.Lock()
+	s.trackpadCancels = append(s.trackpadCancels, cancel)
+	s.mu.Unlock()
+
+	minX, minY, maxX, maxY := s.computeScreenBounds()
+	mouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, minX, minY, maxX-1, maxY-1)
+
+	var latestX, latestY atomic.Int32
+	var posReady atomic.Bool
+
+	engine := input.NewInertiaEngine(mouse, 1.5, 0.92, func(x, y int) {
+		latestX.Store(int32(x))
+		latestY.Store(int32(y))
+		posReady.Store(true)
+		log.Printf("[SIM] Pointer: (%d, %d)", x, y)
+	})
+
+	log.Printf("[SIM] Trackpad connected")
+
+	// Position update sender (60Hz), skip if position unchanged
+	var lastSentX, lastSentY atomic.Int32
+	lastSentX.Store(int32((minX+maxX)/2 + 1)) // ensure first send
+	lastSentY.Store(int32((minY+maxY)/2 + 1))
+	go func() {
+		ticker := time.NewTicker(16 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !posReady.Swap(false) {
+					continue
+				}
+				x := latestX.Load()
+				y := latestY.Load()
+				if x == lastSentX.Load() && y == lastSentY.Load() {
+					continue
+				}
+				lastSentX.Store(x)
+				lastSentY.Store(y)
+				msg := common.TrackpadMessage{
+					Type: "p",
+					X:    int(x),
+					Y:    int(y),
+				}
+				data, _ := json.Marshal(msg)
+				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Read loop
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			break
+		}
+
+		var msg common.TrackpadMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		switch msg.Type {
+		case "s":
+			touch := msg.Touch != nil && *msg.Touch
+			engine.Start(touch)
+		case "m":
+			engine.Move(msg.DX, msg.DY)
+		case "e":
+			engine.End()
+		}
+	}
+
+	log.Printf("[SIM] Trackpad disconnected")
 }
 
 // --- Admin endpoints ---

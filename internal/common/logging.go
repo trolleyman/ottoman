@@ -1,7 +1,9 @@
 package common
 
 import (
+	"bufio"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -24,4 +26,9 @@ type logResponseWriter struct {
 func (w *logResponseWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack implements http.Hijacker so WebSocket upgrades work through the logging middleware.
+func (w *logResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.ResponseWriter.(http.Hijacker).Hijack()
 }

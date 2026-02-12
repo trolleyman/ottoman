@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/common"
 )
@@ -90,6 +91,9 @@ func (s *Server) setupRoutes() error {
 
 	// Client status
 	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
+
+	// Trackpad (WebSocket proxy to client)
+	s.router.HandleFunc("GET /api/trackpad", s.requireAuth(s.handleTrackpadProxy))
 
 	if err := common.SetupSPAHandler(s.router); err != nil {
 		return errors.Wrap(err, "")
@@ -421,6 +425,58 @@ func (s *Server) handleClientStatus(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
 		Status: "ok",
 	})
+}
+
+// handleTrackpadProxy proxies a WebSocket connection to the client's trackpad endpoint.
+func (s *Server) handleTrackpadProxy(w http.ResponseWriter, r *http.Request) {
+	// Accept browser WebSocket
+	browserConn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		log.Printf("Trackpad proxy: accept error: %v", err)
+		return
+	}
+	defer browserConn.CloseNow()
+
+	// Dial client WebSocket
+	clientURL := fmt.Sprintf("ws://%s/api/trackpad", s.config.ClientAddr)
+	dialOpts := &websocket.DialOptions{}
+	if s.config.AuthToken != "" {
+		dialOpts.HTTPHeader = http.Header{
+			"Authorization": []string{"Bearer " + s.config.AuthToken},
+		}
+	}
+
+	ctx := r.Context()
+	clientConn, _, err := websocket.Dial(ctx, clientURL, dialOpts)
+	if err != nil {
+		log.Printf("Trackpad proxy: failed to connect to client: %v", err)
+		browserConn.Close(websocket.StatusInternalError, "client unreachable")
+		return
+	}
+	defer clientConn.CloseNow()
+
+	log.Printf("Trackpad proxy: connected")
+
+	// Bidirectional pipe
+	errc := make(chan error, 2)
+	go func() { errc <- pipeWebSocket(ctx, browserConn, clientConn) }()
+	go func() { errc <- pipeWebSocket(ctx, clientConn, browserConn) }()
+
+	err = <-errc
+	log.Printf("Trackpad proxy: closed: %v", err)
+}
+
+// pipeWebSocket copies messages from src to dst until an error occurs.
+func pipeWebSocket(ctx context.Context, src, dst *websocket.Conn) error {
+	for {
+		msgType, data, err := src.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if err := dst.Write(ctx, msgType, data); err != nil {
+			return err
+		}
+	}
 }
 
 // proxyToClient sends a request to the client

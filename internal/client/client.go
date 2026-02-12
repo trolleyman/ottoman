@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,13 +15,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
+	"github.com/trolleyman/ottoman/internal/input"
 )
 
 // Client is the display control agent running on the desktop
@@ -31,6 +35,7 @@ type Client struct {
 	server        *http.Server
 	layouts       *display.Layouts
 	displayMgr    display.Manager
+	mouse         input.MouseController
 	startTime     time.Time
 	currentLayout string
 }
@@ -50,11 +55,18 @@ func New(cfg *Config) (*Client, error) {
 		return nil, errors.Wrap(err, "failed to create display manager")
 	}
 
+	// Create mouse controller
+	mouse, err := input.NewMouseController()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create mouse controller")
+	}
+
 	c := &Client{
 		config:     cfg,
 		configPath: config.ConfigPath(),
 		layouts:    store,
 		displayMgr: mgr,
+		mouse:      mouse,
 		startTime:  time.Now(),
 	}
 
@@ -90,6 +102,9 @@ func (c *Client) setupRoutes() error {
 
 	// Shutdown
 	c.router.HandleFunc("POST /api/shutdown", c.requireAuth(c.handleShutdown))
+
+	// Trackpad (WebSocket)
+	c.router.HandleFunc("GET /api/trackpad", c.requireAuth(c.handleTrackpad))
 
 	if err := common.SetupSPAHandler(c.router); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")
@@ -451,6 +466,96 @@ func (c *Client) handleShutdown(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Shutdown command failed: %v: %s", err, string(out))
 		}
 	}()
+}
+
+// handleTrackpad handles WebSocket connections for trackpad input.
+func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		log.Printf("Trackpad WebSocket accept error: %v", err)
+		return
+	}
+	defer conn.CloseNow()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	// Throttled position sender: latest position stored atomically, sent at 10Hz
+	var latestX, latestY atomic.Int32
+	var posReady atomic.Bool
+
+	sensitivity := c.config.TrackpadSensitivity
+	if sensitivity <= 0 {
+		sensitivity = 1.5
+	}
+	friction := c.config.TrackpadFriction
+	if friction <= 0 {
+		friction = 0.92
+	}
+
+	engine := input.NewInertiaEngine(c.mouse, sensitivity, friction, func(x, y int) {
+		latestX.Store(int32(x))
+		latestY.Store(int32(y))
+		posReady.Store(true)
+	})
+
+	// Position update sender goroutine (60Hz), skip if position unchanged
+	var lastSentX, lastSentY atomic.Int32
+	lastSentX.Store(latestX.Load() + 1) // ensure first send
+	lastSentY.Store(latestY.Load() + 1)
+	go func() {
+		ticker := time.NewTicker(16 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !posReady.Swap(false) {
+					continue
+				}
+				x := latestX.Load()
+				y := latestY.Load()
+				if x == lastSentX.Load() && y == lastSentY.Load() {
+					continue
+				}
+				lastSentX.Store(x)
+				lastSentY.Store(y)
+				msg := common.TrackpadMessage{
+					Type: "p",
+					X:    int(x),
+					Y:    int(y),
+				}
+				data, _ := json.Marshal(msg)
+				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Read loop
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			break
+		}
+
+		var msg common.TrackpadMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		switch msg.Type {
+		case "s":
+			touch := msg.Touch != nil && *msg.Touch
+			engine.Start(touch)
+		case "m":
+			engine.Move(msg.DX, msg.DY)
+		case "e":
+			engine.End()
+		}
+	}
 }
 
 // Run starts the client

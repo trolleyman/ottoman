@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // --- Types matching Go API responses ---
 
@@ -433,6 +433,234 @@ function LoginForm({
   );
 }
 
+// --- Trackpad ---
+
+function useTrackpadWebSocket(authed: boolean) {
+  const [connected, setConnected] = useState(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const connect = useCallback(() => {
+    if (!authed) return;
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
+    wsRef.current = ws;
+
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => {
+      setConnected(false);
+      setCursorPos(null);
+      reconnectRef.current = setTimeout(connect, 3000);
+    };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.t === "p") {
+          setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
+        }
+      } catch { /* ignore parse errors */ }
+    };
+  }, [authed]);
+
+  useEffect(() => {
+    connect();
+    return () => {
+      wsRef.current?.close();
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
+    };
+  }, [connect]);
+
+  const send = useCallback((msg: object) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  return { connected, cursorPos, send };
+}
+
+function Trackpad({
+  connected,
+  send,
+}: {
+  connected: boolean;
+  send: (msg: object) => void;
+}) {
+  const trackpadRef = useRef<HTMLDivElement>(null);
+  const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
+  const lastMoveTime = useRef(0);
+  const pointerActive = useRef(false);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+    send({ t: "s", touch: true });
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const now = performance.now();
+    if (now - lastMoveTime.current < 16) return;
+    lastMoveTime.current = now;
+
+    const touch = e.touches[0];
+    if (lastTouchRef.current) {
+      const dx = touch.clientX - lastTouchRef.current.x;
+      const dy = touch.clientY - lastTouchRef.current.y;
+      send({ t: "m", dx, dy });
+      lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    lastTouchRef.current = null;
+    send({ t: "e" });
+  };
+
+  // Mouse drag via Pointer Lock: cursor stays locked inside the trackpad div
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    pointerActive.current = true;
+    send({ t: "s", touch: false });
+    trackpadRef.current?.requestPointerLock();
+  };
+
+  useEffect(() => {
+    if (!connected) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!pointerActive.current) return;
+      const now = performance.now();
+      if (now - lastMoveTime.current < 16) return;
+      lastMoveTime.current = now;
+      send({ t: "m", dx: e.movementX, dy: e.movementY });
+    };
+
+    const handleMouseUp = () => {
+      if (!pointerActive.current) return;
+      pointerActive.current = false;
+      document.exitPointerLock();
+      send({ t: "e" });
+    };
+
+    const handlePointerLockChange = () => {
+      if (!document.pointerLockElement && pointerActive.current) {
+        pointerActive.current = false;
+        send({ t: "e" });
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("pointerlockchange", handlePointerLockChange);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("pointerlockchange", handlePointerLockChange);
+      if (document.pointerLockElement) document.exitPointerLock();
+    };
+  }, [connected, send]);
+
+  return (
+    <div
+      ref={trackpadRef}
+      className={`w-full aspect-square sm:max-w-sm sm:shrink-0 rounded-xl border-2 transition-colors select-none touch-none ${connected
+          ? "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
+          : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
+        }`}
+      style={connected ? {
+        backgroundImage: "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
+        backgroundSize: "20px 20px",
+      } : undefined}
+      onTouchStart={connected ? onTouchStart : undefined}
+      onTouchMove={connected ? onTouchMove : undefined}
+      onTouchEnd={connected ? onTouchEnd : undefined}
+      onPointerDown={connected ? onPointerDown : undefined}
+    >
+      {!connected && (
+        <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+          Disconnected
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CursorPositionDisplay({
+  layouts,
+  currentLayout,
+  cursorPos,
+  connected,
+}: {
+  layouts: Layout[];
+  currentLayout: string;
+  cursorPos: { x: number; y: number } | null;
+  connected: boolean;
+}) {
+  const [containerWidth, setContainerWidth] = useState(0);
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  const containerRef = useCallback((el: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      setContainerWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    observerRef.current = observer;
+  }, []);
+
+  useEffect(() => {
+    return () => { observerRef.current?.disconnect(); };
+  }, []);
+
+  if (!connected || !cursorPos) return null;
+
+  const layout = layouts.find((l) => l.id === currentLayout) ?? layouts[0];
+  const monitors = layout?.monitors ?? [];
+  if (monitors.length === 0) return null;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const m of monitors) {
+    minX = Math.min(minX, m.position_x);
+    minY = Math.min(minY, m.position_y);
+    maxX = Math.max(maxX, m.position_x + m.width);
+    maxY = Math.max(maxY, m.position_y + m.height);
+  }
+  const totalW = maxX - minX;
+  const totalH = maxY - minY;
+  if (totalW <= 0 || totalH <= 0) return null;
+
+  // Use measured width, fall back to 300px on first frame before ResizeObserver fires
+  const effectiveWidth = containerWidth || 300;
+  const maxH = 250;
+  const scale = Math.min(effectiveWidth / totalW, maxH / totalH);
+  const dotX = (cursorPos.x - minX) * scale;
+  const dotY = (cursorPos.y - minY) * scale;
+
+  return (
+    <div ref={containerRef} className="flex-1 min-w-0 w-full flex flex-col items-center gap-1">
+      <div className="relative">
+        <MiniLayoutPreview monitors={monitors} scale={scale} />
+        <div
+          className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)]"
+          style={{ left: dotX, top: dotY }}
+        />
+      </div>
+      <span className="text-[10px] text-zinc-500 font-mono">
+        {cursorPos.x}, {cursorPos.y}
+      </span>
+    </div>
+  );
+}
+
 // --- App ---
 
 export default function App() {
@@ -455,6 +683,8 @@ export default function App() {
   const [wakeTargetsError, setWakeTargetsError] = useState<string | null>(null);
   const [wakingTargets, setWakingTargets] = useState<Set<string>>(new Set());
   const [shuttingDownTargets, setShuttingDownTargets] = useState<Set<string>>(new Set());
+
+  const { connected: trackpadConnected, cursorPos, send: trackpadSend } = useTrackpadWebSocket(!!authed);
 
   // Check auth on mount
   useEffect(() => {
@@ -693,9 +923,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
-      <div className="max-w-4xl mx-auto px-6 py-10">
+      <div className="max-w-4xl mx-auto px-6 py-10 space-y-10">
         {/* Header */}
-        <header className="mb-10 flex items-center justify-between">
+        <header className="flex items-center justify-between">
           <OttomanWithLogo>
             <p className="text-zinc-500 italic text-sm">Display Management</p>
           </OttomanWithLogo>
@@ -716,7 +946,7 @@ export default function App() {
         </header>
 
         {/* Wake on LAN */}
-        <section className="mb-10">
+        <section>
           <h2 className="text-lg font-semibold text-zinc-200 mb-4">Wake on LAN</h2>
           {wakeTargetsLoading && wakeTargets.length === 0 ? (
             <div className="text-zinc-500 text-sm">Loading targets...</div>
@@ -741,20 +971,18 @@ export default function App() {
                       if (isOffline) wake(target.name);
                       if (isOnline) shutdown(target.name);
                     }}
-                    className={`rounded-xl border p-4 transition-colors text-left min-w-[140px] cursor-pointer ${
-                      isOnline
+                    className={`rounded-xl border p-4 transition-colors text-left min-w-[140px] cursor-pointer ${isOnline
                         ? "border-green-500/30 bg-green-500/10 hover:bg-green-500/20"
                         : isBusy
                           ? "border-zinc-500/30 bg-zinc-500/10 hover:bg-zinc-500/20"
                           : isOffline
                             ? "border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
                             : "border-zinc-700/50 bg-zinc-800/50 hover:bg-zinc-800"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className={`font-medium ${
-                        isOnline ? "text-green-400" : isBusy ? "text-zinc-300" : isOffline ? "text-red-400" : "text-zinc-200"
-                      }`}>
+                      <span className={`font-medium ${isOnline ? "text-green-400" : isBusy ? "text-zinc-300" : isOffline ? "text-red-400" : "text-zinc-200"
+                        }`}>
                         {target.name}
                       </span>
                       {isBusy && (
@@ -774,7 +1002,7 @@ export default function App() {
         </section>
 
         {/* Layouts */}
-        <section className="mb-10">
+        <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-zinc-200">Layouts</h2>
             {layouts.length > 0 && (
@@ -868,6 +1096,24 @@ export default function App() {
               ))}
             </div>
           )}
+        </section>
+
+        {/* Trackpad */}
+        <section>
+          <h2 className="text-lg font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+            Trackpad
+            <span className={`inline-block w-2 h-2 rounded-full ${trackpadConnected ? "bg-green-400" : "bg-red-400"
+              }`} />
+          </h2>
+          <div className="flex flex-col-reverse sm:flex-row gap-6 sm:items-start">
+            <Trackpad connected={trackpadConnected} send={trackpadSend} />
+            <CursorPositionDisplay
+              layouts={layouts}
+              currentLayout={currentLayout}
+              cursorPos={cursorPos}
+              connected={trackpadConnected}
+            />
+          </div>
         </section>
       </div>
     </div>

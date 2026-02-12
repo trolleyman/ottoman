@@ -41,9 +41,11 @@ type ServerConfig struct {
 
 // ClientConfig holds client configuration
 type ClientConfig struct {
-	ListenAddr string          `mapstructure:"listen_addr"`
-	AuthToken  string          `mapstructure:"auth_token"`
-	Layouts    []common.Layout `mapstructure:"layouts"`
+	ListenAddr           string          `mapstructure:"listen_addr"`
+	AuthToken            string          `mapstructure:"auth_token"`
+	Layouts              []common.Layout `mapstructure:"layouts"`
+	TrackpadSensitivity  float64         `mapstructure:"trackpad_sensitivity"`
+	TrackpadFriction     float64         `mapstructure:"trackpad_friction"`
 }
 
 // WakeTarget represents a device that can be woken via WoL
@@ -94,6 +96,8 @@ func setDefaults() {
 	// Client defaults
 	v.SetDefault("client.listen_addr", ":17294")
 	v.SetDefault("client.layouts", []common.Layout{})
+	v.SetDefault("client.trackpad_sensitivity", 1.5)
+	v.SetDefault("client.trackpad_friction", 0.92)
 }
 
 func addConfigPaths() {
