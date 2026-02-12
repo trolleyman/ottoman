@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { WakeTarget } from "./types";
 
 export function WakeTargets({
@@ -6,17 +6,49 @@ export function WakeTargets({
   refreshSignal,
   onWake,
   onShutdown,
+  onOnline,
+  onOffline,
 }: {
   authed: boolean;
   refreshSignal: { key: number; silent: boolean };
   onWake?: () => void;
   onShutdown?: () => void;
+  onOnline?: () => void;
+  onOffline?: () => void;
 }) {
   const [targets, setTargets] = useState<WakeTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [wakingTargets, setWakingTargets] = useState<Set<string>>(new Set());
   const [shuttingDownTargets, setShuttingDownTargets] = useState<Set<string>>(new Set());
+
+  const prevOnlineRef = useRef<Set<string>>(new Set());
+  const prevOfflineRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!authed) return;
+
+    const currentOnline = new Set(targets.filter((t) => t.status === "online").map((t) => t.name));
+    const currentOffline = new Set(targets.filter((t) => t.status === "offline").map((t) => t.name));
+
+    const isSetEqual = (a: Set<string>, b: Set<string>) =>
+      a.size === b.size && [...a].every((value) => b.has(value));
+
+    if (!isSetEqual(currentOnline, prevOnlineRef.current)) {
+      prevOnlineRef.current = currentOnline;
+      if (currentOnline.size > 0) {
+        onOnline?.();
+      }
+    }
+
+    if (!isSetEqual(currentOffline, prevOfflineRef.current)) {
+      prevOfflineRef.current = currentOffline;
+      if (currentOffline.size > 0) {
+        onOffline?.();
+      }
+    }
+  }, [targets, authed, onOnline, onOffline]);
 
   const fetchWakeTargets = useCallback(async (silent: boolean) => {
     if (!authed) return;

@@ -79,6 +79,8 @@ export default function App() {
           refreshSignal={refreshSignal}
           onWake={refresh}
           onShutdown={refresh}
+          onOnline={refresh}
+          onOffline={refresh}
         />
 
         <Layouts authed={!!authed} refreshSignal={refreshSignal} onChange={refresh} />
