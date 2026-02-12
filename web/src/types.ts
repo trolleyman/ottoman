@@ -61,5 +61,7 @@ export type TrackpadSendArgs =
   | { t: "m"; dx: number; dy: number }
   | { t: "e" }
   | { t: "c" }
+  | { t: "d" }
+  | { t: "u" }
   | { t: "k"; text: string }
   | { t: "a"; x: number; y: number };

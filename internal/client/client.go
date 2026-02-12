@@ -563,6 +563,10 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			engine.End()
 		case "c":
 			c.mouse.LeftClick()
+		case "d":
+			c.mouse.LeftDown()
+		case "u":
+			c.mouse.LeftUp()
 		case "k":
 			c.mouse.Type(msg.Text)
 		case "a":

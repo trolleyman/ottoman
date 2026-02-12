@@ -17,6 +17,10 @@ type MouseController interface {
 	MoveRelative(dx, dy float64) error
 	// LeftClick performs a left mouse click.
 	LeftClick() error
+	// LeftDown presses the left mouse button.
+	LeftDown() error
+	// LeftUp releases the left mouse button.
+	LeftUp() error
 	// Type types the given text.
 	Type(text string) error
 }

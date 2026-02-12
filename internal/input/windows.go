@@ -112,6 +112,14 @@ func (m *WindowsMouse) LeftClick() error {
 	return m.sendMouseInput(mouseEventFLeftDown | mouseEventFLeftUp)
 }
 
+func (m *WindowsMouse) LeftDown() error {
+	return m.sendMouseInput(mouseEventFLeftDown)
+}
+
+func (m *WindowsMouse) LeftUp() error {
+	return m.sendMouseInput(mouseEventFLeftUp)
+}
+
 func (m *WindowsMouse) sendMouseInput(flags uint32) error {
 	size, unionOffset := getInputLayout()
 	buffer := make([]byte, size*2) // Enough for up to 2 events, though we might only use 1 or 2

@@ -79,6 +79,8 @@ function TouchArea({
   const lastMoveTime = useRef(0);
   const touchStartTime = useRef(0);
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const lastTouchEndTime = useRef(0);
+  const isDragging = useRef(false);
   const pointerActive = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -86,7 +88,13 @@ function TouchArea({
     e.preventDefault();
     const touch = e.touches[0];
     touchStartTime.current = performance.now();
-    console.log('onTouchStart', touchStartTime.current)
+
+    // Check for double-tap-drag start
+    if (touchStartTime.current - lastTouchEndTime.current < 300) {
+      isDragging.current = true;
+      send({ t: "d" });
+    }
+
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
     send({ t: "s", touch: true });
@@ -96,7 +104,6 @@ function TouchArea({
   const onTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
     const now = performance.now();
-    console.log('onTouchMove', now)
     if (now - lastMoveTime.current < 16) return;
     lastMoveTime.current = now;
 
@@ -112,20 +119,22 @@ function TouchArea({
   const onTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
     const now = performance.now();
-    console.log('onTouchEnd', now)
-    if (touchStartPos.current && now - touchStartTime.current < 200) {
-      const touch = e.changedTouches[0];
-      const dx = touch.clientX - touchStartPos.current.x;
-      const dy = touch.clientY - touchStartPos.current.y;
-      console.log('dx', dx)
-      console.log('dy', dy)
-      console.log('touchStartPos', touchStartPos.current)
-      console.log('lastTouchRef', lastTouchRef.current)
-      if (Math.sqrt(dx * dx + dy * dy) < 10) {
-        console.log('send click')
-        send({ t: "c" });
+    lastTouchEndTime.current = now;
+
+    if (isDragging.current) {
+      send({ t: "u" });
+      isDragging.current = false;
+    } else {
+      if (touchStartPos.current && now - touchStartTime.current < 200) {
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - touchStartPos.current.x;
+        const dy = touch.clientY - touchStartPos.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 10) {
+          send({ t: "c" });
+        }
       }
     }
+
     touchStartPos.current = null;
     lastTouchRef.current = null;
     send({ t: "e" });

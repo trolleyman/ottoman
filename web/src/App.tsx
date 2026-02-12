@@ -102,7 +102,7 @@ export default function App() {
           send={send}
         />
 
-        <Keyboard send={send} />
+        <Keyboard send={send} connected={connected} />
       </div>
     </div>
   );

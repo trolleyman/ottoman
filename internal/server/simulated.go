@@ -948,6 +948,10 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 			engine.End()
 		case "c":
 			log.Printf("[SIM] Mouse Click")
+		case "d":
+			log.Printf("[SIM] Mouse Down")
+		case "u":
+			log.Printf("[SIM] Mouse Up")
 		case "k":
 			log.Printf("[SIM] Typed: %s", msg.Text)
 		case "a":

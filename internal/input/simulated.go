@@ -43,6 +43,14 @@ func (m *SimulatedMouse) LeftClick() error {
 	return nil
 }
 
+func (m *SimulatedMouse) LeftDown() error {
+	return nil
+}
+
+func (m *SimulatedMouse) LeftUp() error {
+	return nil
+}
+
 func (m *SimulatedMouse) Type(text string) error {
 	return nil
 }

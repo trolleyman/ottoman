@@ -7,6 +7,8 @@ package common
 //   - "e" (end): end drag, triggers inertia if touch mode
 //   - "p" (position): cursor position update (server -> browser)
 //   - "c" (click): mouse click
+//   - "d" (down): mouse down
+//   - "u" (up): mouse up
 //   - "k" (keyboard): keyboard input
 type TrackpadMessage struct {
 	Type  string  `json:"t"`
