@@ -3,8 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -33,6 +36,7 @@ var (
 )
 
 func main() {
+	setupLogging()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -764,4 +768,34 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(installCmd)
+}
+
+func setupLogging() {
+	var logDir string
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return // Can't find home dir, skip file logging
+	}
+
+	// Determine log directory based on OS
+	if os.Getenv("OS") == "Windows_NT" {
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		logDir = filepath.Join(localAppData, "ottoman", "logs")
+	} else {
+		logDir = filepath.Join(home, ".local", "share", "ottoman", "logs")
+	}
+
+	logPath := filepath.Join(logDir, "ottoman.log")
+	rl, err := common.NewRotatingLogger(logPath, 5*1024*1024, 5) // 5MB, 5 backups
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to setup file logging: %v\n", err)
+		return
+	}
+
+	// Log to both stderr and file
+	log.SetOutput(io.MultiWriter(os.Stderr, rl))
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 }
