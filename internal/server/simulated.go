@@ -675,6 +675,51 @@ func (s *SimulatedServer) computeScreenBounds() (minX, minY, maxX, maxY int) {
 	return
 }
 
+// TopologyMouse wraps a MouseController to clamp movement to active monitors.
+type TopologyMouse struct {
+	input.MouseController
+	x, y     int
+	monitors []display.MonitorInfo
+}
+
+func (m *TopologyMouse) MoveTo(dx, dy int) error {
+	// Try moving X and Y
+	nextX, nextY := m.x+dx, m.y+dy
+	if m.isValid(nextX, nextY) {
+		m.x, m.y = nextX, nextY
+		m.MouseController.MoveTo(dx, dy)
+		return nil
+	}
+
+	// Try moving only X
+	if m.isValid(nextX, m.y) {
+		m.x = nextX
+		m.MouseController.MoveTo(dx, 0)
+		return nil
+	}
+
+	// Try moving only Y
+	if m.isValid(m.x, nextY) {
+		m.y = nextY
+		m.MouseController.MoveTo(0, dy)
+		return nil
+	}
+
+	return nil
+}
+
+func (m *TopologyMouse) isValid(x, y int) bool {
+	for _, mon := range m.monitors {
+		if mon.Active != nil {
+			if x >= mon.Active.PositionX && x < mon.Active.PositionX+mon.Active.Width &&
+				y >= mon.Active.PositionY && y < mon.Active.PositionY+mon.Active.Height {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	if !s.clientOnlineOrError(w, "/api/trackpad") {
 		return
@@ -695,7 +740,14 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 	s.mu.Unlock()
 
 	minX, minY, maxX, maxY := s.computeScreenBounds()
-	mouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, minX, minY, maxX-1, maxY-1)
+	baseMouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, minX, minY, maxX-1, maxY-1)
+
+	mouse := &TopologyMouse{
+		MouseController: baseMouse,
+		x:               (minX + maxX) / 2,
+		y:               (minY + maxY) / 2,
+		monitors:        s.monitors,
+	}
 
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
