@@ -178,7 +178,8 @@ export function Trackpad({
       setLayouts(sortedLayouts(layoutsData.layouts ?? []));
       setCurrentLayout(layoutsData.current_layout ?? "");
     } catch {
-      // ignore errors for display-only fetch
+      setLayouts([]);
+      setCurrentLayout("");
     } finally {
       setLoading(false);
     }
