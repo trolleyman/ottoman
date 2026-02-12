@@ -61,18 +61,18 @@ function MonitorCard({ monitor }: { monitor: MonitorInfo }) {
 
 export function Monitors({
   authed,
-  refreshKey,
+  refreshSignal,
 }: {
   authed: boolean;
-  refreshKey: number;
+  refreshSignal: { key: number; silent: boolean };
 }) {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMonitors = useCallback(async () => {
+  const fetchMonitors = useCallback(async (silent: boolean) => {
     if (!authed) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const monitorsData = await fetchJSON<MonitorInfo[]>("/api/monitors");
       setMonitors(sortedMonitors(monitorsData));
@@ -85,8 +85,8 @@ export function Monitors({
   }, [authed]);
 
   useEffect(() => {
-    fetchMonitors();
-  }, [fetchMonitors, refreshKey]);
+    fetchMonitors(refreshSignal.silent);
+  }, [fetchMonitors, refreshSignal]);
 
   return (
     <section>

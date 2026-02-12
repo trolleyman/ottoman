@@ -8,9 +8,8 @@ import { Layouts } from "./Layouts";
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  // refreshKey is used to trigger a refresh of all components when the user clicks "Refresh"
-  // or when a layout switch happens (which affects monitors and current layout)
-  const [refreshKey, setRefreshKey] = useState(0);
+  // refreshSignal triggers refreshes. silent=true avoids showing loading indicators for polling.
+  const [refreshSignal, setRefreshSignal] = useState({ key: 0, silent: false });
 
   // Check auth on mount
   useEffect(() => {
@@ -19,8 +18,17 @@ export default function App() {
       .catch(() => setAuthed(false));
   }, []);
 
+  // Periodic refresh
+  useEffect(() => {
+    if (!authed) return;
+    const interval = setInterval(() => {
+      setRefreshSignal((prev) => ({ key: prev.key + 1, silent: true }));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [authed]);
+
   const refresh = useCallback(() => {
-    setRefreshKey((k) => k + 1);
+    setRefreshSignal((prev) => ({ key: prev.key + 1, silent: false }));
   }, []);
 
   const logout = async () => {
@@ -66,13 +74,18 @@ export default function App() {
           </div>
         </header>
 
-        <WakeTargets authed={!!authed} refreshKey={refreshKey} />
+        <WakeTargets
+          authed={!!authed}
+          refreshSignal={refreshSignal}
+          onWake={refresh}
+          onShutdown={refresh}
+        />
 
-        <Layouts authed={!!authed} refreshKey={refreshKey} onChange={refresh} />
+        <Layouts authed={!!authed} refreshSignal={refreshSignal} onChange={refresh} />
 
-        <Monitors authed={!!authed} refreshKey={refreshKey} />
+        <Monitors authed={!!authed} refreshSignal={refreshSignal} />
 
-        <Trackpad authed={!!authed} refreshKey={refreshKey} />
+        <Trackpad authed={!!authed} refreshSignal={refreshSignal} />
       </div>
     </div>
   );

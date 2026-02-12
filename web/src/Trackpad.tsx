@@ -160,29 +160,33 @@ function TouchArea({
 
 export function Trackpad({
   authed,
-  refreshKey,
+  refreshSignal,
 }: {
   authed: boolean;
-  refreshKey: number;
+  refreshSignal: { key: number; silent: boolean };
 }) {
   const { connected, cursorPos, send } = useTrackpadWebSocket(authed);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [currentLayout, setCurrentLayout] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const fetchLayouts = useCallback(async () => {
+  const fetchLayouts = useCallback(async (silent: boolean) => {
     if (!authed) return;
+    if (!silent) setLoading(true);
     try {
       const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
       setLayouts(sortedLayouts(layoutsData.layouts ?? []));
       setCurrentLayout(layoutsData.current_layout ?? "");
     } catch {
       // ignore errors for display-only fetch
+    } finally {
+      setLoading(false);
     }
   }, [authed]);
 
   useEffect(() => {
-    fetchLayouts();
-  }, [fetchLayouts, refreshKey]);
+    fetchLayouts(refreshSignal.silent);
+  }, [fetchLayouts, refreshSignal]);
 
   return (
     <section>
@@ -201,6 +205,7 @@ export function Trackpad({
           currentLayout={currentLayout}
           cursorPos={cursorPos}
           connected={connected}
+          loading={loading}
         />
       </div>
     </section>

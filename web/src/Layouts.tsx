@@ -5,11 +5,11 @@ import { LayoutCard } from "./LayoutCard";
 
 export function Layouts({
   authed,
-  refreshKey,
+  refreshSignal,
   onChange,
 }: {
   authed: boolean;
-  refreshKey: number;
+  refreshSignal: { key: number; silent: boolean };
   onChange: () => void;
 }) {
   const [layouts, setLayouts] = useState<Layout[]>([]);
@@ -22,9 +22,9 @@ export function Layouts({
   const [newLayoutName, setNewLayoutName] = useState("");
   const [newLayoutEmoji, setNewLayoutEmoji] = useState("");
 
-  const fetchLayouts = useCallback(async () => {
+  const fetchLayouts = useCallback(async (silent: boolean) => {
     if (!authed) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
       setLayouts(sortedLayouts(layoutsData.layouts ?? []));
@@ -38,8 +38,8 @@ export function Layouts({
   }, [authed]);
 
   useEffect(() => {
-    fetchLayouts();
-  }, [fetchLayouts, refreshKey]);
+    fetchLayouts(refreshSignal.silent);
+  }, [fetchLayouts, refreshSignal]);
 
   const switchLayout = async (name: string) => {
     if (switching || name === currentLayout) return;
@@ -74,7 +74,7 @@ export function Layouts({
       });
       const data = await res.json();
       if (data.success) {
-        fetchLayouts();
+        fetchLayouts(false);
       } else {
         alert(data.message || "Failed to remove layout");
       }
@@ -92,7 +92,7 @@ export function Layouts({
       });
       const data = await res.json();
       if (data.success) {
-        fetchLayouts();
+        fetchLayouts(false);
       } else {
         alert(data.message || "Failed to save layout");
       }

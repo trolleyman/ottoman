@@ -3,10 +3,14 @@ import type { WakeTarget } from "./types";
 
 export function WakeTargets({
   authed,
-  refreshKey,
+  refreshSignal,
+  onWake,
+  onShutdown,
 }: {
   authed: boolean;
-  refreshKey: number;
+  refreshSignal: { key: number; silent: boolean };
+  onWake?: () => void;
+  onShutdown?: () => void;
 }) {
   const [targets, setTargets] = useState<WakeTarget[]>([]);
   const [loading, setLoading] = useState(false);
@@ -14,9 +18,9 @@ export function WakeTargets({
   const [wakingTargets, setWakingTargets] = useState<Set<string>>(new Set());
   const [shuttingDownTargets, setShuttingDownTargets] = useState<Set<string>>(new Set());
 
-  const fetchWakeTargets = useCallback(async () => {
+  const fetchWakeTargets = useCallback(async (silent: boolean) => {
     if (!authed) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/wake/targets");
       if (res.ok) {
@@ -32,8 +36,8 @@ export function WakeTargets({
   }, [authed]);
 
   useEffect(() => {
-    fetchWakeTargets();
-  }, [fetchWakeTargets, refreshKey]);
+    fetchWakeTargets(refreshSignal.silent);
+  }, [fetchWakeTargets, refreshSignal]);
 
   // Poll wake targets while any target is waking or shutting down
   useEffect(() => {
@@ -71,6 +75,7 @@ export function WakeTargets({
   }, [wakingTargets, shuttingDownTargets]);
 
   const wake = async (target: string) => {
+    setWakingTargets((prev) => new Set(prev).add(target));
     try {
       const res = await fetch("/api/wake", {
         method: "POST",
@@ -79,17 +84,20 @@ export function WakeTargets({
       });
       const data = await res.json();
       if (data.success) {
-        setWakingTargets((prev) => new Set(prev).add(target));
+        onWake?.();
       } else {
         alert("Failed: " + data.message);
+        setWakingTargets((prev) => { const next = new Set(prev); next.delete(target); return next; });
       }
     } catch {
       alert("Failed to send wake packet");
+      setWakingTargets((prev) => { const next = new Set(prev); next.delete(target); return next; });
     }
   };
 
   const shutdown = async (target: string) => {
     if (!confirm(`Are you sure you want to shut down ${target}?`)) return;
+    setShuttingDownTargets((prev) => new Set(prev).add(target));
     try {
       const res = await fetch("/api/shutdown", {
         method: "POST",
@@ -97,12 +105,14 @@ export function WakeTargets({
       });
       const data = await res.json();
       if (data.success) {
-        setShuttingDownTargets((prev) => new Set(prev).add(target));
+        onShutdown?.();
       } else {
         alert("Failed: " + data.message);
+        setShuttingDownTargets((prev) => { const next = new Set(prev); next.delete(target); return next; });
       }
     } catch {
       alert("Failed to send shutdown command");
+      setShuttingDownTargets((prev) => { const next = new Set(prev); next.delete(target); return next; });
     }
   };
 

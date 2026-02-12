@@ -7,11 +7,13 @@ export function MonitorDisplay({
   currentLayout,
   cursorPos,
   connected,
+  loading,
 }: {
   layouts: Layout[];
   currentLayout: string;
   cursorPos: { x: number; y: number } | null;
   connected: boolean;
+  loading?: boolean;
 }) {
   const [containerWidth, setContainerWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -39,14 +41,19 @@ export function MonitorDisplay({
 
   // No monitor data — show placeholder
   if (monitors.length === 0) {
-    const placeholderH = Math.round(effectiveWidth * 9 / 16);
+    // Assume 1920x1080 reference for scale
+    const scale = effectiveWidth / 1920;
+    const placeholderW = Math.min(effectiveWidth, 1920 * scale);
+    const placeholderH = 1080 * scale;
+    const isUnknown = !loading;
+
     return (
       <div ref={containerRef} className="flex-1 min-w-0 w-full flex flex-col items-center gap-1">
         <div
-          className="w-full rounded-lg border border-dashed border-zinc-700/50 bg-zinc-800/20 flex items-center justify-center"
-          style={{ height: placeholderH }}
+          className={`w-full rounded-lg border flex items-center justify-center transition-colors ${isUnknown ? "border-red-500/50 bg-zinc-900/40 border-dashed" : "border-zinc-700/50 bg-zinc-800/20 border-dashed"}`}
+          style={{ height: placeholderH, maxWidth: placeholderW }}
         >
-          <span className="text-zinc-600 text-sm animate-pulse">Unknown</span>
+          <span className={`text-sm ${isUnknown ? "text-red-400" : "text-zinc-600 animate-pulse"}`}>{loading ? "Loading..." : "Unknown"}</span>
         </div>
       </div>
     );
