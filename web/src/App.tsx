@@ -568,7 +568,7 @@ function Trackpad({
   return (
     <div
       ref={trackpadRef}
-      className={`w-full aspect-square sm:max-w-sm sm:shrink-0 rounded-xl border-2 transition-colors select-none touch-none ${connected
+      className={`w-full aspect-square md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none ${connected
           ? "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
           : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
         }`}
@@ -590,7 +590,7 @@ function Trackpad({
   );
 }
 
-function CursorPositionDisplay({
+function MonitorDisplay({
   layouts,
   currentLayout,
   cursorPos,
@@ -621,11 +621,24 @@ function CursorPositionDisplay({
     return () => { observerRef.current?.disconnect(); };
   }, []);
 
-  if (!connected || !cursorPos) return null;
-
   const layout = layouts.find((l) => l.id === currentLayout) ?? layouts[0];
   const monitors = layout?.monitors ?? [];
-  if (monitors.length === 0) return null;
+  const effectiveWidth = containerWidth || 300;
+
+  // No monitor data — show placeholder
+  if (monitors.length === 0) {
+    const placeholderH = Math.round(effectiveWidth * 9 / 16);
+    return (
+      <div ref={containerRef} className="flex-1 min-w-0 w-full flex flex-col items-center gap-1">
+        <div
+          className="w-full rounded-lg border border-dashed border-zinc-700/50 bg-zinc-800/20 flex items-center justify-center"
+          style={{ height: placeholderH }}
+        >
+          <span className="text-zinc-600 text-sm animate-pulse">Unknown</span>
+        </div>
+      </div>
+    );
+  }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const m of monitors) {
@@ -636,27 +649,31 @@ function CursorPositionDisplay({
   }
   const totalW = maxX - minX;
   const totalH = maxY - minY;
-  if (totalW <= 0 || totalH <= 0) return null;
+  if (totalW <= 0 || totalH <= 0) return <div ref={containerRef} className="flex-1 min-w-0 w-full" />;
 
-  // Use measured width, fall back to 300px on first frame before ResizeObserver fires
-  const effectiveWidth = containerWidth || 300;
-  const maxH = 250;
+  const maxH = 300;
   const scale = Math.min(effectiveWidth / totalW, maxH / totalH);
-  const dotX = (cursorPos.x - minX) * scale;
-  const dotY = (cursorPos.y - minY) * scale;
+
+  const hasCursor = connected && cursorPos;
+  const dotX = hasCursor ? (cursorPos!.x - minX) * scale : 0;
+  const dotY = hasCursor ? (cursorPos!.y - minY) * scale : 0;
 
   return (
     <div ref={containerRef} className="flex-1 min-w-0 w-full flex flex-col items-center gap-1">
       <div className="relative">
         <MiniLayoutPreview monitors={monitors} scale={scale} />
-        <div
-          className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)]"
-          style={{ left: dotX, top: dotY }}
-        />
+        {hasCursor && (
+          <div
+            className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)]"
+            style={{ left: dotX, top: dotY }}
+          />
+        )}
       </div>
-      <span className="text-[10px] text-zinc-500 font-mono">
-        {cursorPos.x}, {cursorPos.y}
-      </span>
+      {hasCursor && (
+        <span className="text-[10px] text-zinc-500 font-mono">
+          {cursorPos!.x}, {cursorPos!.y}
+        </span>
+      )}
     </div>
   );
 }
@@ -923,7 +940,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
-      <div className="max-w-4xl mx-auto px-6 py-10 space-y-10">
+      <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
         {/* Header */}
         <header className="flex items-center justify-between">
           <OttomanWithLogo>
@@ -1105,9 +1122,9 @@ export default function App() {
             <span className={`inline-block w-2 h-2 rounded-full ${trackpadConnected ? "bg-green-400" : "bg-red-400"
               }`} />
           </h2>
-          <div className="flex flex-col-reverse sm:flex-row gap-6 sm:items-start">
+          <div className="flex flex-col-reverse md:flex-row gap-6 sm:items-start">
             <Trackpad connected={trackpadConnected} send={trackpadSend} />
-            <CursorPositionDisplay
+            <MonitorDisplay
               layouts={layouts}
               currentLayout={currentLayout}
               cursorPos={cursorPos}
