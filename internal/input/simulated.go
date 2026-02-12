@@ -39,6 +39,14 @@ func (m *SimulatedMouse) MoveRelative(dx, dy float64) error {
 	return nil
 }
 
+func (m *SimulatedMouse) LeftClick() error {
+	return nil
+}
+
+func (m *SimulatedMouse) Type(text string) error {
+	return nil
+}
+
 func clamp(v, lo, hi int) int {
 	if v < lo {
 		return lo

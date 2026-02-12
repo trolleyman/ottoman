@@ -15,6 +15,10 @@ type MouseController interface {
 	GetPosition() (x, y int, err error)
 	// MoveRelative moves the cursor by a delta, accumulating sub-pixel fractions.
 	MoveRelative(dx, dy float64) error
+	// LeftClick performs a left mouse click.
+	LeftClick() error
+	// Type types the given text.
+	Type(text string) error
 }
 
 const (
@@ -46,7 +50,7 @@ type InertiaEngine struct {
 // NewInertiaEngine creates an inertia engine wrapping the given mouse controller.
 func NewInertiaEngine(mouse MouseController, sensitivity, friction float64, onPosition func(x, y int)) *InertiaEngine {
 	return &InertiaEngine{
-		mouse:      mouse,
+		mouse:       mouse,
 		sensitivity: sensitivity,
 		friction:    friction,
 		OnPosition:  onPosition,
@@ -137,11 +141,9 @@ func (e *InertiaEngine) runInertia(ctx context.Context, vx, vy float64) {
 			vx *= friction
 			vy *= friction
 
-			if math.Abs(vx) < inertiaThreshold && math.Abs(vy) < inertiaThreshold {
-				return
+			if math.Abs(vx) > inertiaThreshold || math.Abs(vy) > inertiaThreshold {
+				mouse.MoveRelative(vx, vy)
 			}
-
-			mouse.MoveRelative(vx, vy)
 			e.reportPosition(mouse, onPos)
 		}
 	}

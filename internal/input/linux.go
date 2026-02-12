@@ -73,3 +73,17 @@ func (m *LinuxMouse) MoveRelative(dx, dy float64) error {
 	}
 	return nil
 }
+
+func (m *LinuxMouse) LeftClick() error {
+	if err := exec.Command("xdotool", "click", "1").Run(); err != nil {
+		return errors.Wrap(err, "xdotool click failed")
+	}
+	return nil
+}
+
+func (m *LinuxMouse) Type(text string) error {
+	if err := exec.Command("xdotool", "type", text).Run(); err != nil {
+		return errors.Wrap(err, "xdotool type failed")
+	}
+	return nil
+}

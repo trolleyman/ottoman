@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorDisplay } from "./MonitorDisplay";
-import type { Layout, LayoutsResponse } from "./types";
+import type { Layout, LayoutsResponse, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
 import { fetchJSON, sortedLayouts } from "./utils";
 
-export function useTrackpadWebSocket(authed: boolean) {
+export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [connected, setConnected] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -11,6 +11,15 @@ export function useTrackpadWebSocket(authed: boolean) {
 
   const connect = useCallback(() => {
     if (!authed) return;
+
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+    }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
@@ -24,7 +33,7 @@ export function useTrackpadWebSocket(authed: boolean) {
     };
     ws.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data);
+        const msg: TrackpadRecvArgs = JSON.parse(e.data);
         if (msg.t === "p") {
           setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
         }
@@ -40,7 +49,14 @@ export function useTrackpadWebSocket(authed: boolean) {
     };
   }, [connect]);
 
-  const send = useCallback((msg: object) => {
+  useEffect(() => {
+    if (!connected && authed) {
+      connect();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  const send = useCallback((msg: TrackpadSendArgs) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     }
@@ -52,18 +68,25 @@ export function useTrackpadWebSocket(authed: boolean) {
 function TouchArea({
   connected,
   send,
+  silent,
 }: {
   connected: boolean;
-  send: (msg: object) => void;
+  send: (msg: TrackpadSendArgs) => void;
+  silent: boolean;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
   const lastMoveTime = useRef(0);
+  const touchStartTime = useRef(0);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const pointerActive = useRef(false);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
     const touch = e.touches[0];
+    touchStartTime.current = performance.now();
+    console.log('onTouchStart', touchStartTime.current)
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
     send({ t: "s", touch: true });
   };
@@ -71,6 +94,7 @@ function TouchArea({
   const onTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
     const now = performance.now();
+    console.log('onTouchMove', now)
     if (now - lastMoveTime.current < 16) return;
     lastMoveTime.current = now;
 
@@ -85,6 +109,22 @@ function TouchArea({
 
   const onTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
+    const now = performance.now();
+    console.log('onTouchEnd', now)
+    if (touchStartPos.current && now - touchStartTime.current < 200) {
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartPos.current.x;
+      const dy = touch.clientY - touchStartPos.current.y;
+      console.log('dx', dx)
+      console.log('dy', dy)
+      console.log('touchStartPos', touchStartPos.current)
+      console.log('lastTouchRef', lastTouchRef.current)
+      if (Math.sqrt(dx * dx + dy * dy) < 10) {
+        console.log('send click')
+        send({ t: "c" });
+      }
+    }
+    touchStartPos.current = null;
     lastTouchRef.current = null;
     send({ t: "e" });
   };
@@ -150,8 +190,15 @@ function TouchArea({
       onPointerDown={connected ? onPointerDown : undefined}
     >
       {!connected && (
-        <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-          Disconnected
+        <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
+          {!silent ? (
+            <>
+              <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+              <span>Connecting...</span>
+            </>
+          ) : (
+            <span>Disconnected</span>
+          )}
         </div>
       )}
     </div>
@@ -161,11 +208,16 @@ function TouchArea({
 export function Trackpad({
   authed,
   refreshSignal,
+  connected,
+  cursorPos,
+  send,
 }: {
   authed: boolean;
   refreshSignal: { key: number; silent: boolean };
+  connected: boolean;
+  cursorPos: { x: number; y: number } | null;
+  send: (msg: TrackpadSendArgs) => void;
 }) {
-  const { connected, cursorPos, send } = useTrackpadWebSocket(authed);
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [currentLayout, setCurrentLayout] = useState("");
   const [loading, setLoading] = useState(false);
@@ -200,7 +252,7 @@ export function Trackpad({
         />
       </h2>
       <div className="flex flex-col-reverse md:flex-row gap-6 sm:items-start">
-        <TouchArea connected={connected} send={send} />
+        <TouchArea connected={connected} send={send} silent={refreshSignal.silent} />
         <MonitorDisplay
           layouts={layouts}
           currentLayout={currentLayout}

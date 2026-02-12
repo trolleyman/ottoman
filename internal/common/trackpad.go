@@ -6,6 +6,8 @@ package common
 //   - "m" (move): movement delta
 //   - "e" (end): end drag, triggers inertia if touch mode
 //   - "p" (position): cursor position update (server -> browser)
+//   - "c" (click): mouse click
+//   - "k" (keyboard): keyboard input
 type TrackpadMessage struct {
 	Type  string  `json:"t"`
 	Touch *bool   `json:"touch,omitempty"`
@@ -13,4 +15,5 @@ type TrackpadMessage struct {
 	DY    float64 `json:"dy,omitempty"`
 	X     int     `json:"x"`
 	Y     int     `json:"y"`
+	Text  string  `json:"text,omitempty"`
 }

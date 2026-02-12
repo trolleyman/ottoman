@@ -53,3 +53,25 @@ export interface WakeTarget {
   ip_address: string;
   status?: string;
 }
+
+export type TrackpadSendArgs = {
+    t: "s",
+    touch?: boolean,
+} | {
+    t: "m"
+    dx: number
+    dy: number
+} | {
+    t: "e"
+} | {
+    t: "c"
+} | {
+    t: "k"
+    text: string
+}
+
+export type TrackpadRecvArgs = {
+  t: "p",
+  x: number
+  y: number
+}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
-import { Trackpad } from "./Trackpad";
+import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
+import { Keyboard } from "./Keyboard";
 import { Monitors } from "./Monitors";
 import { WakeTargets } from "./WakeTargets";
 import { Layouts } from "./Layouts";
@@ -10,6 +11,8 @@ export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   // refreshSignal triggers refreshes. silent=true avoids showing loading indicators for polling.
   const [refreshSignal, setRefreshSignal] = useState({ key: 0, silent: false });
+
+  const { connected, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshSignal.key);
 
   // Check auth on mount
   useEffect(() => {
@@ -29,6 +32,10 @@ export default function App() {
 
   const refresh = useCallback(() => {
     setRefreshSignal((prev) => ({ key: prev.key + 1, silent: false }));
+  }, []);
+
+  const refreshSilent = useCallback(() => {
+    setRefreshSignal((prev) => ({ key: prev.key + 1, silent: true }));
   }, []);
 
   const logout = async () => {
@@ -77,17 +84,25 @@ export default function App() {
         <WakeTargets
           authed={!!authed}
           refreshSignal={refreshSignal}
-          onWake={refresh}
-          onShutdown={refresh}
-          onOnline={refresh}
-          onOffline={refresh}
+          onWake={refreshSilent}
+          onShutdown={refreshSilent}
+          onOnline={refreshSilent}
+          onOffline={refreshSilent}
         />
 
         <Layouts authed={!!authed} refreshSignal={refreshSignal} onChange={refresh} />
 
         <Monitors authed={!!authed} refreshSignal={refreshSignal} />
 
-        <Trackpad authed={!!authed} refreshSignal={refreshSignal} />
+        <Trackpad
+          authed={!!authed}
+          refreshSignal={refreshSignal}
+          connected={connected}
+          cursorPos={cursorPos}
+          send={send}
+        />
+
+        <Keyboard send={send} />
       </div>
     </div>
   );

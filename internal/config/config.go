@@ -41,11 +41,16 @@ type ServerConfig struct {
 
 // ClientConfig holds client configuration
 type ClientConfig struct {
-	ListenAddr           string          `mapstructure:"listen_addr"`
-	AuthToken            string          `mapstructure:"auth_token"`
-	Layouts              []common.Layout `mapstructure:"layouts"`
-	TrackpadSensitivity  float64         `mapstructure:"trackpad_sensitivity"`
-	TrackpadFriction     float64         `mapstructure:"trackpad_friction"`
+	ListenAddr string          `mapstructure:"listen_addr"`
+	AuthToken  string          `mapstructure:"auth_token"`
+	Layouts    []common.Layout `mapstructure:"layouts"`
+	Trackpad   TrackpadConfig  `mapstructure:"trackpad"`
+}
+
+// TrackpadConfig holds trackpad configuration
+type TrackpadConfig struct {
+	Sensitivity float64 `mapstructure:"sensitivity"`
+	Friction    float64 `mapstructure:"friction"`
 }
 
 // WakeTarget represents a device that can be woken via WoL

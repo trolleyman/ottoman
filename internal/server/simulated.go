@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -62,6 +64,8 @@ type SimulatedServer struct {
 	currentLayout   string
 	monitors        []display.MonitorInfo
 	trackpadCancels []context.CancelFunc
+	trackpadSens    float64
+	trackpadFric    float64
 }
 
 // RunSimulated creates and starts a simulated server.
@@ -80,10 +84,12 @@ func NewSimulated(serverCfg *config.ServerConfig, clientCfg *config.ClientConfig
 	}
 
 	s := &SimulatedServer{
-		serverCfg:   serverCfg,
-		bootDelay:   bootDelay,
-		startTime:   time.Now(),
-		wakeTargets: make(map[string]config.WakeTarget),
+		serverCfg:    serverCfg,
+		bootDelay:    bootDelay,
+		startTime:    time.Now(),
+		wakeTargets:  make(map[string]config.WakeTarget),
+		trackpadSens: clientCfg.Trackpad.Sensitivity,
+		trackpadFric: clientCfg.Trackpad.Friction,
 	}
 
 	if startOnline {
@@ -98,9 +104,14 @@ func NewSimulated(serverCfg *config.ServerConfig, clientCfg *config.ClientConfig
 	// Load layouts from client config
 	s.layouts = display.NewLayoutsFromSlice(clientCfg.Layouts)
 
-	// Set initial current layout to first layout (sorted by alias)
-	if len(clientCfg.Layouts) > 0 {
-		s.currentLayout = clientCfg.Layouts[0].ID
+	// Sort layouts to pick default
+	sorted := make([]common.Layout, len(clientCfg.Layouts))
+	copy(sorted, clientCfg.Layouts)
+	sortLayouts(sorted)
+
+	// Set initial current layout to first layout
+	if len(sorted) > 0 {
+		s.currentLayout = sorted[0].ID
 	}
 
 	// Derive monitors from layouts
@@ -114,6 +125,35 @@ func NewSimulated(serverCfg *config.ServerConfig, clientCfg *config.ClientConfig
 	}
 
 	return s, nil
+}
+
+func sortLayouts(layouts []common.Layout) {
+	sort.Slice(layouts, func(i, j int) bool {
+		a := layouts[i]
+		b := layouts[j]
+
+		getAliasNum := func(aliases []string) (int, bool) {
+			for _, alias := range aliases {
+				if num, err := strconv.Atoi(alias); err == nil {
+					return num, true
+				}
+			}
+			return 0, false
+		}
+
+		aNum, aOk := getAliasNum(a.Aliases)
+		bNum, bOk := getAliasNum(b.Aliases)
+
+		if aOk && bOk {
+			if aNum != bNum {
+				return aNum < bNum
+			}
+		}
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return false
+	})
 }
 
 // deriveMonitors collects unique monitors by EDID across all layouts.
@@ -678,38 +718,107 @@ func (s *SimulatedServer) computeScreenBounds() (minX, minY, maxX, maxY int) {
 // TopologyMouse wraps a MouseController to clamp movement to active monitors.
 type TopologyMouse struct {
 	input.MouseController
-	x, y     int
-	monitors []display.MonitorInfo
+	s            *SimulatedServer
+	x, y         int
+	fracX, fracY float64
 }
 
-func (m *TopologyMouse) MoveTo(dx, dy int) error {
+func (m *TopologyMouse) GetPosition() (int, int, error) {
+	return m.x, m.y, nil
+}
+
+func (m *TopologyMouse) MoveRelative(dx, dy float64) error {
+	m.fracX += dx
+	m.fracY += dy
+
+	intX := int(m.fracX)
+	intY := int(m.fracY)
+
+	if intX == 0 && intY == 0 {
+		return nil
+	}
+
+	m.fracX -= float64(intX)
+	m.fracY -= float64(intY)
+
+	return m.Move(intX, intY)
+}
+
+func (m *TopologyMouse) Move(dx, dy int) error {
+	m.s.mu.RLock()
+	defer m.s.mu.RUnlock()
+
+	// If current position became invalid (e.g. monitor removed), reset to nearest valid position
+	if !m.isValid(m.x, m.y) {
+		bestDist := int(^uint(0) >> 1)
+		bestX, bestY := m.x, m.y
+		found := false
+
+		for _, mon := range m.s.monitors {
+			if mon.Active == nil {
+				continue
+			}
+
+			// Clamp m.x, m.y to this monitor's bounds
+			minX, minY := mon.Active.PositionX, mon.Active.PositionY
+			maxX, maxY := minX+mon.Active.Width-1, minY+mon.Active.Height-1
+
+			cx := m.x
+			if cx < minX {
+				cx = minX
+			} else if cx > maxX {
+				cx = maxX
+			}
+
+			cy := m.y
+			if cy < minY {
+				cy = minY
+			} else if cy > maxY {
+				cy = maxY
+			}
+
+			// Distance squared
+			dist := (m.x-cx)*(m.x-cx) + (m.y-cy)*(m.y-cy)
+
+			if dist < bestDist {
+				bestDist = dist
+				bestX, bestY = cx, cy
+				found = true
+			}
+		}
+
+		if found {
+			m.x, m.y = bestX, bestY
+		}
+	}
+
 	// Try moving X and Y
 	nextX, nextY := m.x+dx, m.y+dy
 	if m.isValid(nextX, nextY) {
 		m.x, m.y = nextX, nextY
-		m.MouseController.MoveTo(dx, dy)
+		m.MouseController.MoveTo(m.x, m.y)
 		return nil
 	}
 
 	// Try moving only X
 	if m.isValid(nextX, m.y) {
 		m.x = nextX
-		m.MouseController.MoveTo(dx, 0)
+		m.MouseController.MoveTo(m.x, m.y)
 		return nil
 	}
 
 	// Try moving only Y
 	if m.isValid(m.x, nextY) {
 		m.y = nextY
-		m.MouseController.MoveTo(0, dy)
+		m.MouseController.MoveTo(m.x, m.y)
 		return nil
 	}
 
-	return nil
+	return errors.New("blocked")
 }
 
 func (m *TopologyMouse) isValid(x, y int) bool {
-	for _, mon := range m.monitors {
+	for _, mon := range m.s.monitors {
 		if mon.Active != nil {
 			if x >= mon.Active.PositionX && x < mon.Active.PositionX+mon.Active.Width &&
 				y >= mon.Active.PositionY && y < mon.Active.PositionY+mon.Active.Height {
@@ -740,19 +849,20 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 	s.mu.Unlock()
 
 	minX, minY, maxX, maxY := s.computeScreenBounds()
-	baseMouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, minX, minY, maxX-1, maxY-1)
+	// Use large bounds for baseMouse so it doesn't interfere with TopologyMouse clamping
+	baseMouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, -100000, -100000, 100000, 100000)
 
 	mouse := &TopologyMouse{
 		MouseController: baseMouse,
+		s:               s,
 		x:               (minX + maxX) / 2,
 		y:               (minY + maxY) / 2,
-		monitors:        s.monitors,
 	}
 
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	engine := input.NewInertiaEngine(mouse, 1.5, 0.92, func(x, y int) {
+	engine := input.NewInertiaEngine(mouse, s.trackpadSens, s.trackpadFric, func(x, y int) {
 		latestX.Store(int32(x))
 		latestY.Store(int32(y))
 		posReady.Store(true)
@@ -773,11 +883,21 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if !posReady.Swap(false) {
-					continue
+				var x, y int32
+				if posReady.Swap(false) {
+					x = latestX.Load()
+					y = latestY.Load()
+				} else {
+					// Poll current position to catch external movement
+					s.mu.RLock()
+					mx, my, err := mouse.GetPosition()
+					s.mu.RUnlock()
+					if err != nil {
+						continue
+					}
+					x, y = int32(mx), int32(my)
 				}
-				x := latestX.Load()
-				y := latestY.Load()
+
 				if x == lastSentX.Load() && y == lastSentY.Load() {
 					continue
 				}
@@ -816,6 +936,10 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 			engine.Move(msg.DX, msg.DY)
 		case "e":
 			engine.End()
+		case "c":
+			log.Printf("[SIM] Mouse Click")
+		case "k":
+			log.Printf("[SIM] Typed: %s", msg.Text)
 		}
 	}
 

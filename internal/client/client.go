@@ -484,11 +484,11 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	sensitivity := c.config.TrackpadSensitivity
+	sensitivity := c.config.Trackpad.Sensitivity
 	if sensitivity <= 0 {
 		sensitivity = 1.5
 	}
-	friction := c.config.TrackpadFriction
+	friction := c.config.Trackpad.Friction
 	if friction <= 0 {
 		friction = 0.92
 	}
@@ -554,6 +554,10 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			engine.Move(msg.DX, msg.DY)
 		case "e":
 			engine.End()
+		case "c":
+			c.mouse.LeftClick()
+		case "k":
+			c.mouse.Type(msg.Text)
 		}
 	}
 }
