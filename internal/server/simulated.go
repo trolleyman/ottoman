@@ -443,6 +443,7 @@ func (s *SimulatedServer) handleShutdown(w http.ResponseWriter, r *http.Request)
 		s.bootTimer = nil
 	}
 	s.state = clientOffline
+	s.cancelTrackpads()
 	s.mu.Unlock()
 
 	log.Printf("[SIM] Client shut down via API — now OFFLINE")
@@ -626,6 +627,14 @@ func (s *SimulatedServer) handleListMonitors(w http.ResponseWriter, r *http.Requ
 	common.WriteJSON(w, http.StatusOK, monitors)
 }
 
+// cancelTrackpads closes all active trackpad WebSocket connections. Must be called with s.mu held.
+func (s *SimulatedServer) cancelTrackpads() {
+	for _, cancel := range s.trackpadCancels {
+		cancel()
+	}
+	s.trackpadCancels = nil
+}
+
 // --- Trackpad handler ---
 
 // computeScreenBounds returns the bounding box of all active monitors.
@@ -770,6 +779,7 @@ func (s *SimulatedServer) handleSimReset(w http.ResponseWriter, r *http.Request)
 		s.bootTimer = nil
 	}
 	s.state = clientOffline
+	s.cancelTrackpads()
 	s.mu.Unlock()
 
 	log.Printf("[SIM] Client reset to OFFLINE")
@@ -803,8 +813,10 @@ func (s *SimulatedServer) handleSimSetState(w http.ResponseWriter, r *http.Reque
 	switch req.State {
 	case "offline":
 		s.state = clientOffline
+		s.cancelTrackpads()
 	case "booting":
 		s.state = clientBooting
+		s.cancelTrackpads()
 	case "online":
 		s.state = clientOnline
 	default:
