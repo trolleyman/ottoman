@@ -65,15 +65,6 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   return { connected, cursorPos, send };
 }
 
-const SPECIAL_KEYS = new Set([
-  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-  "Enter", "Tab", "Escape", "Backspace", "Delete",
-  "Home", "End", "PageUp", "PageDown", "Insert",
-  "F1", "F2", "F3", "F4", "F5", "F6",
-  "F7", "F8", "F9", "F10", "F11", "F12",
-  " ", "PrintScreen", "ScrollLock", "Pause", "NumLock", "CapsLock",
-]);
-
 function TouchArea({
   connected,
   send,
@@ -90,8 +81,8 @@ function TouchArea({
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const lastTouchEndTime = useRef(0);
   const isDragging = useRef(false);
-  const pointerLocked = useRef(false);
   const mouseHeld = useRef(false);
+  const mouseMoved = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
 
@@ -99,6 +90,19 @@ function TouchArea({
   const twoFingerRef = useRef(false);
   const twoFingerLastX = useRef(0);
   const twoFingerLastY = useRef(0);
+
+  const handleKey = useCallback((e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const mod: string[] = [];
+    if (e.shiftKey) mod.push("shift");
+    if (e.ctrlKey) mod.push("ctrl");
+    if (e.altKey) mod.push("alt");
+    if (e.metaKey) mod.push("meta");
+
+    send({ t: "key", key: e.key, mod: mod.length > 0 ? mod : undefined });
+  }, [send]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -204,14 +208,21 @@ function TouchArea({
     }
 
     // Right click handled by onContextMenu
-    if (e.button === 2) return;
+    if (e.button === 2) {
+      e.preventDefault();
+      send({ t: "c", btn: "right" });
+      return;
+    }
 
     // Left click / drag
-    pointerActive.current = true;
-    send({ t: "s", touch: false });
-    trackpadRef.current?.requestPointerLock();
-    // Focus trackpad div for desktop keyboard capture
-    trackpadRef.current?.focus();
+    if (!document.pointerLockElement) {
+      trackpadRef.current?.requestPointerLock();
+      trackpadRef.current?.focus();
+    } else {
+      mouseHeld.current = true;
+      mouseMoved.current = false;
+      send({ t: "s", touch: false });
+    }
   };
 
   // Pointer lock mouse movement and release
@@ -219,24 +230,32 @@ function TouchArea({
     if (!connected) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!pointerActive.current) return;
+      if (!document.pointerLockElement) return;
       const now = performance.now();
       if (now - lastMoveTime.current < 16) return;
       lastMoveTime.current = now;
+      if (e.movementX !== 0 || e.movementY !== 0) {
+        mouseMoved.current = true;
+      }
       send({ t: "m", dx: e.movementX, dy: e.movementY });
     };
 
     const handleMouseUp = () => {
-      if (!pointerActive.current) return;
-      pointerActive.current = false;
-      document.exitPointerLock();
-      send({ t: "e" });
+      if (mouseHeld.current) {
+        mouseHeld.current = false;
+        if (!mouseMoved.current) {
+          send({ t: "c" });
+        }
+        send({ t: "e" });
+      }
     };
 
     const handlePointerLockChange = () => {
-      if (!document.pointerLockElement && pointerActive.current) {
-        pointerActive.current = false;
-        send({ t: "e" });
+      if (!document.pointerLockElement) {
+        if (mouseHeld.current) {
+          mouseHeld.current = false;
+          send({ t: "e" });
+        }
       }
     };
 
@@ -256,28 +275,9 @@ function TouchArea({
     const el = trackpadRef.current;
     if (!el || !connected) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const hasModifier = e.ctrlKey || e.altKey || e.metaKey;
-      const isSpecial = SPECIAL_KEYS.has(e.key);
-
-      if (isSpecial || hasModifier) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const mod: string[] = [];
-        if (e.shiftKey) mod.push("shift");
-        if (e.ctrlKey) mod.push("ctrl");
-        if (e.altKey) mod.push("alt");
-        if (e.metaKey) mod.push("meta");
-
-        send({ t: "key", key: e.key, mod: mod.length > 0 ? mod : undefined });
-      }
-      // Regular characters without ctrl/alt/meta fall through to hidden input onChange
-    };
-
-    el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [connected, send]);
+    el.addEventListener("keydown", handleKey);
+    return () => el.removeEventListener("keydown", handleKey);
+  }, [connected, handleKey]);
 
   // Wheel scroll handler (passive: false to allow preventDefault)
   useEffect(() => {
@@ -337,7 +337,6 @@ function TouchArea({
       onPointerDown={connected ? onPointerDown : undefined}
       onContextMenu={(e) => {
         e.preventDefault();
-        if (connected) send({ t: "c", btn: "right" });
       }}
     >
       <input
@@ -345,10 +344,7 @@ function TouchArea({
         type="text"
         className="opacity-0 fixed top-0 left-0 h-0 w-0 pointer-events-none"
         autoComplete="off"
-        onChange={(e) => {
-          if (e.target.value) send({ t: "k", text: e.target.value });
-          e.target.value = "";
-        }}
+        onKeyDown={handleKey}
       />
       {!connected && (
         <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
