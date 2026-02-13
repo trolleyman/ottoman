@@ -80,6 +80,7 @@ interface TrackpadSettings {
   cursorFriction: number;
   scrollSensitivity: number;
   scrollFriction: number;
+  clickAndDrag: boolean;
 }
 
 function TouchArea({
@@ -214,9 +215,6 @@ function TouchArea({
 
     const touch = e.touches[0];
     if (lastTouchRef.current) {
-      // There's a max speed for the trackpad on mobile - not sure why this is (only a max dx and dy in a frame's time?)
-      // - increase this. maybe the velocity should be inferred as the # pixels moved in the last X amount of time?
-      // I don't know.
       const rawDx = touch.clientX - lastTouchRef.current.x;
       const rawDy = touch.clientY - lastTouchRef.current.y;
       const dx = rawDx * settings.cursorSensitivity;
@@ -355,12 +353,17 @@ function TouchArea({
 
     // Left click / drag
     if (document.pointerLockElement) {
-      if (dragLocked.current) {
-        send({ t: "u", mod });
-        dragLocked.current = false;
+      if (settings.clickAndDrag) {
+        if (dragLocked.current) {
+          send({ t: "u", mod });
+          dragLocked.current = false;
+        } else {
+          send({ t: "d", mod });
+          dragLocked.current = true;
+        }
       } else {
+        mouseHeld.current = true;
         send({ t: "d", mod });
-        dragLocked.current = true;
       }
     } else {
       mouseHeld.current = true;
@@ -400,6 +403,7 @@ function TouchArea({
       if (!document.pointerLockElement) {
         if (mouseHeld.current) {
           mouseHeld.current = false;
+          send({ t: "u" });
         }
         if (dragLocked.current) {
           dragLocked.current = false;
@@ -535,6 +539,7 @@ export function Trackpad({
     cursorFriction: 0.92,
     scrollSensitivity: 1.5,
     scrollFriction: 0.92,
+    clickAndDrag: false,
   });
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -660,6 +665,15 @@ export function Trackpad({
                   className="w-full accent-blue-500"
                 />
               </div>
+              <div className="h-px bg-zinc-800" />
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-zinc-400">Click and Drag</label>
+                <input
+                  type="checkbox"
+                  checked={settings.clickAndDrag}
+                  onChange={(e) => setSettings({ ...settings, clickAndDrag: e.target.checked })}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -670,7 +684,7 @@ export function Trackpad({
           send={send}
           silent={refreshSignal.silent}
           settings={settings}
-        />
+          />
         <MonitorDisplay
           layouts={layouts}
           currentLayout={currentLayout}
