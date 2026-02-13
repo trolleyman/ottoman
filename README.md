@@ -223,3 +223,19 @@ Authorization: Bearer your-secret-token
 ## License
 
 MIT
+
+
+# TODO
+- bugs
+   - Two finger scroll on mobile X is reversed from natural (Y is fine)
+   - scrolling past the trackpad should be easy. also - the mini layout preview shouldn't set the mouse if you're just scrolling through either
+   - the trackpad settings pop up should close if clicking on the cog
+   - when opening the keyboard (**consciously tapping on the trackpad**) - the trackpad should scroll into view, rather than the keyboard cutting off part of the trackpad.
+- major features
+   - add brightness settings first to CLI, then to UI
+      - HDMI
+      - DisplayPort
+      - how does HDR fit into it?
+- minor features
+   - Add HDR info at least of monitors
+   - Add monitor logical size (e.g. `XxY (X2xY2 @ Nx)` - `2680x1400 (1920x1080 @ 2x)` - dimensions are wrong here but give impression)
