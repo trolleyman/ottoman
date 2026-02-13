@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorDisplay } from "./MonitorDisplay";
-import type { Layout, LayoutsResponse, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
+import type { Layout, LayoutsResponse, Modifier, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
 import { fetchJSON, sortedLayouts } from "./utils";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
@@ -29,6 +29,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     ws.onclose = () => {
       setConnected(false);
       setCursorPos(null);
+      // Attempt reconnect after 3 seconds
       reconnectRef.current = setTimeout(connect, 3000);
     };
     ws.onmessage = (e) => {
@@ -65,14 +66,32 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   return { connected, cursorPos, send };
 }
 
+function getModifiers(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }) {
+  const mod: Modifier[] = [];
+  if (e.shiftKey) mod.push("shift");
+  if (e.ctrlKey) mod.push("ctrl");
+  if (e.altKey) mod.push("alt");
+  if (e.metaKey) mod.push("meta");
+  return mod.length > 0 ? mod : undefined;
+}
+
+interface TrackpadSettings {
+  cursorSensitivity: number;
+  cursorFriction: number;
+  scrollSensitivity: number;
+  scrollFriction: number;
+}
+
 function TouchArea({
   connected,
   send,
   silent,
+  settings,
 }: {
   connected: boolean;
   send: (msg: TrackpadSendArgs) => void;
   silent: boolean;
+  settings: TrackpadSettings;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
@@ -82,7 +101,6 @@ function TouchArea({
   const lastTouchEndTime = useRef(0);
   const isDragging = useRef(false);
   const mouseHeld = useRef(false);
-  const mouseMoved = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
 
@@ -91,21 +109,35 @@ function TouchArea({
   const twoFingerLastX = useRef(0);
   const twoFingerLastY = useRef(0);
 
-  const handleKey = useCallback((e: any) => {
+  const lastTapPos = useRef<{ x: number; y: number } | null>(null);
+  const scrollVelocity = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const inertiaFrame = useRef(0);
+  const lastScrollTime = useRef(0);
+
+  // Cursor inertia refs
+  const cursorVelocity = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const cursorInertiaFrame = useRef(0);
+  const lastCursorTime = useRef(0);
+
+  const handleKey = useCallback((e: React.KeyboardEvent | KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const mod: string[] = [];
-    if (e.shiftKey) mod.push("shift");
-    if (e.ctrlKey) mod.push("ctrl");
-    if (e.altKey) mod.push("alt");
-    if (e.metaKey) mod.push("meta");
-
-    send({ t: "key", key: e.key, mod: mod.length > 0 ? mod : undefined });
+    send({ t: "key", key: e.key, mod: getModifiers(e) });
   }, [send]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
+
+    // Stop any active inertia scrolling when the user touches the screen again
+    if (inertiaFrame.current) {
+      cancelAnimationFrame(inertiaFrame.current);
+      inertiaFrame.current = 0;
+    }
+    if (cursorInertiaFrame.current) {
+      cancelAnimationFrame(cursorInertiaFrame.current);
+      cursorInertiaFrame.current = 0;
+    }
 
     // Two-finger scroll detection
     if (e.touches.length === 2) {
@@ -114,24 +146,34 @@ function TouchArea({
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       twoFingerLastX.current = midX;
       twoFingerLastY.current = midY;
+      scrollVelocity.current = { x: 0, y: 0 };
+      lastScrollTime.current = performance.now();
       return;
     }
 
     twoFingerRef.current = false;
     const touch = e.touches[0];
     touchStartTime.current = performance.now();
+    cursorVelocity.current = { x: 0, y: 0 };
+    lastCursorTime.current = performance.now();
 
     // Check for double-tap-drag start
-    if (touchStartTime.current - lastTouchEndTime.current < 300) {
+    // We check distance to ensure the second tap is close to the first one (preventing accidental drags on fast moves)
+    const dist = lastTapPos.current
+      ? Math.hypot(touch.clientX - lastTapPos.current.x, touch.clientY - lastTapPos.current.y)
+      : Infinity;
+
+    if (touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40) {
       isDragging.current = true;
       send({ t: "d" });
     }
 
+    lastTapPos.current = { x: touch.clientX, y: touch.clientY };
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
-    send({ t: "s", touch: true });
     // Focus hidden input for on-screen keyboard on mobile
     inputRef.current?.focus();
+    trackpadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -144,10 +186,25 @@ function TouchArea({
     if (e.touches.length === 2 && twoFingerRef.current) {
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const dx = midX - twoFingerLastX.current;
-      const dy = midY - twoFingerLastY.current;
+      const dx = (midX - twoFingerLastX.current) * settings.scrollSensitivity;
+      const dy = (midY - twoFingerLastY.current) * settings.scrollSensitivity;
       twoFingerLastX.current = midX;
       twoFingerLastY.current = midY;
+
+      const dt = now - lastScrollTime.current;
+      if (dt > 0) {
+        // Calculate velocity for inertia (pixels per ms)
+        const vx = dx / dt;
+        const vy = dy / dt;
+        // Simple low-pass filter to smooth velocity
+        const alpha = 0.5;
+        scrollVelocity.current = {
+          x: scrollVelocity.current.x * alpha + vx * (1 - alpha),
+          y: scrollVelocity.current.y * alpha + vy * (1 - alpha),
+        };
+        lastScrollTime.current = now;
+      }
+
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
         send({ t: "sc", dx: Math.round(dx), dy: Math.round(-dy), precise: true });
       }
@@ -156,10 +213,25 @@ function TouchArea({
 
     const touch = e.touches[0];
     if (lastTouchRef.current) {
-      const dx = touch.clientX - lastTouchRef.current.x;
-      const dy = touch.clientY - lastTouchRef.current.y;
+      // There's a max speed for the trackpad on mobile - not sure why this is (only a max dx and dy in a frame's time?)
+      // - increase this. maybe the velocity should be inferred as the # pixels moved in the last X amount of time?
+      // I don't know.
+      const rawDx = touch.clientX - lastTouchRef.current.x;
+      const rawDy = touch.clientY - lastTouchRef.current.y;
+      const dx = rawDx * settings.cursorSensitivity;
+      const dy = rawDy * settings.cursorSensitivity;
+
       send({ t: "m", dx, dy });
       lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+
+      const dt = now - lastCursorTime.current;
+      if (dt > 0) {
+        const vx = dx / dt;
+        const vy = dy / dt;
+        const alpha = 0.5;
+        cursorVelocity.current = { x: cursorVelocity.current.x * alpha + vx * (1 - alpha), y: cursorVelocity.current.y * alpha + vy * (1 - alpha) };
+        lastCursorTime.current = now;
+      }
     }
   };
 
@@ -170,6 +242,39 @@ function TouchArea({
     if (twoFingerRef.current) {
       if (e.touches.length === 0) {
         twoFingerRef.current = false;
+
+        const { x: vx, y: vy } = scrollVelocity.current;
+        const timeSinceLastScroll = performance.now() - lastScrollTime.current;
+
+        // Only trigger inertia if the user was scrolling recently and with sufficient velocity
+        if (timeSinceLastScroll < 50 && (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1)) {
+          let cx = vx;
+          let cy = vy;
+          let lastT = performance.now();
+
+          const step = () => {
+            const t = performance.now();
+            const dt = t - lastT;
+            lastT = t;
+
+            // Apply friction to velocity
+            const friction = Math.pow(settings.scrollFriction, dt / 16);
+            cx *= friction;
+            cy *= friction;
+
+            // Stop when velocity is negligible
+            if (Math.abs(cx) < 0.05 && Math.abs(cy) < 0.05) {
+              inertiaFrame.current = 0;
+              return;
+            }
+
+            const dx = cx * dt;
+            const dy = cy * dt;
+            send({ t: "sc", dx: Math.round(dx), dy: Math.round(-dy), precise: true });
+            inertiaFrame.current = requestAnimationFrame(step);
+          };
+          inertiaFrame.current = requestAnimationFrame(step);
+        }
       }
       return;
     }
@@ -181,6 +286,37 @@ function TouchArea({
       send({ t: "u" });
       isDragging.current = false;
     } else {
+      // Cursor inertia
+      const { x: vx, y: vy } = cursorVelocity.current;
+      const timeSinceLastMove = performance.now() - lastCursorTime.current;
+
+      if (timeSinceLastMove < 50 && (Math.abs(vx) > 0.1 || Math.abs(vy) > 0.1)) {
+        let cx = vx;
+        let cy = vy;
+        let lastT = performance.now();
+
+        const step = () => {
+          const t = performance.now();
+          const dt = t - lastT;
+          lastT = t;
+
+          const friction = Math.pow(settings.cursorFriction, dt / 16);
+          cx *= friction;
+          cy *= friction;
+
+          if (Math.abs(cx) < 0.05 && Math.abs(cy) < 0.05) {
+            cursorInertiaFrame.current = 0;
+            return;
+          }
+
+          const dx = cx * dt;
+          const dy = cy * dt;
+          send({ t: "m", dx, dy });
+          cursorInertiaFrame.current = requestAnimationFrame(step);
+        };
+        cursorInertiaFrame.current = requestAnimationFrame(step);
+      }
+
       if (touchStartPos.current && now - touchStartTime.current < 200) {
         const touch = e.changedTouches[0];
         const dx = touch.clientX - touchStartPos.current.x;
@@ -193,35 +329,42 @@ function TouchArea({
 
     touchStartPos.current = null;
     lastTouchRef.current = null;
-    send({ t: "e" });
   };
 
   // Mouse drag via Pointer Lock: cursor stays locked inside the trackpad div
+  // This handles the actual mouse button events when the pointer is already locked.
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
+
+    const mod = getModifiers(e);
 
     // Middle click
     if (e.button === 1) {
       e.preventDefault();
-      send({ t: "c", btn: "middle" });
+      send({ t: "c", btn: "middle", mod });
       return;
     }
 
     // Right click handled by onContextMenu
     if (e.button === 2) {
       e.preventDefault();
-      send({ t: "c", btn: "right" });
+      send({ t: "c", btn: "right", mod });
       return;
     }
 
     // Left click / drag
+    if (document.pointerLockElement) {
+      mouseHeld.current = true;
+      send({ t: "d", mod });
+    }
+  };
+
+  // Request pointer lock on click. This must be done in a click handler (mouse up)
+  // rather than down to satisfy browser user activation requirements reliably.
+  const onClick = () => {
     if (!document.pointerLockElement) {
       trackpadRef.current?.requestPointerLock();
       trackpadRef.current?.focus();
-    } else {
-      mouseHeld.current = true;
-      mouseMoved.current = false;
-      send({ t: "s", touch: false });
     }
   };
 
@@ -234,19 +377,13 @@ function TouchArea({
       const now = performance.now();
       if (now - lastMoveTime.current < 16) return;
       lastMoveTime.current = now;
-      if (e.movementX !== 0 || e.movementY !== 0) {
-        mouseMoved.current = true;
-      }
-      send({ t: "m", dx: e.movementX, dy: e.movementY });
+      send({ t: "m", dx: e.movementX * settings.cursorSensitivity, dy: e.movementY * settings.cursorSensitivity });
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       if (mouseHeld.current) {
         mouseHeld.current = false;
-        if (!mouseMoved.current) {
-          send({ t: "c" });
-        }
-        send({ t: "e" });
+        send({ t: "u", mod: getModifiers(e) });
       }
     };
 
@@ -254,7 +391,6 @@ function TouchArea({
       if (!document.pointerLockElement) {
         if (mouseHeld.current) {
           mouseHeld.current = false;
-          send({ t: "e" });
         }
         trackpadRef.current?.blur();
       }
@@ -291,14 +427,14 @@ function TouchArea({
       if (e.deltaMode === 1) {
         // Line-based scrolling (mouse wheel)
         const dx = Math.round(e.deltaX);
-        const dy = Math.round(e.deltaY);
+        const dy = Math.round(e.deltaY * settings.scrollSensitivity);
         if (dx !== 0 || dy !== 0) {
           send({ t: "sc", dx, dy });
         }
       } else if (e.deltaMode === 2) {
         // Page-based: treat as lines with a multiplier
         const dx = Math.round(e.deltaX * 10);
-        const dy = Math.round(e.deltaY * 10);
+        const dy = Math.round(e.deltaY * 10 * settings.scrollSensitivity);
         if (dx !== 0 || dy !== 0) {
           send({ t: "sc", dx, dy });
         }
@@ -306,7 +442,7 @@ function TouchArea({
         // Pixel-based (trackpads, smooth scrolling)
         const dx = Math.round(e.deltaX);
         const dy = Math.round(e.deltaY);
-        if (dx !== 0 || dy !== 0) {
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
           send({ t: "sc", dx, dy, precise: true });
         }
       }
@@ -336,6 +472,7 @@ function TouchArea({
       onTouchMove={connected ? onTouchMove : undefined}
       onTouchEnd={connected ? onTouchEnd : undefined}
       onPointerDown={connected ? onPointerDown : undefined}
+      onClick={connected ? onClick : undefined}
       onContextMenu={(e) => {
         e.preventDefault();
       }}
@@ -379,6 +516,13 @@ export function Trackpad({
   const [layouts, setLayouts] = useState<Layout[]>([]);
   const [currentLayout, setCurrentLayout] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<TrackpadSettings>({
+    cursorSensitivity: 1.5,
+    cursorFriction: 0.92,
+    scrollSensitivity: 1.5,
+    scrollFriction: 0.92,
+  });
 
   const fetchLayouts = useCallback(async (silent: boolean) => {
     if (!authed) return;
@@ -401,16 +545,75 @@ export function Trackpad({
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-zinc-200 mb-4 flex items-center gap-2">
-        Trackpad
-        <span
-          className={`inline-block w-2 h-2 rounded-full ${
-            connected ? "bg-green-400" : "bg-red-400"
-          }`}
-        />
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
+          Trackpad
+          <span
+            className={`inline-block w-2 h-2 rounded-full ${
+              connected ? "bg-green-400" : "bg-red-400"
+            }`}
+          />
+        </h2>
+        <div className="relative">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full hover:bg-zinc-800"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+          {showSettings && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})</label>
+                <input
+                  type="range" min="0.1" max="5" step="0.1"
+                  value={settings.cursorSensitivity}
+                  onChange={(e) => setSettings({ ...settings, cursorSensitivity: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Cursor Friction ({settings.cursorFriction.toFixed(2)})</label>
+                <input
+                  type="range" min="0.8" max="0.99" step="0.01"
+                  value={settings.cursorFriction}
+                  onChange={(e) => setSettings({ ...settings, cursorFriction: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+              <div className="h-px bg-zinc-800" />
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Scroll Sensitivity ({settings.scrollSensitivity.toFixed(1)})</label>
+                <input
+                  type="range" min="0.1" max="5" step="0.1"
+                  value={settings.scrollSensitivity}
+                  onChange={(e) => setSettings({ ...settings, scrollSensitivity: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Scroll Friction ({settings.scrollFriction.toFixed(2)})</label>
+                <input
+                  type="range" min="0.8" max="0.99" step="0.01"
+                  value={settings.scrollFriction}
+                  onChange={(e) => setSettings({ ...settings, scrollFriction: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
       <div className="flex flex-col-reverse md:flex-row gap-6 sm:items-start">
-        <TouchArea connected={connected} send={send} silent={refreshSignal.silent} />
+        <TouchArea
+          connected={connected}
+          send={send}
+          silent={refreshSignal.silent}
+          settings={settings}
+        />
         <MonitorDisplay
           layouts={layouts}
           currentLayout={currentLayout}

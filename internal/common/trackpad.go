@@ -2,9 +2,7 @@ package common
 
 // TrackpadMessage is the WebSocket message format for trackpad communication.
 // Message types:
-//   - "s" (start): begin drag, Touch indicates touch vs mouse mode
 //   - "m" (move): movement delta
-//   - "e" (end): end drag, triggers inertia if touch mode
 //   - "p" (position): cursor position update (server -> browser)
 //   - "c" (click): mouse click (Button specifies which: "left","right","middle","back","forward")
 //   - "d" (down): mouse button down (Button specifies which)

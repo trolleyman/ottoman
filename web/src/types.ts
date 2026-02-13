@@ -58,14 +58,14 @@ export type TrackpadRecvArgs = { t: "p"; x?: number; y?: number };
 
 export type MouseButton = "left" | "right" | "middle" | "back" | "forward";
 
+export type Modifier = "alt" | "ctrl" | "meta" | "shift";
+
 export type TrackpadSendArgs =
-  | { t: "s"; touch: boolean }
   | { t: "m"; dx: number; dy: number }
-  | { t: "e" }
-  | { t: "c"; btn?: MouseButton }
-  | { t: "d"; btn?: MouseButton }
-  | { t: "u"; btn?: MouseButton }
+  | { t: "c"; btn?: MouseButton; mod?: Modifier[] }
+  | { t: "d"; btn?: MouseButton; mod?: Modifier[] }
+  | { t: "u"; btn?: MouseButton; mod?: Modifier[] }
   | { t: "k"; text: string }
   | { t: "sc"; dx: number; dy: number; precise?: boolean }
-  | { t: "key"; key: string; mod?: string[] }
+  | { t: "key"; key: string; mod?: Modifier[] }
   | { t: "a"; x: number; y: number };

@@ -492,21 +492,6 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	sensitivity := c.config.Trackpad.Sensitivity
-	if sensitivity <= 0 {
-		sensitivity = 1.5
-	}
-	friction := c.config.Trackpad.Friction
-	if friction <= 0 {
-		friction = 0.92
-	}
-
-	engine := input.NewInertiaEngine(c.mouse, sensitivity, friction, func(x, y int) {
-		latestX.Store(int32(x))
-		latestY.Store(int32(y))
-		posReady.Store(true)
-	})
-
 	// Position update sender goroutine (60Hz), skip if position unchanged
 	var lastSentX, lastSentY atomic.Int32
 	lastSentX.Store(latestX.Load() + 1) // ensure first send
@@ -562,13 +547,8 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch msg.Type {
-		case "s":
-			touch := msg.Touch != nil && *msg.Touch
-			engine.Start(touch)
 		case "m":
-			engine.Move(msg.DX, msg.DY)
-		case "e":
-			engine.End()
+			c.mouse.MoveRelative(msg.DX, msg.DY)
 		case "c":
 			c.mouse.Click(input.ParseMouseButton(msg.Button))
 		case "d":

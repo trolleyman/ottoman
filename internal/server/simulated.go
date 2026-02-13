@@ -64,8 +64,6 @@ type SimulatedServer struct {
 	currentLayout   string
 	monitors        []display.MonitorInfo
 	trackpadCancels []context.CancelFunc
-	trackpadSens    float64
-	trackpadFric    float64
 }
 
 // RunSimulated creates and starts a simulated server.
@@ -84,12 +82,10 @@ func NewSimulated(serverCfg *config.ServerConfig, clientCfg *config.ClientConfig
 	}
 
 	s := &SimulatedServer{
-		serverCfg:    serverCfg,
-		bootDelay:    bootDelay,
-		startTime:    time.Now(),
-		wakeTargets:  make(map[string]config.WakeTarget),
-		trackpadSens: clientCfg.Trackpad.Sensitivity,
-		trackpadFric: clientCfg.Trackpad.Friction,
+		serverCfg:   serverCfg,
+		bootDelay:   bootDelay,
+		startTime:   time.Now(),
+		wakeTargets: make(map[string]config.WakeTarget),
 	}
 
 	if startOnline {
@@ -873,12 +869,6 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	engine := input.NewInertiaEngine(mouse, s.trackpadSens, s.trackpadFric, func(x, y int) {
-		latestX.Store(int32(x))
-		latestY.Store(int32(y))
-		posReady.Store(true)
-	})
-
 	log.Printf("[SIM] Trackpad connected")
 
 	// Position update sender (60Hz), skip if position unchanged
@@ -939,13 +929,8 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		}
 
 		switch msg.Type {
-		case "s":
-			touch := msg.Touch != nil && *msg.Touch
-			engine.Start(touch)
 		case "m":
-			engine.Move(msg.DX, msg.DY)
-		case "e":
-			engine.End()
+			mouse.MoveRelative(msg.DX, msg.DY)
 		case "c":
 			baseMouse.Click(input.ParseMouseButton(msg.Button))
 		case "d":
