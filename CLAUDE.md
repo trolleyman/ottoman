@@ -10,28 +10,27 @@ Ottoman is a home automation system for controlling a Windows/Linux desktop comp
 ## Build Commands
 
 ```bash
-mise install           # Install tools (Go, mage, dlv, gopls)
-mise run deps          # Install Go dependencies
-mise run build         # Build for current platform
-mise run build:all     # Build for all platforms (pi, windows, linux)
-mise run build:pi      # Build for Raspberry Pi (linux/arm)
-mise run build:windows # Build for Windows (windows/amd64)
-mise run build:linux   # Build for Linux desktop (linux/amd64)
+mage deps              # Install Go dependencies
+mage build             # Build for current platform
+mage buildAll          # Build for all platforms (pi, windows, linux)
+mage buildPi           # Build for Raspberry Pi (linux/arm)
+mage buildWindows      # Build for Windows (windows/amd64)
+mage buildLinux        # Build for Linux desktop (linux/amd64)
 ```
 
 ## Test/Lint Commands
 
 ```bash
-mise run test          # Run tests
-mise run lint          # Run linter
-mise run clean         # Remove build artifacts
+mage test              # Run tests
+mage lint              # Run linter
+mage clean             # Remove build artifacts
 ```
 
 ## Run Locally
 
 ```bash
-mise run run:server    # Run server locally
-mise run run:client    # Run client locally
+mage runServer         # Run server locally
+mage runClient         # Run client locally
 ```
 
 ## Project Structure
@@ -81,8 +80,9 @@ web/                     # React frontend
 ## Deployment Commands
 
 ```bash
-mage deployClient        # Interactive client deployment (build + copy + register service)
-mage deployServer        # Interactive server deployment via SSH to Raspberry Pi
+mage deployClient        # Deploy client (build + copy + register service)
+mage deployServer        # Deploy server via SSH to Raspberry Pi
+mage deployAll           # Deploy client + server
 ```
 
 Deployment settings are saved to `magefiles/deploy.toml` (gitignored).

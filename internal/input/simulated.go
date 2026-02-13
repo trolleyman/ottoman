@@ -1,5 +1,7 @@
 package input
 
+import "log"
+
 // SimulatedMouse is an in-memory mouse controller for testing without OS calls.
 type SimulatedMouse struct {
 	x, y         int
@@ -16,6 +18,7 @@ func NewSimulatedMouse(startX, startY, minX, minY, maxX, maxY int) *SimulatedMou
 func (m *SimulatedMouse) MoveTo(x, y int) error {
 	m.x = clamp(x, m.minX, m.maxX)
 	m.y = clamp(y, m.minY, m.maxY)
+	log.Printf("[SIM] Mouse Move To (%d, %d)", m.x, m.y)
 	return nil
 }
 
@@ -36,22 +39,45 @@ func (m *SimulatedMouse) MoveRelative(dx, dy float64) error {
 		m.x = clamp(m.x+intX, m.minX, m.maxX)
 		m.y = clamp(m.y+intY, m.minY, m.maxY)
 	}
+	log.Printf("[SIM] Mouse Move (Relative by %.2f, %.2f) => (%d, %d)", dx, dy, m.x, m.y)
 	return nil
 }
 
-func (m *SimulatedMouse) LeftClick() error {
+func (m *SimulatedMouse) Click(btn MouseButton) error {
+	log.Printf("[SIM] %s Click", btn)
 	return nil
 }
 
-func (m *SimulatedMouse) LeftDown() error {
+func (m *SimulatedMouse) ButtonDown(btn MouseButton) error {
+	log.Printf("[SIM] %s Down", btn)
 	return nil
 }
 
-func (m *SimulatedMouse) LeftUp() error {
+func (m *SimulatedMouse) ButtonUp(btn MouseButton) error {
+	log.Printf("[SIM] %s Up", btn)
 	return nil
 }
 
-func (m *SimulatedMouse) Type(text string) error {
+func (m *SimulatedMouse) Scroll(dx, dy int, precise bool) error {
+	log.Printf("[SIM] Scroll dx=%d dy=%d precise=%v", dx, dy, precise)
+	return nil
+}
+
+// SimulatedKeyboard is an in-memory keyboard controller for testing without OS calls.
+type SimulatedKeyboard struct{}
+
+// NewSimulatedKeyboard creates a simulated keyboard.
+func NewSimulatedKeyboard() *SimulatedKeyboard {
+	return &SimulatedKeyboard{}
+}
+
+func (k *SimulatedKeyboard) Type(text string) error {
+	log.Printf("[SIM] Type: %s", text)
+	return nil
+}
+
+func (k *SimulatedKeyboard) KeyPress(key string, modifiers []string) error {
+	log.Printf("[SIM] KeyPress: %s mod=%v", key, modifiers)
 	return nil
 }
 

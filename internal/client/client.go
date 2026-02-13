@@ -36,6 +36,7 @@ type Client struct {
 	layouts       *display.Layouts
 	displayMgr    display.Manager
 	mouse         input.MouseController
+	keyboard      input.KeyboardController
 	startTime     time.Time
 	currentLayout string
 }
@@ -61,12 +62,19 @@ func New(cfg *Config) (*Client, error) {
 		return nil, errors.Wrap(err, "failed to create mouse controller")
 	}
 
+	// Create keyboard controller
+	keyboard, err := input.NewKeyboardController()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create keyboard controller")
+	}
+
 	c := &Client{
 		config:     cfg,
 		configPath: config.ConfigPath(),
 		layouts:    store,
 		displayMgr: mgr,
 		mouse:      mouse,
+		keyboard:   keyboard,
 		startTime:  time.Now(),
 	}
 
@@ -562,13 +570,18 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		case "e":
 			engine.End()
 		case "c":
-			c.mouse.LeftClick()
+			c.mouse.Click(input.ParseMouseButton(msg.Button))
 		case "d":
-			c.mouse.LeftDown()
+			c.mouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
-			c.mouse.LeftUp()
+			c.mouse.ButtonUp(input.ParseMouseButton(msg.Button))
 		case "k":
-			c.mouse.Type(msg.Text)
+			c.keyboard.Type(msg.Text)
+		case "sc":
+			precise := msg.Precise != nil && *msg.Precise
+			c.mouse.Scroll(int(msg.DX), int(msg.DY), precise)
+		case "key":
+			c.keyboard.KeyPress(msg.Key, msg.Modifiers)
 		case "a":
 			c.mouse.MoveTo(msg.X, msg.Y)
 		}

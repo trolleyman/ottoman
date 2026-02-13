@@ -18,6 +18,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
+	"github.com/trolleyman/ottoman/internal/input"
 	"github.com/trolleyman/ottoman/internal/server"
 )
 
@@ -36,6 +37,7 @@ var (
 )
 
 func main() {
+	input.InitPlatform()
 	setupLogging()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

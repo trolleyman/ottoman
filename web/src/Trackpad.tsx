@@ -65,6 +65,15 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   return { connected, cursorPos, send };
 }
 
+const SPECIAL_KEYS = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Enter", "Tab", "Escape", "Backspace", "Delete",
+  "Home", "End", "PageUp", "PageDown", "Insert",
+  "F1", "F2", "F3", "F4", "F5", "F6",
+  "F7", "F8", "F9", "F10", "F11", "F12",
+  " ", "PrintScreen", "ScrollLock", "Pause", "NumLock", "CapsLock",
+]);
+
 function TouchArea({
   connected,
   send,
@@ -81,11 +90,30 @@ function TouchArea({
   const touchStartPos = useRef<{ x: number; y: number } | null>(null);
   const lastTouchEndTime = useRef(0);
   const isDragging = useRef(false);
-  const pointerActive = useRef(false);
+  const pointerLocked = useRef(false);
+  const mouseHeld = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+
+  // Two-finger scroll refs
+  const twoFingerRef = useRef(false);
+  const twoFingerLastX = useRef(0);
+  const twoFingerLastY = useRef(0);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
+
+    // Two-finger scroll detection
+    if (e.touches.length === 2) {
+      twoFingerRef.current = true;
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      twoFingerLastX.current = midX;
+      twoFingerLastY.current = midY;
+      return;
+    }
+
+    twoFingerRef.current = false;
     const touch = e.touches[0];
     touchStartTime.current = performance.now();
 
@@ -98,6 +126,7 @@ function TouchArea({
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
     send({ t: "s", touch: true });
+    // Focus hidden input for on-screen keyboard on mobile
     inputRef.current?.focus();
   };
 
@@ -106,6 +135,20 @@ function TouchArea({
     const now = performance.now();
     if (now - lastMoveTime.current < 16) return;
     lastMoveTime.current = now;
+
+    // Two-finger scroll
+    if (e.touches.length === 2 && twoFingerRef.current) {
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const dx = midX - twoFingerLastX.current;
+      const dy = midY - twoFingerLastY.current;
+      twoFingerLastX.current = midX;
+      twoFingerLastY.current = midY;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        send({ t: "sc", dx: Math.round(dx), dy: Math.round(-dy), precise: true });
+      }
+      return;
+    }
 
     const touch = e.touches[0];
     if (lastTouchRef.current) {
@@ -118,6 +161,15 @@ function TouchArea({
 
   const onTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
+
+    // Two-finger scroll end
+    if (twoFingerRef.current) {
+      if (e.touches.length === 0) {
+        twoFingerRef.current = false;
+      }
+      return;
+    }
+
     const now = performance.now();
     lastTouchEndTime.current = now;
 
@@ -143,12 +195,26 @@ function TouchArea({
   // Mouse drag via Pointer Lock: cursor stays locked inside the trackpad div
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
+
+    // Middle click
+    if (e.button === 1) {
+      e.preventDefault();
+      send({ t: "c", btn: "middle" });
+      return;
+    }
+
+    // Right click handled by onContextMenu
+    if (e.button === 2) return;
+
+    // Left click / drag
     pointerActive.current = true;
     send({ t: "s", touch: false });
     trackpadRef.current?.requestPointerLock();
-    inputRef.current?.focus();
+    // Focus trackpad div for desktop keyboard capture
+    trackpadRef.current?.focus();
   };
 
+  // Pointer lock mouse movement and release
   useEffect(() => {
     if (!connected) return;
 
@@ -185,22 +251,94 @@ function TouchArea({
     };
   }, [connected, send]);
 
+  // Keyboard capture on the trackpad div
+  useEffect(() => {
+    const el = trackpadRef.current;
+    if (!el || !connected) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const hasModifier = e.ctrlKey || e.altKey || e.metaKey;
+      const isSpecial = SPECIAL_KEYS.has(e.key);
+
+      if (isSpecial || hasModifier) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const mod: string[] = [];
+        if (e.shiftKey) mod.push("shift");
+        if (e.ctrlKey) mod.push("ctrl");
+        if (e.altKey) mod.push("alt");
+        if (e.metaKey) mod.push("meta");
+
+        send({ t: "key", key: e.key, mod: mod.length > 0 ? mod : undefined });
+      }
+      // Regular characters without ctrl/alt/meta fall through to hidden input onChange
+    };
+
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, [connected, send]);
+
+  // Wheel scroll handler (passive: false to allow preventDefault)
+  useEffect(() => {
+    const el = trackpadRef.current;
+    if (!el || !connected) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      // deltaMode: 0 = pixels (trackpads), 1 = lines (mouse wheels), 2 = pages
+      if (e.deltaMode === 1) {
+        // Line-based scrolling (mouse wheel)
+        const dx = Math.round(e.deltaX);
+        const dy = Math.round(e.deltaY);
+        if (dx !== 0 || dy !== 0) {
+          send({ t: "sc", dx, dy });
+        }
+      } else if (e.deltaMode === 2) {
+        // Page-based: treat as lines with a multiplier
+        const dx = Math.round(e.deltaX * 10);
+        const dy = Math.round(e.deltaY * 10);
+        if (dx !== 0 || dy !== 0) {
+          send({ t: "sc", dx, dy });
+        }
+      } else {
+        // Pixel-based (trackpads, smooth scrolling)
+        const dx = Math.round(e.deltaX);
+        const dy = Math.round(e.deltaY);
+        if (dx !== 0 || dy !== 0) {
+          send({ t: "sc", dx, dy, precise: true });
+        }
+      }
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [connected, send]);
+
   return (
     <div
       ref={trackpadRef}
-      className={`w-full aspect-square md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none ${connected
-          ? "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
+      tabIndex={0}
+      className={`w-full aspect-square md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none outline-none ${connected
+          ? focused
+            ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
+            : "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
           : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
         }`}
       style={connected ? {
         backgroundImage: "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
         backgroundSize: "20px 20px",
       } : undefined}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       onTouchStart={connected ? onTouchStart : undefined}
       onTouchMove={connected ? onTouchMove : undefined}
       onTouchEnd={connected ? onTouchEnd : undefined}
       onPointerDown={connected ? onPointerDown : undefined}
-      onClick={() => inputRef.current?.focus()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (connected) send({ t: "c", btn: "right" });
+      }}
     >
       <input
         ref={inputRef}

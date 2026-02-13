@@ -2,12 +2,61 @@ package input
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
 
-// MouseController provides platform-specific cursor control.
+// MouseButton represents a mouse button.
+type MouseButton int
+
+const (
+	MouseButtonLeft    MouseButton = 1
+	MouseButtonMiddle  MouseButton = 2
+	MouseButtonRight   MouseButton = 3
+	MouseButtonBack    MouseButton = 4
+	MouseButtonForward MouseButton = 5
+)
+
+// String returns the lowercase name of the mouse button.
+func (b MouseButton) String() string {
+	switch b {
+	case MouseButtonLeft:
+		return "left"
+	case MouseButtonMiddle:
+		return "middle"
+	case MouseButtonRight:
+		return "right"
+	case MouseButtonBack:
+		return "back"
+	case MouseButtonForward:
+		return "forward"
+	default:
+		return fmt.Sprintf("button(%d)", int(b))
+	}
+}
+
+// ParseMouseButton parses a mouse button string. Returns MouseButtonLeft if empty or unrecognized.
+func ParseMouseButton(s string) MouseButton {
+	switch strings.ToLower(s) {
+	case "left", "1", "":
+		return MouseButtonLeft
+	case "middle", "2":
+		return MouseButtonMiddle
+	case "right", "3":
+		return MouseButtonRight
+	case "back", "4":
+		return MouseButtonBack
+	case "forward", "5":
+		return MouseButtonForward
+	default:
+		return MouseButtonLeft
+	}
+}
+
+// MouseController provides platform-specific cursor and mouse button control.
 type MouseController interface {
 	// MoveTo sets the cursor to an absolute position.
 	MoveTo(x, y int) error
@@ -15,14 +64,27 @@ type MouseController interface {
 	GetPosition() (x, y int, err error)
 	// MoveRelative moves the cursor by a delta, accumulating sub-pixel fractions.
 	MoveRelative(dx, dy float64) error
-	// LeftClick performs a left mouse click.
-	LeftClick() error
-	// LeftDown presses the left mouse button.
-	LeftDown() error
-	// LeftUp releases the left mouse button.
-	LeftUp() error
-	// Type types the given text.
+	// Click performs a click of the given mouse button.
+	Click(btn MouseButton) error
+	// ButtonDown presses the given mouse button.
+	ButtonDown(btn MouseButton) error
+	// ButtonUp releases the given mouse button.
+	ButtonUp(btn MouseButton) error
+	// Scroll scrolls by dx (horizontal) and dy (vertical).
+	// Positive dy = scroll down, negative dy = scroll up.
+	// Positive dx = scroll right, negative dx = scroll left.
+	// If precise is true, values are pixel-precise (trackpads); otherwise line-based (mouse wheels).
+	Scroll(dx, dy int, precise bool) error
+}
+
+// KeyboardController provides platform-specific keyboard input.
+type KeyboardController interface {
+	// Type types the given text as Unicode characters.
 	Type(text string) error
+	// KeyPress sends a special key press with optional modifiers.
+	// key is the browser event.key name (e.g. "ArrowLeft", "Enter", "F1").
+	// modifiers is a list of modifier names: "shift", "ctrl", "alt", "meta".
+	KeyPress(key string, modifiers []string) error
 }
 
 const (

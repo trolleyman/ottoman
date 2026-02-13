@@ -861,6 +861,7 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 	minX, minY, maxX, maxY := s.computeScreenBounds()
 	// Use large bounds for baseMouse so it doesn't interfere with TopologyMouse clamping
 	baseMouse := input.NewSimulatedMouse((minX+maxX)/2, (minY+maxY)/2, -100000, -100000, 100000, 100000)
+	keyboard := input.NewSimulatedKeyboard()
 
 	mouse := &TopologyMouse{
 		MouseController: baseMouse,
@@ -876,7 +877,6 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		latestX.Store(int32(x))
 		latestY.Store(int32(y))
 		posReady.Store(true)
-		log.Printf("[SIM] Pointer: (%d, %d)", x, y)
 	})
 
 	log.Printf("[SIM] Trackpad connected")
@@ -947,13 +947,18 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		case "e":
 			engine.End()
 		case "c":
-			log.Printf("[SIM] Mouse Click")
+			baseMouse.Click(input.ParseMouseButton(msg.Button))
 		case "d":
-			log.Printf("[SIM] Mouse Down")
+			baseMouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
-			log.Printf("[SIM] Mouse Up")
+			baseMouse.ButtonUp(input.ParseMouseButton(msg.Button))
 		case "k":
-			log.Printf("[SIM] Typed: %s", msg.Text)
+			keyboard.Type(msg.Text)
+		case "sc":
+			precise := msg.Precise != nil && *msg.Precise
+			baseMouse.Scroll(int(msg.DX), int(msg.DY), precise)
+		case "key":
+			keyboard.KeyPress(msg.Key, msg.Modifiers)
 		case "a":
 			mouse.MoveTo(msg.X, msg.Y)
 		}

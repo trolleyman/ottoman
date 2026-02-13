@@ -19,6 +19,7 @@ export function MonitorDisplay({
 }) {
   const [containerWidth, setContainerWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -80,9 +81,8 @@ export function MonitorDisplay({
   const dotY = hasCursor ? (cursorPos!.y - minY) * scale : 0;
 
   const handlePointer = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!onSetPosition) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const rect = e.currentTarget.getBoundingClientRect();
+    if (!onSetPosition || !previewRef.current) return;
+    const rect = previewRef.current.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) / scale + minX);
     const y = Math.round((e.clientY - rect.top) / scale + minY);
     onSetPosition(x, y);
@@ -91,26 +91,30 @@ export function MonitorDisplay({
   return (
     <div
       ref={containerRef}
-      className="flex-1 min-w-0 w-full flex flex-col items-center gap-1 touch-none"
-      onPointerDown={(e) => {
-        if (!onSetPosition) return;
-        handlePointer(e);
-      }}
-      onPointerMove={(e) => {
-        if (e.buttons > 0) handlePointer(e);
-      }}
+      className="flex-1 min-w-0 w-full flex flex-col items-center gap-1"
     >
-      <div className="relative">
+      <div
+        ref={previewRef}
+        className="relative select-none touch-none cursor-crosshair"
+        onPointerDown={(e) => {
+          if (!onSetPosition) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          handlePointer(e);
+        }}
+        onPointerMove={(e) => {
+          if (e.buttons > 0) handlePointer(e);
+        }}
+      >
         <MiniLayoutPreview monitors={monitors} scale={scale} />
         {hasCursor && (
           <div
-            className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)]"
+            className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)] pointer-events-none"
             style={{ left: dotX, top: dotY }}
           />
         )}
       </div>
       {hasCursor && (
-        <span className="text-[10px] text-zinc-500 font-mono">
+        <span className="text-[10px] text-zinc-500 font-mono select-none">
           {cursorPos!.x}, {cursorPos!.y}
         </span>
       )}

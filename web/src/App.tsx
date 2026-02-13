@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
 import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
-import { Keyboard } from "./Keyboard";
+
 import { Monitors } from "./Monitors";
 import { WakeTargets } from "./WakeTargets";
 import { Layouts } from "./Layouts";
@@ -102,7 +102,6 @@ export default function App() {
           send={send}
         />
 
-        <Keyboard send={send} connected={connected} />
       </div>
     </div>
   );

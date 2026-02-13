@@ -56,12 +56,16 @@ export interface WakeTarget {
 
 export type TrackpadRecvArgs = { t: "p"; x?: number; y?: number };
 
+export type MouseButton = "left" | "right" | "middle" | "back" | "forward";
+
 export type TrackpadSendArgs =
   | { t: "s"; touch: boolean }
   | { t: "m"; dx: number; dy: number }
   | { t: "e" }
-  | { t: "c" }
-  | { t: "d" }
-  | { t: "u" }
+  | { t: "c"; btn?: MouseButton }
+  | { t: "d"; btn?: MouseButton }
+  | { t: "u"; btn?: MouseButton }
   | { t: "k"; text: string }
+  | { t: "sc"; dx: number; dy: number; precise?: boolean }
+  | { t: "key"; key: string; mod?: string[] }
   | { t: "a"; x: number; y: number };
