@@ -869,6 +869,36 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
+	setModifiers := func(mods []string, down bool) {
+		for _, m := range mods {
+			var key string
+			switch m {
+			case "shift":
+				key = "Shift"
+			case "ctrl":
+				key = "Control"
+			case "alt":
+				key = "Alt"
+			case "meta":
+				key = "Meta"
+			}
+			if key != "" {
+				if down {
+					keyboard.KeyDown(key)
+				} else {
+					keyboard.KeyUp(key)
+				}
+			}
+		}
+	}
+
+	releaseAllModifiers := func() {
+		keyboard.KeyUp("Shift")
+		keyboard.KeyUp("Control")
+		keyboard.KeyUp("Alt")
+		keyboard.KeyUp("Meta")
+	}
+
 	log.Printf("[SIM] Trackpad connected")
 
 	// Position update sender (60Hz), skip if position unchanged
@@ -932,11 +962,15 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		case "m":
 			mouse.MoveRelative(msg.DX, msg.DY)
 		case "c":
+			setModifiers(msg.Modifiers, true)
 			baseMouse.Click(input.ParseMouseButton(msg.Button))
+			releaseAllModifiers()
 		case "d":
+			setModifiers(msg.Modifiers, true)
 			baseMouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
 			baseMouse.ButtonUp(input.ParseMouseButton(msg.Button))
+			releaseAllModifiers()
 		case "k":
 			keyboard.Type(msg.Text)
 		case "sc":

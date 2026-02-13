@@ -85,6 +85,10 @@ type KeyboardController interface {
 	// key is the browser event.key name (e.g. "ArrowLeft", "Enter", "F1").
 	// modifiers is a list of modifier names: "shift", "ctrl", "alt", "meta".
 	KeyPress(key string, modifiers []string) error
+	// KeyDown presses a key.
+	KeyDown(key string) error
+	// KeyUp releases a key.
+	KeyUp(key string) error
 }
 
 const (

@@ -80,6 +80,7 @@ interface TrackpadSettings {
   cursorFriction: number;
   scrollSensitivity: number;
   scrollFriction: number;
+  clickAndDrag: boolean;
 }
 
 function TouchArea({
@@ -101,6 +102,7 @@ function TouchArea({
   const lastTouchEndTime = useRef(0);
   const isDragging = useRef(false);
   const mouseHeld = useRef(false);
+  const dragLocked = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
 
@@ -354,8 +356,18 @@ function TouchArea({
 
     // Left click / drag
     if (document.pointerLockElement) {
-      mouseHeld.current = true;
-      send({ t: "d", mod });
+      if (settings.clickAndDrag) {
+        if (dragLocked.current) {
+          send({ t: "u", mod });
+          dragLocked.current = false;
+        } else {
+          send({ t: "d", mod });
+          dragLocked.current = true;
+        }
+      } else {
+        mouseHeld.current = true;
+        send({ t: "d", mod });
+      }
     }
   };
 
@@ -381,7 +393,7 @@ function TouchArea({
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (mouseHeld.current) {
+      if (mouseHeld.current && !settings.clickAndDrag) {
         mouseHeld.current = false;
         send({ t: "u", mod: getModifiers(e) });
       }
@@ -391,6 +403,10 @@ function TouchArea({
       if (!document.pointerLockElement) {
         if (mouseHeld.current) {
           mouseHeld.current = false;
+        }
+        if (dragLocked.current) {
+          dragLocked.current = false;
+          send({ t: "u" });
         }
         trackpadRef.current?.blur();
       }
@@ -522,6 +538,7 @@ export function Trackpad({
     cursorFriction: 0.92,
     scrollSensitivity: 1.5,
     scrollFriction: 0.92,
+    clickAndDrag: false,
   });
 
   const fetchLayouts = useCallback(async (silent: boolean) => {
@@ -601,6 +618,15 @@ export function Trackpad({
                   value={settings.scrollFriction}
                   onChange={(e) => setSettings({ ...settings, scrollFriction: parseFloat(e.target.value) })}
                   className="w-full accent-blue-500"
+                />
+              </div>
+              <div className="h-px bg-zinc-800" />
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-zinc-400">Click and Drag</label>
+                <input
+                  type="checkbox"
+                  checked={settings.clickAndDrag}
+                  onChange={(e) => setSettings({ ...settings, clickAndDrag: e.target.checked })}
                 />
               </div>
             </div>

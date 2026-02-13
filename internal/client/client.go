@@ -489,6 +489,36 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Throttled position sender: latest position stored atomically, sent at 10Hz
+	setModifiers := func(mods []string, down bool) {
+		for _, m := range mods {
+			var key string
+			switch m {
+			case "shift":
+				key = "Shift"
+			case "ctrl":
+				key = "Control"
+			case "alt":
+				key = "Alt"
+			case "meta":
+				key = "Meta"
+			}
+			if key != "" {
+				if down {
+					c.keyboard.KeyDown(key)
+				} else {
+					c.keyboard.KeyUp(key)
+				}
+			}
+		}
+	}
+
+	releaseAllModifiers := func() {
+		c.keyboard.KeyUp("Shift")
+		c.keyboard.KeyUp("Control")
+		c.keyboard.KeyUp("Alt")
+		c.keyboard.KeyUp("Meta")
+	}
+
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
@@ -550,11 +580,15 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		case "m":
 			c.mouse.MoveRelative(msg.DX, msg.DY)
 		case "c":
+			setModifiers(msg.Modifiers, true)
 			c.mouse.Click(input.ParseMouseButton(msg.Button))
+			releaseAllModifiers()
 		case "d":
+			setModifiers(msg.Modifiers, true)
 			c.mouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
 			c.mouse.ButtonUp(input.ParseMouseButton(msg.Button))
+			releaseAllModifiers()
 		case "k":
 			c.keyboard.Type(msg.Text)
 		case "sc":
