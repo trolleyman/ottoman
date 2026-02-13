@@ -256,6 +256,7 @@ function TouchArea({
           mouseHeld.current = false;
           send({ t: "e" });
         }
+        trackpadRef.current?.blur();
       }
     };
 
