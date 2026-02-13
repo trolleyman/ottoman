@@ -227,6 +227,8 @@ MIT
 
 # TODO
 - bugs
+   - `-`/`£`/`$`/etc. symbols don't work for some reason - fix this
+   - Partially implemented but not working: check /api/status's local_ip field for if that's contactable. if it is, redirect to that.
    - Two finger scroll on mobile X is reversed from natural (Y is fine)
    - scrolling past the trackpad should be easy. also - the mini layout preview shouldn't set the mouse if you're just scrolling through either
    - the trackpad settings pop up should close if clicking on the cog
@@ -236,6 +238,10 @@ MIT
       - HDMI
       - DisplayPort
       - how does HDR fit into it?
+   - streaming of monitors!! that'd be awesome
+      - potentially turn on and off for each individual montior to save streaming costs
+      - RDP?
 - minor features
    - Add HDR info at least of monitors
    - Add monitor logical size (e.g. `XxY (X2xY2 @ Nx)` - `2680x1400 (1920x1080 @ 2x)` - dimensions are wrong here but give impression)
+   - Display client name in ClientStatus!
