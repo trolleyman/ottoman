@@ -25,7 +25,13 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
     wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      // Debounce: only report connected after WS stays open 500ms.
+      // Prevents flicker when server accepts but immediately closes
+      // because the client is unreachable.
+      const timer = setTimeout(() => setConnected(true), 500);
+      ws.addEventListener("close", () => clearTimeout(timer), { once: true });
+    };
     ws.onclose = () => {
       setConnected(false);
       setCursorPos(null);
