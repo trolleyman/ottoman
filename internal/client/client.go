@@ -515,10 +515,21 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
+	// Send initial position immediately so the frontend detects connection
+	if mx, my, err := c.mouse.GetPosition(); err == nil {
+		msg := common.TrackpadMessage{Type: "p", X: mx, Y: my}
+		data, _ := json.Marshal(msg)
+		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+			return
+		}
+		latestX.Store(int32(mx))
+		latestY.Store(int32(my))
+	}
+
 	// Position update sender goroutine (60Hz), skip if position unchanged
 	var lastSentX, lastSentY atomic.Int32
-	lastSentX.Store(latestX.Load() + 1) // ensure first send
-	lastSentY.Store(latestY.Load() + 1)
+	lastSentX.Store(latestX.Load())
+	lastSentY.Store(latestY.Load())
 	go func() {
 		ticker := time.NewTicker(16 * time.Millisecond)
 		defer ticker.Stop()

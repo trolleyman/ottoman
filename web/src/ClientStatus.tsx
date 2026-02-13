@@ -19,11 +19,13 @@ export function ClientStatus({
 }) {
   const [client, setClient] = useState<ClientStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const prevStatusRef = useRef<string | null>(null);
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (silent: boolean) => {
     if (!authed) return;
+    if (!silent) setLoading(true);
     try {
       const data = await fetchJSON<StatusResponse>("/api/status");
       if (data.client) {
@@ -38,17 +40,19 @@ export function ClientStatus({
       }
     } catch {
       // Ignore errors
+    } finally {
+      setLoading(false);
     }
   }, [authed, onOnline, onOffline]);
 
   useEffect(() => {
-    fetchStatus();
+    fetchStatus(refreshSignal.silent);
   }, [fetchStatus, refreshSignal]);
 
   // Poll status
   useEffect(() => {
     if (!authed) return;
-    const id = setInterval(() => fetchStatus(), 3000);
+    const id = setInterval(() => fetchStatus(true), 3000);
     return () => clearInterval(id);
   }, [authed, fetchStatus]);
 
@@ -109,7 +113,7 @@ export function ClientStatus({
             <span className={`font-medium ${isOnline ? "text-green-400" : isOffline ? "text-red-400" : "text-zinc-300"}`}>
               {isOnline ? "Online" : isOffline ? "Offline" : formatStatus(client.status)}
             </span>
-            {isBusy && (
+            {(isBusy || loading) && (
               <svg className="animate-spin h-3.5 w-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />

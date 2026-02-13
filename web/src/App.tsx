@@ -12,7 +12,7 @@ export default function App() {
   // refreshSignal triggers refreshes. silent=true avoids showing loading indicators for polling.
   const [refreshSignal, setRefreshSignal] = useState({ key: 0, silent: false });
 
-  const { connected, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshSignal.key);
+  const { connected, connecting, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshSignal.key);
 
   // Check auth on mount
   useEffect(() => {
@@ -98,6 +98,7 @@ export default function App() {
           authed={!!authed}
           refreshSignal={refreshSignal}
           connected={connected}
+          connecting={connecting}
           cursorPos={cursorPos}
           send={send}
         />

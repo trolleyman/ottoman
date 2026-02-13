@@ -91,7 +91,12 @@ export function Monitors({
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200">Monitors</h2>
+        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
+          Monitors
+          {loading && monitors.length > 0 && (
+            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+          )}
+        </h2>
         <span className="text-xs text-zinc-500">
           {monitors.filter((m) => m.active).length} active / {monitors.length} total
         </span>

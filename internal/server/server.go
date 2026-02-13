@@ -145,6 +145,8 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 // handleHealth returns a simple health check
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	// CORS: allow cross-origin health checks for local network redirect detection
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }

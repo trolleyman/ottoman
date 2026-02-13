@@ -5,6 +5,7 @@ import { fetchJSON, sortedLayouts } from "./utils";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [connected, setConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -21,24 +22,23 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       wsRef.current.close();
     }
 
+    setConnecting(true);
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      // Debounce: only report connected after WS stays open 500ms.
-      // Prevents flicker when server accepts but immediately closes
-      // because the client is unreachable.
-      const timer = setTimeout(() => setConnected(true), 500);
-      ws.addEventListener("close", () => clearTimeout(timer), { once: true });
-    };
     ws.onclose = () => {
       setConnected(false);
+      setConnecting(false);
       setCursorPos(null);
       // Attempt reconnect after 3 seconds
       reconnectRef.current = setTimeout(connect, 3000);
     };
     ws.onmessage = (e) => {
+      // First data message from client proves connection is live
+      setConnected(true);
+      setConnecting(false);
       try {
         const msg: TrackpadRecvArgs = JSON.parse(e.data);
         if (msg.t === "p") {
@@ -69,7 +69,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     }
   }, []);
 
-  return { connected, cursorPos, send };
+  return { connected, connecting, cursorPos, send };
 }
 
 function getModifiers(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }) {
@@ -91,13 +91,13 @@ interface TrackpadSettings {
 
 function TouchArea({
   connected,
+  connecting,
   send,
-  silent,
   settings,
 }: {
   connected: boolean;
+  connecting: boolean;
   send: (msg: TrackpadSendArgs) => void;
-  silent: boolean;
   settings: TrackpadSettings;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
@@ -111,6 +111,8 @@ function TouchArea({
   const dragLocked = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
+  // Fallback mouse position tracking when pointer lock is unavailable (e.g. after Escape cooldown)
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
 
   // Two-finger scroll refs
   const twoFingerRef = useRef(false);
@@ -128,10 +130,26 @@ function TouchArea({
   const lastCursorTime = useRef(0);
 
   const handleKey = useCallback((e: React.KeyboardEvent | KeyboardEvent) => {
+    // Skip unidentified keys - handled by input event on mobile
+    if (e.key === "Unidentified" || e.key === "Process") return;
+
     e.preventDefault();
     e.stopPropagation();
 
     send({ t: "key", key: e.key, mod: getModifiers(e) });
+  }, [send]);
+
+  // Fallback for characters that don't produce proper keydown events (mobile symbol keyboards)
+  const handleInput = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const value = input.value;
+    if (value) {
+      for (const char of value) {
+        send({ t: "key", key: char });
+      }
+      input.value = "";
+    }
   }, [send]);
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -214,7 +232,7 @@ function TouchArea({
       }
 
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        send({ t: "sc", dx: Math.round(dx), dy: Math.round(-dy), precise: true });
+        send({ t: "sc", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
       }
       return;
     }
@@ -275,7 +293,7 @@ function TouchArea({
 
             const dx = cx * dt;
             const dy = cy * dt;
-            send({ t: "sc", dx: Math.round(dx), dy: Math.round(-dy), precise: true });
+            send({ t: "sc", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
             inertiaFrame.current = requestAnimationFrame(step);
           };
           inertiaFrame.current = requestAnimationFrame(step);
@@ -336,8 +354,7 @@ function TouchArea({
     lastTouchRef.current = null;
   };
 
-  // Mouse drag via Pointer Lock: cursor stays locked inside the trackpad div
-  // This handles the actual mouse button events when the pointer is already locked.
+  // Mouse drag via Pointer Lock (or fallback position tracking after Escape cooldown)
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
 
@@ -357,19 +374,23 @@ function TouchArea({
       return;
     }
 
-    // Left click / drag
-    if (document.pointerLockElement) {
-      if (settings.clickAndDrag) {
-        if (dragLocked.current) {
-          send({ t: "u", mod });
-          dragLocked.current = false;
-        } else {
-          send({ t: "d", mod });
-          dragLocked.current = true;
-        }
+    // Left button: grab pointer lock if not already locked
+    if (!document.pointerLockElement) {
+      // requestPointerLock may fail after Escape (browser cooldown ~1.5s).
+      // In that case, fallback mouse tracking via lastMousePos kicks in.
+      trackpadRef.current?.requestPointerLock();
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    }
+    trackpadRef.current?.focus();
+
+    // Handle click/drag
+    if (document.pointerLockElement && settings.clickAndDrag) {
+      if (dragLocked.current) {
+        send({ t: "u", mod });
+        dragLocked.current = false;
       } else {
-        mouseHeld.current = true;
         send({ t: "d", mod });
+        dragLocked.current = true;
       }
     } else {
       mouseHeld.current = true;
@@ -377,30 +398,33 @@ function TouchArea({
     }
   };
 
-  // Request pointer lock on click. This must be done in a click handler (mouse up)
-  // rather than down to satisfy browser user activation requirements reliably.
-  const onClick = () => {
-    if (!document.pointerLockElement) {
-      trackpadRef.current?.requestPointerLock();
-      trackpadRef.current?.focus();
-    }
-  };
-
-  // Pointer lock mouse movement and release
+  // Mouse movement and release (pointer lock + fallback)
   useEffect(() => {
     if (!connected) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!document.pointerLockElement) return;
       const now = performance.now();
       if (now - lastMoveTime.current < 16) return;
       lastMoveTime.current = now;
-      send({ t: "m", dx: e.movementX * settings.cursorSensitivity, dy: e.movementY * settings.cursorSensitivity });
+
+      if (document.pointerLockElement) {
+        // Pointer lock active: use movementX/Y
+        send({ t: "m", dx: e.movementX * settings.cursorSensitivity, dy: e.movementY * settings.cursorSensitivity });
+      } else if (mouseHeld.current && lastMousePos.current) {
+        // Fallback: track delta manually (after Escape cooldown denies pointer lock)
+        const dx = (e.clientX - lastMousePos.current.x) * settings.cursorSensitivity;
+        const dy = (e.clientY - lastMousePos.current.y) * settings.cursorSensitivity;
+        lastMousePos.current = { x: e.clientX, y: e.clientY };
+        if (dx !== 0 || dy !== 0) {
+          send({ t: "m", dx, dy });
+        }
+      }
     };
 
     const handleMouseUp = (e: MouseEvent) => {
       if (mouseHeld.current) {
         mouseHeld.current = false;
+        lastMousePos.current = null;
         send({ t: "u", mod: getModifiers(e) });
       }
     };
@@ -415,7 +439,8 @@ function TouchArea({
           dragLocked.current = false;
           send({ t: "u" });
         }
-        trackpadRef.current?.blur();
+        lastMousePos.current = null;
+        // Don't blur - keep trackpad focused for keyboard events and easy re-lock
       }
     };
 
@@ -496,7 +521,7 @@ function TouchArea({
     <div
       ref={trackpadRef}
       tabIndex={0}
-      className={`w-full aspect-square md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none outline-none ${connected
+      className={`w-full aspect-square max-h-[60vh] md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none outline-none ${connected
         ? focused
           ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
           : "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
@@ -512,7 +537,6 @@ function TouchArea({
       onTouchMove={connected ? onTouchMove : undefined}
       onTouchEnd={connected ? onTouchEnd : undefined}
       onPointerDown={connected ? onPointerDown : undefined}
-      onClick={connected ? onClick : undefined}
       onContextMenu={(e) => {
         e.preventDefault();
       }}
@@ -523,10 +547,11 @@ function TouchArea({
         className="opacity-0 fixed top-0 left-0 h-0 w-0 pointer-events-none"
         autoComplete="off"
         onKeyDown={handleKey}
+        onInput={handleInput}
       />
       {!connected && (
         <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
-          {!silent ? (
+          {connecting ? (
             <>
               <div className="w-5 h-5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
               <span>Connecting...</span>
@@ -544,12 +569,14 @@ export function Trackpad({
   authed,
   refreshSignal,
   connected,
+  connecting,
   cursorPos,
   send,
 }: {
   authed: boolean;
   refreshSignal: { key: number; silent: boolean };
   connected: boolean;
+  connecting: boolean;
   cursorPos: { x: number; y: number } | null;
   send: (msg: TrackpadSendArgs) => void;
 }) {
@@ -604,20 +631,20 @@ export function Trackpad({
     const checkLocalConnection = async () => {
       try {
         const status = await fetchJSON<StatusResponse>("/api/status");
-        if (status.local_ip && status.secret && status.port) {
+        if (status.local_ip && status.port) {
           // If we are already on the local IP, do nothing
           if (window.location.hostname === status.local_ip) return;
 
-          // Try to contact the local IP
+          // Try to contact the local IP via /health (has CORS headers)
           const protocol = window.location.protocol;
           const localUrl = `${protocol}//${status.local_ip}:${status.port}`;
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 1000);
-          const localStatus = await fetch(`${localUrl}/api/status`, { signal: controller.signal }).then(r => r.json());
+          const resp = await fetch(`${localUrl}/health`, { signal: controller.signal });
           clearTimeout(timeoutId);
 
-          if (localStatus.secret === status.secret) {
+          if (resp.ok) {
             window.location.href = localUrl;
           }
         }
@@ -639,7 +666,7 @@ export function Trackpad({
               }`}
           />
         </h2>
-        <div className="relative">
+        <div className="relative" ref={settingsRef}>
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full hover:bg-zinc-800 cursor-pointer"
@@ -650,7 +677,7 @@ export function Trackpad({
             </svg>
           </button>
           {showSettings && (
-            <div ref={settingsRef} className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
+            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})</label>
                 <input
@@ -704,8 +731,8 @@ export function Trackpad({
       <div className="flex flex-col-reverse md:flex-row gap-6 sm:items-start">
         <TouchArea
           connected={connected}
+          connecting={connecting}
           send={send}
-          silent={refreshSignal.silent}
           settings={settings}
           />
         <MonitorDisplay

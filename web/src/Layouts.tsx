@@ -108,7 +108,12 @@ export function Layouts({
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200">Layouts</h2>
+        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
+          Layouts
+          {loading && layouts.length > 0 && (
+            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
+          )}
+        </h2>
         {layouts.length > 0 && (
           <button
             onClick={() => setShowSaveForm(!showSaveForm)}

@@ -20,6 +20,7 @@ export function MonitorDisplay({
   const [containerWidth, setContainerWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -95,14 +96,30 @@ export function MonitorDisplay({
     >
       <div
         ref={previewRef}
-        className="relative select-none touch-none cursor-crosshair"
+        className="relative select-none cursor-crosshair"
         onPointerDown={(e) => {
           if (!onSetPosition) return;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          handlePointer(e);
+          pointerStartRef.current = { x: e.clientX, y: e.clientY };
+          // Only capture pointer on non-touch for desktop drag behavior
+          if (e.pointerType !== "touch") {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            handlePointer(e);
+          }
         }}
         onPointerMove={(e) => {
-          if (e.buttons > 0) handlePointer(e);
+          if (e.pointerType !== "touch" && e.buttons > 0) handlePointer(e);
+        }}
+        onPointerUp={(e) => {
+          if (!onSetPosition || !pointerStartRef.current) return;
+          // On touch, only set position if it was a tap (not a scroll)
+          if (e.pointerType === "touch") {
+            const dx = e.clientX - pointerStartRef.current.x;
+            const dy = e.clientY - pointerStartRef.current.y;
+            if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+              handlePointer(e);
+            }
+          }
+          pointerStartRef.current = null;
         }}
       >
         <MiniLayoutPreview monitors={monitors} scale={scale} />

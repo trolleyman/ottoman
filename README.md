@@ -227,12 +227,8 @@ MIT
 
 # TODO
 - bugs
-   - `-`/`£`/`$`/etc. symbols don't work for some reason - fix this
-   - Partially implemented but not working: check /api/status's local_ip field for if that's contactable. if it is, redirect to that.
-   - Two finger scroll on mobile X is reversed from natural (Y is fine)
-   - scrolling past the trackpad should be easy. also - the mini layout preview shouldn't set the mouse if you're just scrolling through either
-   - the trackpad settings pop up should close if clicking on the cog
-   - when opening the keyboard (**consciously tapping on the trackpad**) - the trackpad should scroll into view, rather than the keyboard cutting off part of the trackpad.
+   - when clicking and dragging the trackpad, the trackpad doesn't grab input - it should grab as soon as I click on it so that I can click and drag and the cursor will move
+   - when hiding the keyboard on the trackpad on mobile, this should unfocus the trackpad.
 - major features
    - add brightness settings first to CLI, then to UI
       - HDMI
