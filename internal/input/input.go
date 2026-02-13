@@ -79,16 +79,10 @@ type MouseController interface {
 
 // KeyboardController provides platform-specific keyboard input.
 type KeyboardController interface {
-	// Type types the given text as Unicode characters.
-	Type(text string) error
-	// KeyPress sends a special key press with optional modifiers.
-	// key is the browser event.key name (e.g. "ArrowLeft", "Enter", "F1").
-	// modifiers is a list of modifier names: "shift", "ctrl", "alt", "meta".
-	KeyPress(key string, modifiers []string) error
 	// KeyDown presses a key.
-	KeyDown(key string) error
+	KeyDown(key string, modifiers []string) error
 	// KeyUp releases a key.
-	KeyUp(key string) error
+	KeyUp(key string, modifiers []string) error
 }
 
 const (

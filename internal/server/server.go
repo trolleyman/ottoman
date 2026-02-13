@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,8 +32,10 @@ type Server struct {
 	client    *http.Client
 	startTime time.Time
 
-	mu          sync.RWMutex
-	wakeTargets map[string]WakeTarget
+	mu         sync.RWMutex
+	wakeTarget *WakeTarget
+	secret     string
+	localIP    string
 }
 
 // New creates a new server instance
@@ -45,13 +49,14 @@ func New(config *Config) (*Server, error) {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		wakeTargets: make(map[string]WakeTarget),
-		startTime:   time.Now(),
+		startTime: time.Now(),
+		secret:    generateSecret(),
+		localIP:   getOutboundIP(),
 	}
 
-	// Index wake targets by name
-	for _, target := range config.WakeTargets {
-		s.wakeTargets[strings.ToLower(target.Name)] = target
+	// Use the first wake target if available
+	if len(config.WakeTargets) > 0 {
+		s.wakeTarget = &config.WakeTargets[0]
 	}
 
 	if err := s.setupRoutes(); err != nil {
@@ -76,7 +81,6 @@ func (s *Server) setupRoutes() error {
 
 	// Wake-on-LAN
 	s.router.HandleFunc("POST /api/wake", s.requireAuth(s.handleWake))
-	s.router.HandleFunc("GET /api/wake/targets", s.requireAuth(s.handleListWakeTargets))
 
 	// Display control (proxied to client)
 	s.router.HandleFunc("GET /api/layouts", s.requireAuth(s.handleListLayouts))
@@ -88,9 +92,6 @@ func (s *Server) setupRoutes() error {
 
 	// Shutdown (proxied to client)
 	s.router.HandleFunc("POST /api/shutdown", s.requireAuth(s.handleShutdown))
-
-	// Client status
-	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
 
 	// Trackpad (WebSocket proxy to client)
 	s.router.HandleFunc("GET /api/trackpad", s.requireAuth(s.handleTrackpadProxy))
@@ -150,12 +151,54 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleStatus returns detailed status
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	_, port, _ := net.SplitHostPort(s.config.ListenAddr)
+	if port == "" {
+		port = "80"
+	}
+
+	clientStatus := "offline"
+	var clientIP, clientMAC string
+
+	s.mu.RLock()
+	target := s.wakeTarget
+	s.mu.RUnlock()
+
+	if target != nil {
+		clientIP = target.IPAddress
+		clientMAC = target.MACAddress
+
+		// Check if online
+		clientPort := "8081" // Default
+		if _, p, err := net.SplitHostPort(s.config.ClientAddr); err == nil {
+			clientPort = p
+		}
+
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(clientIP, clientPort), 200*time.Millisecond)
+		if err == nil {
+			clientStatus = "online"
+			conn.Close()
+		}
+	}
+
 	uptime := time.Since(s.startTime).Round(time.Second).String()
-	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
-		Status:  "ok",
-		Version: "dev", // Set at build time
-		Uptime:  uptime,
-	})
+	resp := map[string]interface{}{
+		"status":   "ok",
+		"version":  "dev",
+		"uptime":   uptime,
+		"local_ip": s.localIP,
+		"port":     port,
+		"secret":   s.secret,
+	}
+
+	if target != nil {
+		resp["client"] = map[string]string{
+			"ip_address":  clientIP,
+			"mac_address": clientMAC,
+			"status":      clientStatus,
+		}
+	}
+
+	common.WriteJSON(w, http.StatusOK, resp)
 }
 
 // handleAuth validates a token and sets an auth cookie
@@ -210,24 +253,16 @@ func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 
 // handleWake sends a wake-on-LAN packet
 func (s *Server) handleWake(w http.ResponseWriter, r *http.Request) {
-	var req common.WakeRequest
-	if err := common.ReadJSON(r, &req); err != nil {
-		common.WriteError(w, http.StatusBadRequest, "invalid request body")
+	s.mu.RLock()
+	target := s.wakeTarget
+	s.mu.RUnlock()
+
+	if target == nil {
+		common.WriteError(w, http.StatusNotFound, "no wake target configured")
 		return
 	}
 
-	// Find target
-	s.mu.RLock()
-	target, ok := s.wakeTargets[strings.ToLower(req.Target)]
-	s.mu.RUnlock()
-
-	var macAddr string
-	if ok {
-		macAddr = target.MACAddress
-	} else {
-		// Assume it's a MAC address directly
-		macAddr = req.Target
-	}
+	macAddr := target.MACAddress
 
 	// Send magic packet
 	if err := SendToAllInterfaces(macAddr); err != nil {
@@ -242,54 +277,6 @@ func (s *Server) handleWake(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: fmt.Sprintf("Wake-on-LAN packet sent to %s", macAddr),
 	})
-}
-
-// handleListWakeTargets returns available wake targets
-func (s *Server) handleListWakeTargets(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	targets := make([]WakeTarget, 0, len(s.wakeTargets))
-	for _, target := range s.wakeTargets {
-		targets = append(targets, target)
-	}
-	s.mu.RUnlock()
-
-	type WakeTargetStatus struct {
-		WakeTarget
-		Status string `json:"status"`
-	}
-
-	results := make([]WakeTargetStatus, len(targets))
-	var wg sync.WaitGroup
-
-	// Check status in parallel
-	for i, t := range targets {
-		wg.Add(1)
-		go func(i int, target WakeTarget) {
-			defer wg.Done()
-			status := "offline"
-
-			// Try to connect to the client port on the target IP
-			// We assume the client is running on the configured port
-			_, port, _ := net.SplitHostPort(s.config.ClientAddr)
-			if port == "" {
-				port = "8081" // Default fallback
-			}
-
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(target.IPAddress, port), 500*time.Millisecond)
-			if err == nil {
-				status = "online"
-				conn.Close()
-			}
-
-			results[i] = WakeTargetStatus{
-				WakeTarget: target,
-				Status:     status,
-			}
-		}(i, t)
-	}
-	wg.Wait()
-
-	common.WriteJSON(w, http.StatusOK, results)
 }
 
 // handleListLayouts proxies to client to get available layouts
@@ -409,22 +396,6 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
-}
-
-// handleClientStatus checks if client is reachable
-func (s *Server) handleClientStatus(w http.ResponseWriter, r *http.Request) {
-	resp, err := s.proxyToClient("GET", "/health", nil)
-	if err != nil {
-		common.WriteJSON(w, http.StatusOK, common.StatusResponse{
-			Status: "unreachable",
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
-		Status: "ok",
-	})
 }
 
 // handleTrackpadProxy proxies a WebSocket connection to the client's trackpad endpoint.
@@ -578,4 +549,20 @@ func CheckStatus(addr string) string {
 		return "OK"
 	}
 	return fmt.Sprintf("ERROR: status %d", resp.StatusCode)
+}
+
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
+}
+
+func generateSecret() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }

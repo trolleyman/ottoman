@@ -59,7 +59,7 @@ type SimulatedServer struct {
 	bootTimer *time.Timer
 	bootDelay time.Duration
 
-	wakeTargets     map[string]config.WakeTarget
+	wakeTarget      *config.WakeTarget
 	layouts         *display.Layouts
 	currentLayout   string
 	monitors        []display.MonitorInfo
@@ -82,19 +82,17 @@ func NewSimulated(serverCfg *config.ServerConfig, clientCfg *config.ClientConfig
 	}
 
 	s := &SimulatedServer{
-		serverCfg:   serverCfg,
-		bootDelay:   bootDelay,
-		startTime:   time.Now(),
-		wakeTargets: make(map[string]config.WakeTarget),
+		serverCfg: serverCfg,
+		bootDelay: bootDelay,
+		startTime: time.Now(),
 	}
 
 	if startOnline {
 		s.state = clientOnline
 	}
 
-	// Index wake targets by name
-	for _, target := range serverCfg.WakeTargets {
-		s.wakeTargets[strings.ToLower(target.Name)] = target
+	if len(serverCfg.WakeTargets) > 0 {
+		s.wakeTarget = &serverCfg.WakeTargets[0]
 	}
 
 	// Load layouts from client config
@@ -229,7 +227,6 @@ func (s *SimulatedServer) setupRoutes() error {
 
 	// Wake-on-LAN (simulated)
 	s.router.HandleFunc("POST /api/wake", s.requireAuth(s.handleWake))
-	s.router.HandleFunc("GET /api/wake/targets", s.requireAuth(s.handleListWakeTargets))
 
 	// Display control (simulated)
 	s.router.HandleFunc("GET /api/layouts", s.requireAuth(s.handleListLayouts))
@@ -241,9 +238,6 @@ func (s *SimulatedServer) setupRoutes() error {
 
 	// Shutdown (simulated)
 	s.router.HandleFunc("POST /api/shutdown", s.requireAuth(s.handleShutdown))
-
-	// Client status (simulated)
-	s.router.HandleFunc("GET /api/client/status", s.requireAuth(s.handleClientStatus))
 
 	// Trackpad (WebSocket, simulated)
 	s.router.HandleFunc("GET /api/trackpad", s.requireAuth(s.handleTrackpad))
@@ -325,11 +319,38 @@ func (s *SimulatedServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *SimulatedServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(s.startTime).Round(time.Second).String()
-	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
-		Status:  "ok",
-		Version: "simulated",
-		Uptime:  uptime,
-	})
+
+	s.mu.RLock()
+	state := s.state
+	target := s.wakeTarget
+	s.mu.RUnlock()
+
+	statusStr := "offline"
+	switch state {
+	case clientOnline:
+		statusStr = "online"
+	case clientBooting:
+		statusStr = "waking"
+	}
+
+	resp := map[string]interface{}{
+		"status":   "ok",
+		"version":  "simulated",
+		"uptime":   uptime,
+		"local_ip": "127.0.0.1",
+		"port":     "8080",
+		"secret":   "simulated-secret",
+	}
+
+	if target != nil {
+		resp["client"] = map[string]string{
+			"ip_address":  target.IPAddress,
+			"mac_address": target.MACAddress,
+			"status":      statusStr,
+		}
+	}
+
+	common.WriteJSON(w, http.StatusOK, resp)
 }
 
 func (s *SimulatedServer) handleAuth(w http.ResponseWriter, r *http.Request) {
@@ -382,23 +403,16 @@ func (s *SimulatedServer) handleAuthCheck(w http.ResponseWriter, r *http.Request
 // --- Simulated WoL handlers ---
 
 func (s *SimulatedServer) handleWake(w http.ResponseWriter, r *http.Request) {
-	var req common.WakeRequest
-	if err := common.ReadJSON(r, &req); err != nil {
-		common.WriteError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	// Find target
 	s.mu.Lock()
-	target, ok := s.wakeTargets[strings.ToLower(req.Target)]
+	target := s.wakeTarget
 	state := s.state
 
-	var macAddr string
-	if ok {
-		macAddr = target.MACAddress
-	} else {
-		macAddr = req.Target
+	if target == nil {
+		s.mu.Unlock()
+		common.WriteError(w, http.StatusNotFound, "no wake target configured")
+		return
 	}
+	macAddr := target.MACAddress
 
 	switch state {
 	case clientOffline:
@@ -436,36 +450,6 @@ func (s *SimulatedServer) handleWake(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *SimulatedServer) handleListWakeTargets(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	state := s.state
-	targets := make([]config.WakeTarget, 0, len(s.wakeTargets))
-	for _, target := range s.wakeTargets {
-		targets = append(targets, target)
-	}
-	s.mu.RUnlock()
-
-	type WakeTargetStatus struct {
-		config.WakeTarget
-		Status string `json:"status"`
-	}
-
-	status := "offline"
-	if state == clientOnline {
-		status = "online"
-	}
-
-	results := make([]WakeTargetStatus, len(targets))
-	for i, t := range targets {
-		results[i] = WakeTargetStatus{
-			WakeTarget: t,
-			Status:     status,
-		}
-	}
-
-	common.WriteJSON(w, http.StatusOK, results)
-}
-
 // --- Simulated display handlers ---
 
 func (s *SimulatedServer) handleShutdown(w http.ResponseWriter, r *http.Request) {
@@ -487,18 +471,6 @@ func (s *SimulatedServer) handleShutdown(w http.ResponseWriter, r *http.Request)
 		Success: true,
 		Message: "Shutdown initiated",
 	})
-}
-
-func (s *SimulatedServer) handleClientStatus(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	state := s.state
-	s.mu.RUnlock()
-
-	if state == clientOnline {
-		common.WriteJSON(w, http.StatusOK, common.StatusResponse{Status: "ok"})
-	} else {
-		common.WriteJSON(w, http.StatusOK, common.StatusResponse{Status: "unreachable"})
-	}
 }
 
 func (s *SimulatedServer) handleListLayouts(w http.ResponseWriter, r *http.Request) {
@@ -884,19 +856,19 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 			}
 			if key != "" {
 				if down {
-					keyboard.KeyDown(key)
+					keyboard.KeyDown(key, nil)
 				} else {
-					keyboard.KeyUp(key)
+					keyboard.KeyUp(key, nil)
 				}
 			}
 		}
 	}
 
 	releaseAllModifiers := func() {
-		keyboard.KeyUp("Shift")
-		keyboard.KeyUp("Control")
-		keyboard.KeyUp("Alt")
-		keyboard.KeyUp("Meta")
+		keyboard.KeyUp("Shift", nil)
+		keyboard.KeyUp("Control", nil)
+		keyboard.KeyUp("Alt", nil)
+		keyboard.KeyUp("Meta", nil)
 	}
 
 	log.Printf("[SIM] Trackpad connected")
@@ -971,13 +943,12 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		case "u":
 			baseMouse.ButtonUp(input.ParseMouseButton(msg.Button))
 			releaseAllModifiers()
-		case "k":
-			keyboard.Type(msg.Text)
 		case "sc":
 			precise := msg.Precise != nil && *msg.Precise
 			baseMouse.Scroll(int(msg.DX), int(msg.DY), precise)
 		case "key":
-			keyboard.KeyPress(msg.Key, msg.Modifiers)
+			keyboard.KeyDown(msg.Key, msg.Modifiers)
+			keyboard.KeyUp(msg.Key, msg.Modifiers)
 		case "a":
 			mouse.MoveTo(msg.X, msg.Y)
 		}

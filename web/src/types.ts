@@ -47,6 +47,22 @@ export interface SwitchResponse {
   message: string;
 }
 
+export interface ClientStatus {
+  ip_address: string;
+  mac_address: string;
+  status: "online" | "offline" | "waking" | "shutting_down";
+}
+
+export interface StatusResponse {
+  status: string;
+  version: string;
+  uptime: string;
+  local_ip?: string;
+  port?: string;
+  secret?: string;
+  client?: ClientStatus;
+}
+
 export interface WakeTarget {
   name: string;
   mac_address: string;

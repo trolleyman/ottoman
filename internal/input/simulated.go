@@ -71,13 +71,13 @@ func NewSimulatedKeyboard() *SimulatedKeyboard {
 	return &SimulatedKeyboard{}
 }
 
-func (k *SimulatedKeyboard) Type(text string) error {
-	log.Printf("[SIM] Type: %s", text)
+func (k *SimulatedKeyboard) KeyDown(key string, modifiers []string) error {
+	log.Printf("[SIM] KeyDown: %s mod=%v", key, modifiers)
 	return nil
 }
 
-func (k *SimulatedKeyboard) KeyPress(key string, modifiers []string) error {
-	log.Printf("[SIM] KeyPress: %s mod=%v", key, modifiers)
+func (k *SimulatedKeyboard) KeyUp(key string, modifiers []string) error {
+	log.Printf("[SIM] KeyUp: %s mod=%v", key, modifiers)
 	return nil
 }
 

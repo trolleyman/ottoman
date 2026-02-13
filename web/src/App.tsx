@@ -4,7 +4,7 @@ import { LoginForm } from "./LoginForm";
 import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
 
 import { Monitors } from "./Monitors";
-import { WakeTargets } from "./WakeTargets";
+import { ClientStatus } from "./ClientStatus";
 import { Layouts } from "./Layouts";
 
 export default function App() {
@@ -81,7 +81,7 @@ export default function App() {
           </div>
         </header>
 
-        <WakeTargets
+        <ClientStatus
           authed={!!authed}
           refreshSignal={refreshSignal}
           onWake={refreshSilent}

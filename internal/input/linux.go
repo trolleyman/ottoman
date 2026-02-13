@@ -16,9 +16,9 @@ func InitPlatform() {}
 
 // LinuxMouse controls the OS cursor via xdotool.
 type LinuxMouse struct {
-	fracX, fracY       float64
-	scrollFracX        float64
-	scrollFracY        float64
+	fracX, fracY float64
+	scrollFracX  float64
+	scrollFracY  float64
 }
 
 // NewMouseController creates a platform-specific mouse controller.
@@ -187,13 +187,6 @@ func NewKeyboardController() (KeyboardController, error) {
 	return &LinuxKeyboard{}, nil
 }
 
-func (k *LinuxKeyboard) Type(text string) error {
-	if err := exec.Command("xdotool", "type", text).Run(); err != nil {
-		return errors.Wrap(err, "xdotool type failed")
-	}
-	return nil
-}
-
 // Browser event.key name -> xdotool key name mapping
 var browserKeyToXdotool = map[string]string{
 	"ArrowUp":     "Up",
@@ -237,29 +230,52 @@ var modifierToXdotool = map[string]string{
 	"meta":  "super",
 }
 
-func (k *LinuxKeyboard) KeyPress(key string, modifiers []string) error {
+func getXdoKey(key string) (string, bool) {
 	xdoKey, ok := browserKeyToXdotool[key]
 	if !ok {
 		// Single character keys pass through directly
 		if len([]rune(key)) == 1 {
-			xdoKey = key
+			return key, true
 		} else {
-			return nil // Unknown key, skip
+			return "", false
 		}
 	}
+	return xdoKey, true
+}
 
-	// Build key combo string: "ctrl+shift+c"
+func buildCombo(key string, modifiers []string) string {
 	parts := make([]string, 0, len(modifiers)+1)
 	for _, mod := range modifiers {
 		if xdoMod, exists := modifierToXdotool[strings.ToLower(mod)]; exists {
 			parts = append(parts, xdoMod)
 		}
 	}
-	parts = append(parts, xdoKey)
-	combo := strings.Join(parts, "+")
+	parts = append(parts, key)
+	return strings.Join(parts, "+")
+}
 
-	if err := exec.Command("xdotool", "key", combo).Run(); err != nil {
-		return errors.Wrapf(err, "xdotool key %q failed", combo)
+func (k *LinuxKeyboard) KeyDown(key string, modifiers []string) error {
+	xdoKey, ok := getXdoKey(key)
+	if !ok {
+		return nil
+	}
+
+	combo := buildCombo(xdoKey, modifiers)
+	if err := exec.Command("xdotool", "keydown", combo).Run(); err != nil {
+		return errors.Wrapf(err, "xdotool keydown %q failed", combo)
+	}
+	return nil
+}
+
+func (k *LinuxKeyboard) KeyUp(key string, modifiers []string) error {
+	xdoKey, ok := getXdoKey(key)
+	if !ok {
+		return nil
+	}
+
+	combo := buildCombo(xdoKey, modifiers)
+	if err := exec.Command("xdotool", "keyup", combo).Run(); err != nil {
+		return errors.Wrapf(err, "xdotool keyup %q failed", combo)
 	}
 	return nil
 }

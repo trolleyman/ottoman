@@ -504,19 +504,19 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			}
 			if key != "" {
 				if down {
-					c.keyboard.KeyDown(key)
+					c.keyboard.KeyDown(key, nil)
 				} else {
-					c.keyboard.KeyUp(key)
+					c.keyboard.KeyUp(key, nil)
 				}
 			}
 		}
 	}
 
 	releaseAllModifiers := func() {
-		c.keyboard.KeyUp("Shift")
-		c.keyboard.KeyUp("Control")
-		c.keyboard.KeyUp("Alt")
-		c.keyboard.KeyUp("Meta")
+		c.keyboard.KeyUp("Shift", nil)
+		c.keyboard.KeyUp("Control", nil)
+		c.keyboard.KeyUp("Alt", nil)
+		c.keyboard.KeyUp("Meta", nil)
 	}
 
 	var latestX, latestY atomic.Int32
@@ -589,13 +589,12 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		case "u":
 			c.mouse.ButtonUp(input.ParseMouseButton(msg.Button))
 			releaseAllModifiers()
-		case "k":
-			c.keyboard.Type(msg.Text)
 		case "sc":
 			precise := msg.Precise != nil && *msg.Precise
 			c.mouse.Scroll(int(msg.DX), int(msg.DY), precise)
 		case "key":
-			c.keyboard.KeyPress(msg.Key, msg.Modifiers)
+			c.keyboard.KeyDown(msg.Key, msg.Modifiers)
+			c.keyboard.KeyUp(msg.Key, msg.Modifiers)
 		case "a":
 			c.mouse.MoveTo(msg.X, msg.Y)
 		}

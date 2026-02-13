@@ -5,7 +5,6 @@ package input
 import (
 	"runtime"
 	"strings"
-	"unicode/utf16"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -13,11 +12,11 @@ import (
 )
 
 var (
-	user32                              = windows.NewLazySystemDLL("user32.dll")
-	procSetCursorPos                    = user32.NewProc("SetCursorPos")
-	procGetCursorPos                    = user32.NewProc("GetCursorPos")
-	procSendInput                       = user32.NewProc("SendInput")
-	procSetProcessDpiAwarenessContext   = user32.NewProc("SetProcessDpiAwarenessContext")
+	user32                            = windows.NewLazySystemDLL("user32.dll")
+	procSetCursorPos                  = user32.NewProc("SetCursorPos")
+	procGetCursorPos                  = user32.NewProc("GetCursorPos")
+	procSendInput                     = user32.NewProc("SendInput")
+	procSetProcessDpiAwarenessContext = user32.NewProc("SetProcessDpiAwarenessContext")
 )
 
 type point struct {
@@ -87,9 +86,9 @@ func InitPlatform() {
 
 // WindowsMouse controls the OS cursor via user32.dll.
 type WindowsMouse struct {
-	fracX, fracY       float64
-	scrollFracX        float64
-	scrollFracY        float64
+	fracX, fracY float64
+	scrollFracX  float64
+	scrollFracY  float64
 }
 
 // NewMouseController creates a platform-specific mouse controller.
@@ -269,37 +268,6 @@ func NewKeyboardController() (KeyboardController, error) {
 	return &WindowsKeyboard{}, nil
 }
 
-func (k *WindowsKeyboard) Type(text string) error {
-	utf16Chars := utf16.Encode([]rune(text))
-	size, unionOffset := getInputLayout()
-
-	for _, char := range utf16Chars {
-		buffer := make([]byte, size*2)
-
-		// Key Down
-		*(*uint32)(unsafe.Pointer(&buffer[0])) = inputKeyboard
-		kiDown := (*keybdInput)(unsafe.Pointer(&buffer[unionOffset]))
-		kiDown.wScan = char
-		kiDown.dwFlags = keyEventFUnicode
-
-		// Key Up
-		*(*uint32)(unsafe.Pointer(&buffer[size])) = inputKeyboard
-		kiUp := (*keybdInput)(unsafe.Pointer(&buffer[size+unionOffset]))
-		kiUp.wScan = char
-		kiUp.dwFlags = keyEventFUnicode | keyEventFKeyUp
-
-		ret, _, err := procSendInput.Call(
-			uintptr(2),
-			uintptr(unsafe.Pointer(&buffer[0])),
-			uintptr(size),
-		)
-		if ret != 2 {
-			return errors.Wrap(err, "SendInput failed")
-		}
-	}
-	return nil
-}
-
 // Browser event.key name -> Windows VK code mapping
 type vkMapping struct {
 	vk       uint16
@@ -307,33 +275,33 @@ type vkMapping struct {
 }
 
 var browserKeyToVK = map[string]vkMapping{
-	"ArrowUp":    {0x26, true},
-	"ArrowDown":  {0x28, true},
-	"ArrowLeft":  {0x25, true},
-	"ArrowRight": {0x27, true},
-	"Enter":      {0x0D, false},
-	"Tab":        {0x09, false},
-	"Escape":     {0x1B, false},
-	"Backspace":  {0x08, false},
-	"Delete":     {0x2E, true},
-	"Home":       {0x24, true},
-	"End":        {0x23, true},
-	"PageUp":     {0x21, true},
-	"PageDown":   {0x22, true},
-	"Insert":     {0x2D, true},
-	" ":          {0x20, false},
-	"F1":         {0x70, false},
-	"F2":         {0x71, false},
-	"F3":         {0x72, false},
-	"F4":         {0x73, false},
-	"F5":         {0x74, false},
-	"F6":         {0x75, false},
-	"F7":         {0x76, false},
-	"F8":         {0x77, false},
-	"F9":         {0x78, false},
-	"F10":        {0x79, false},
-	"F11":        {0x7A, false},
-	"F12":        {0x7B, false},
+	"ArrowUp":     {0x26, true},
+	"ArrowDown":   {0x28, true},
+	"ArrowLeft":   {0x25, true},
+	"ArrowRight":  {0x27, true},
+	"Enter":       {0x0D, false},
+	"Tab":         {0x09, false},
+	"Escape":      {0x1B, false},
+	"Backspace":   {0x08, false},
+	"Delete":      {0x2E, true},
+	"Home":        {0x24, true},
+	"End":         {0x23, true},
+	"PageUp":      {0x21, true},
+	"PageDown":    {0x22, true},
+	"Insert":      {0x2D, true},
+	" ":           {0x20, false},
+	"F1":          {0x70, false},
+	"F2":          {0x71, false},
+	"F3":          {0x72, false},
+	"F4":          {0x73, false},
+	"F5":          {0x74, false},
+	"F6":          {0x75, false},
+	"F7":          {0x76, false},
+	"F8":          {0x77, false},
+	"F9":          {0x78, false},
+	"F10":         {0x79, false},
+	"F11":         {0x7A, false},
+	"F12":         {0x7B, false},
 	"PrintScreen": {0x2C, false},
 	"ScrollLock":  {0x91, false},
 	"Pause":       {0x13, false},
@@ -348,77 +316,94 @@ var modifierVK = map[string]uint16{
 	"meta":  0x5B, // VK_LWIN
 }
 
-func (k *WindowsKeyboard) KeyPress(key string, modifiers []string) error {
-	mapping, ok := browserKeyToVK[key]
-	if !ok {
-		// Try single character -> VK code
-		runes := []rune(key)
-		if len(runes) == 1 {
-			r := runes[0]
-			switch {
-			case r >= 'a' && r <= 'z':
-				mapping = vkMapping{vk: uint16(r - 'a' + 0x41), extended: false}
-				ok = true
-			case r >= 'A' && r <= 'Z':
-				mapping = vkMapping{vk: uint16(r - 'A' + 0x41), extended: false}
-				ok = true
-			case r >= '0' && r <= '9':
-				mapping = vkMapping{vk: uint16(r), extended: false}
-				ok = true
-			default:
-				// For unknown single chars with modifiers, try using the char code directly
-				if len(modifiers) > 0 {
-					mapping = vkMapping{vk: uint16(r), extended: false}
-					ok = true
-				} else {
-					// No modifiers, just type the character
-					return k.Type(key)
-				}
-			}
-		}
-		if !ok {
-			return nil // Unknown key, skip
-		}
+func getVK(key string) (vk uint16, extended bool, ok bool) {
+	if mapping, found := browserKeyToVK[key]; found {
+		return mapping.vk, mapping.extended, true
+	}
+	// Check modifiers
+	if vk, found := modifierVK[strings.ToLower(key)]; found {
+		return vk, false, true
 	}
 
-	size, unionOffset := getInputLayout()
+	// Try single character -> VK code
+	runes := []rune(key)
+	if len(runes) == 1 {
+		r := runes[0]
+		switch {
+		case r >= 'a' && r <= 'z':
+			return uint16(r - 'a' + 0x41), false, true
+		case r >= 'A' && r <= 'Z':
+			return uint16(r - 'A' + 0x41), false, true
+		case r >= '0' && r <= '9':
+			return uint16(r), false, true
+		}
+	}
+	return 0, false, false
+}
 
-	// Count valid modifiers
+func getValidModifiers(modifiers []string) []uint16 {
 	validMods := make([]uint16, 0, len(modifiers))
 	for _, mod := range modifiers {
 		if vk, exists := modifierVK[strings.ToLower(mod)]; exists {
 			validMods = append(validMods, vk)
 		}
 	}
+	return validMods
+}
 
-	// Build event list: modifier downs, key down, key up, modifier ups
-	totalEvents := 2 + len(validMods)*2
-	buffer := make([]byte, size*totalEvents)
+func (k *WindowsKeyboard) KeyDown(key string, modifiers []string) error {
+	vk, extended, ok := getVK(key)
+	if !ok {
+		return nil
+	}
+
+	validMods := getValidModifiers(modifiers)
+	size, unionOffset := getInputLayout()
+	count := 1 + len(validMods)
+	buffer := make([]byte, size*count)
 	idx := 0
 
 	// Modifier key downs
-	for _, vk := range validMods {
+	for _, mVk := range validMods {
 		*(*uint32)(unsafe.Pointer(&buffer[idx*size])) = inputKeyboard
 		ki := (*keybdInput)(unsafe.Pointer(&buffer[idx*size+unionOffset]))
-		ki.wVk = vk
+		ki.wVk = mVk
 		idx++
 	}
 
 	// Key down
 	*(*uint32)(unsafe.Pointer(&buffer[idx*size])) = inputKeyboard
 	ki := (*keybdInput)(unsafe.Pointer(&buffer[idx*size+unionOffset]))
-	ki.wVk = mapping.vk
-	if mapping.extended {
+	ki.wVk = vk
+	if extended {
 		ki.dwFlags = keyEventFExtendedKey
 	}
-	idx++
+
+	ret, _, err := procSendInput.Call(uintptr(count), uintptr(unsafe.Pointer(&buffer[0])), uintptr(size))
+	if ret != uintptr(count) {
+		return errors.Wrap(err, "SendInput KeyDown failed")
+	}
+	return nil
+}
+
+func (k *WindowsKeyboard) KeyUp(key string, modifiers []string) error {
+	vk, extended, ok := getVK(key)
+	if !ok {
+		return nil
+	}
+
+	validMods := getValidModifiers(modifiers)
+	size, unionOffset := getInputLayout()
+	count := 1 + len(validMods)
+	buffer := make([]byte, size*count)
+	idx := 0
 
 	// Key up
 	*(*uint32)(unsafe.Pointer(&buffer[idx*size])) = inputKeyboard
-	ki = (*keybdInput)(unsafe.Pointer(&buffer[idx*size+unionOffset]))
-	ki.wVk = mapping.vk
+	ki := (*keybdInput)(unsafe.Pointer(&buffer[idx*size+unionOffset]))
+	ki.wVk = vk
 	ki.dwFlags = keyEventFKeyUp
-	if mapping.extended {
+	if extended {
 		ki.dwFlags |= keyEventFExtendedKey
 	}
 	idx++
@@ -432,13 +417,9 @@ func (k *WindowsKeyboard) KeyPress(key string, modifiers []string) error {
 		idx++
 	}
 
-	ret, _, err := procSendInput.Call(
-		uintptr(idx),
-		uintptr(unsafe.Pointer(&buffer[0])),
-		uintptr(size),
-	)
-	if ret != uintptr(idx) {
-		return errors.Wrap(err, "SendInput KeyPress failed")
+	ret, _, err := procSendInput.Call(uintptr(count), uintptr(unsafe.Pointer(&buffer[0])), uintptr(size))
+	if ret != uintptr(count) {
+		return errors.Wrap(err, "SendInput KeyUp failed")
 	}
 	return nil
 }

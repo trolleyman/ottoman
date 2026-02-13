@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorDisplay } from "./MonitorDisplay";
-import type { Layout, LayoutsResponse, Modifier, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
+import type { Layout, LayoutsResponse, Modifier, StatusResponse, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
 import { fetchJSON, sortedLayouts } from "./utils";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
@@ -540,6 +540,19 @@ export function Trackpad({
     scrollFriction: 0.92,
     clickAndDrag: false,
   });
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showSettings) {
+      const onClick = (e: MouseEvent) => {
+        if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+          setShowSettings(false);
+        }
+      };
+      document.addEventListener("mousedown", onClick);
+      return () => document.removeEventListener("mousedown", onClick);
+    }
+  }, [showSettings]);
 
   const fetchLayouts = useCallback(async (silent: boolean) => {
     if (!authed) return;
@@ -560,6 +573,38 @@ export function Trackpad({
     fetchLayouts(refreshSignal.silent);
   }, [fetchLayouts, refreshSignal]);
 
+  // Check for local network connection and redirect if possible
+  useEffect(() => {
+    if (!authed) return;
+
+    const checkLocalConnection = async () => {
+      try {
+        const status = await fetchJSON<StatusResponse>("/api/status");
+        if (status.local_ip && status.secret && status.port) {
+          // If we are already on the local IP, do nothing
+          if (window.location.hostname === status.local_ip) return;
+
+          // Try to contact the local IP
+          const protocol = window.location.protocol;
+          const localUrl = `${protocol}//${status.local_ip}:${status.port}`;
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1000);
+          const localStatus = await fetch(`${localUrl}/api/status`, { signal: controller.signal }).then(r => r.json());
+          clearTimeout(timeoutId);
+
+          if (localStatus.secret === status.secret) {
+            window.location.href = localUrl;
+          }
+        }
+      } catch (e) {
+        // Ignore errors (e.g. not on same network)
+      }
+    };
+
+    checkLocalConnection();
+  }, [authed]);
+
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
@@ -574,7 +619,7 @@ export function Trackpad({
         <div className="relative">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full hover:bg-zinc-800"
+            className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full hover:bg-zinc-800 cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
@@ -582,7 +627,7 @@ export function Trackpad({
             </svg>
           </button>
           {showSettings && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
+            <div ref={settingsRef} className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})</label>
                 <input
