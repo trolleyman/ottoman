@@ -475,6 +475,23 @@ function TouchArea({
     return () => el.removeEventListener("wheel", handleWheel);
   }, [connected, send]);
 
+  // When the mobile keyboard opens/closes, re-scroll the trackpad into view
+  useEffect(() => {
+    if (!focused) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let lastHeight = vv.height;
+    const onResize = () => {
+      // Only scroll when height decreases significantly (keyboard opened)
+      if (lastHeight - vv.height > 100) {
+        trackpadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      lastHeight = vv.height;
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, [focused]);
+
   return (
     <div
       ref={trackpadRef}
