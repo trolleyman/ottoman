@@ -864,13 +864,6 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	releaseAllModifiers := func() {
-		keyboard.KeyUp("Shift", nil)
-		keyboard.KeyUp("Control", nil)
-		keyboard.KeyUp("Alt", nil)
-		keyboard.KeyUp("Meta", nil)
-	}
-
 	log.Printf("[SIM] Trackpad connected")
 
 	// Position update sender (60Hz), skip if position unchanged
@@ -936,13 +929,11 @@ func (s *SimulatedServer) handleTrackpad(w http.ResponseWriter, r *http.Request)
 		case "c":
 			setModifiers(msg.Modifiers, true)
 			baseMouse.Click(input.ParseMouseButton(msg.Button))
-			releaseAllModifiers()
 		case "d":
 			setModifiers(msg.Modifiers, true)
 			baseMouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
 			baseMouse.ButtonUp(input.ParseMouseButton(msg.Button))
-			releaseAllModifiers()
 		case "sc":
 			precise := msg.Precise != nil && *msg.Precise
 			baseMouse.Scroll(int(msg.DX), int(msg.DY), precise)

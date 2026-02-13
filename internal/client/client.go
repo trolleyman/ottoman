@@ -512,13 +512,6 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	releaseAllModifiers := func() {
-		c.keyboard.KeyUp("Shift", nil)
-		c.keyboard.KeyUp("Control", nil)
-		c.keyboard.KeyUp("Alt", nil)
-		c.keyboard.KeyUp("Meta", nil)
-	}
-
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
@@ -582,13 +575,11 @@ func (c *Client) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		case "c":
 			setModifiers(msg.Modifiers, true)
 			c.mouse.Click(input.ParseMouseButton(msg.Button))
-			releaseAllModifiers()
 		case "d":
 			setModifiers(msg.Modifiers, true)
 			c.mouse.ButtonDown(input.ParseMouseButton(msg.Button))
 		case "u":
 			c.mouse.ButtonUp(input.ParseMouseButton(msg.Button))
-			releaseAllModifiers()
 		case "sc":
 			precise := msg.Precise != nil && *msg.Precise
 			c.mouse.Scroll(int(msg.DX), int(msg.DY), precise)

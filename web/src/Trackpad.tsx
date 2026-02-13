@@ -80,7 +80,6 @@ interface TrackpadSettings {
   cursorFriction: number;
   scrollSensitivity: number;
   scrollFriction: number;
-  clickAndDrag: boolean;
 }
 
 function TouchArea({
@@ -356,18 +355,16 @@ function TouchArea({
 
     // Left click / drag
     if (document.pointerLockElement) {
-      if (settings.clickAndDrag) {
-        if (dragLocked.current) {
-          send({ t: "u", mod });
-          dragLocked.current = false;
-        } else {
-          send({ t: "d", mod });
-          dragLocked.current = true;
-        }
+      if (dragLocked.current) {
+        send({ t: "u", mod });
+        dragLocked.current = false;
       } else {
-        mouseHeld.current = true;
         send({ t: "d", mod });
+        dragLocked.current = true;
       }
+    } else {
+      mouseHeld.current = true;
+      send({ t: "d", mod });
     }
   };
 
@@ -393,7 +390,7 @@ function TouchArea({
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (mouseHeld.current && !settings.clickAndDrag) {
+      if (mouseHeld.current) {
         mouseHeld.current = false;
         send({ t: "u", mod: getModifiers(e) });
       }
@@ -473,10 +470,10 @@ function TouchArea({
       ref={trackpadRef}
       tabIndex={0}
       className={`w-full aspect-square md:max-w-sm md:shrink-0 rounded-xl border-2 transition-colors select-none touch-none outline-none ${connected
-          ? focused
-            ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
-            : "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
-          : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
+        ? focused
+          ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
+          : "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
+        : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
         }`}
       style={connected ? {
         backgroundImage: "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
@@ -538,7 +535,6 @@ export function Trackpad({
     cursorFriction: 0.92,
     scrollSensitivity: 1.5,
     scrollFriction: 0.92,
-    clickAndDrag: false,
   });
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -611,9 +607,8 @@ export function Trackpad({
         <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
           Trackpad
           <span
-            className={`inline-block w-2 h-2 rounded-full ${
-              connected ? "bg-green-400" : "bg-red-400"
-            }`}
+            className={`inline-block w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"
+              }`}
           />
         </h2>
         <div className="relative">
@@ -663,15 +658,6 @@ export function Trackpad({
                   value={settings.scrollFriction}
                   onChange={(e) => setSettings({ ...settings, scrollFriction: parseFloat(e.target.value) })}
                   className="w-full accent-blue-500"
-                />
-              </div>
-              <div className="h-px bg-zinc-800" />
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-zinc-400">Click and Drag</label>
-                <input
-                  type="checkbox"
-                  checked={settings.clickAndDrag}
-                  onChange={(e) => setSettings({ ...settings, clickAndDrag: e.target.checked })}
                 />
               </div>
             </div>
