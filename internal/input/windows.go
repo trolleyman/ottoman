@@ -351,9 +351,32 @@ func getValidModifiers(modifiers []string) []uint16 {
 	return validMods
 }
 
+// sendUnicodeChar sends a single Unicode character via KEYEVENTF_UNICODE.
+// This handles characters like -, £, $, etc. that have no VK mapping.
+func (k *WindowsKeyboard) sendUnicodeChar(r rune, keyUp bool) error {
+	size, unionOffset := getInputLayout()
+	buffer := make([]byte, size)
+	*(*uint32)(unsafe.Pointer(&buffer[0])) = inputKeyboard
+	ki := (*keybdInput)(unsafe.Pointer(&buffer[unionOffset]))
+	ki.wScan = uint16(r)
+	ki.dwFlags = keyEventFUnicode
+	if keyUp {
+		ki.dwFlags |= keyEventFKeyUp
+	}
+	ret, _, err := procSendInput.Call(1, uintptr(unsafe.Pointer(&buffer[0])), uintptr(size))
+	if ret != 1 {
+		return errors.Wrap(err, "SendInput Unicode failed")
+	}
+	return nil
+}
+
 func (k *WindowsKeyboard) KeyDown(key string, modifiers []string) error {
 	vk, extended, ok := getVK(key)
 	if !ok {
+		// Unicode fallback for single printable characters (e.g. -, £, $, =, [, etc.)
+		if runes := []rune(key); len(runes) == 1 {
+			return k.sendUnicodeChar(runes[0], false)
+		}
 		return nil
 	}
 
@@ -389,6 +412,9 @@ func (k *WindowsKeyboard) KeyDown(key string, modifiers []string) error {
 func (k *WindowsKeyboard) KeyUp(key string, modifiers []string) error {
 	vk, extended, ok := getVK(key)
 	if !ok {
+		if runes := []rune(key); len(runes) == 1 {
+			return k.sendUnicodeChar(runes[0], true)
+		}
 		return nil
 	}
 
