@@ -5,6 +5,7 @@ package display
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -29,13 +30,19 @@ func newPlatformManager(store *Layouts) (Manager, error) {
 
 // ListMonitors returns information about connected monitors
 func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
+	logRunning("xrandr", "--query")
 	cmd := exec.Command("xrandr", "--query")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, errors.Wrap(err, "xrandr query failed")
 	}
 
-	return parseXrandrOutput(string(output))
+	monitors, err := parseXrandrOutput(string(output))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse xrandr output")
+	}
+	SortMonitors(monitors)
+	return monitors, nil
 }
 
 // parseXrandrOutput parses xrandr --query output
@@ -69,6 +76,12 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 			connected := matches[2] == "connected"
 			primary := matches[3] == "primary"
 
+			if !connected {
+				currentMonitor = nil
+				currentActive = nil
+				continue
+			}
+
 			currentMonitor = &api.Monitor{
 				Edid:         "", // Not available from xrandr
 				Port:         port,
@@ -77,15 +90,12 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 			}
 			currentActive = nil
 
-			if connected {
+			// Parse geometry if present (e.g., "2560x1440+0+0")
+			if len(matches) > 4 && matches[4] != "" {
 				currentActive = &api.ActiveMonitor{
 					Primary: primary,
 					Model:   "", // Not available from xrandr
 				}
-			}
-
-			// Parse geometry if present (e.g., "2560x1440+0+0")
-			if currentActive != nil && len(matches) > 4 && matches[4] != "" {
 				geom := matches[4]
 				parts := strings.Split(geom, "+")
 				if len(parts) >= 3 {
@@ -132,9 +142,33 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 	return monitors, nil
 }
 
+func formatArg(arg string) string {
+	if strings.ContainsAny(arg, " \t\n\"'") {
+		return fmt.Sprintf("%q", arg)
+	}
+	return arg
+}
+
+func logRunning(name string, args ...string) {
+	var result strings.Builder
+	result.WriteString(formatArg(name))
+	for _, arg := range args {
+		result.WriteRune(' ')
+		result.WriteString(formatArg(arg))
+	}
+	log.Printf("Running: %s", result.String())
+}
+
 // ApplyLayoutConfig applies a display configuration using xrandr
 func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
-	args := m.buildXrandrArgs(layout)
+	monitors, err := m.ListMonitors()
+	if err != nil {
+		return err
+	}
+
+	args := m.buildXrandrArgs(layout, monitors)
+
+	logRunning("xrandr", args...)
 	cmd := exec.Command("xrandr", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -144,8 +178,9 @@ func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 }
 
 // buildXrandrArgs builds xrandr command arguments for a layout
-func (m *LinuxManager) buildXrandrArgs(layout api.Layout) []string {
+func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.Monitor) []string {
 	var args []string
+	configured := make(map[string]bool)
 
 	for _, mon := range layout.Monitors {
 		// Use Port for xrandr output name
@@ -153,14 +188,9 @@ func (m *LinuxManager) buildXrandrArgs(layout api.Layout) []string {
 		if outputName == "" {
 			continue // Skip monitors without port specification
 		}
+		configured[outputName] = true
 
 		args = append(args, "--output", outputName)
-
-		// TODO: Add --off for monitors that are currently connected but shouldn't be
-		// if !mon.Enabled {
-		// 	args = append(args, "--off")
-		// 	continue
-		// }
 
 		// Set mode (resolution)
 		mode := fmt.Sprintf("%dx%d", mon.Width, mon.Height)
@@ -181,11 +211,19 @@ func (m *LinuxManager) buildXrandrArgs(layout api.Layout) []string {
 		}
 	}
 
+	// Turn off monitors that are connected but not in the layout
+	for _, mon := range currentMonitors {
+		if !configured[mon.Port] {
+			args = append(args, "--output", mon.Port, "--off")
+		}
+	}
+
 	return args
 }
 
 // GetAvailableModes returns available modes for a monitor
 func (m *LinuxManager) GetAvailableModes(monitorName string) ([]ModeInfo, error) {
+	logRunning("xrandr", "--query")
 	cmd := exec.Command("xrandr", "--query")
 	output, err := cmd.Output()
 	if err != nil {

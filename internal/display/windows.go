@@ -5,7 +5,6 @@ package display
 import (
 	"fmt"
 	"log"
-	"slices"
 	"syscall"
 	"unsafe"
 
@@ -528,23 +527,7 @@ func (m *WindowsManager) ListMonitors() ([]api.Monitor, error) {
 		monitorsList = append(monitorsList, monitor)
 	}
 
-	slices.SortFunc(monitorsList, func(a, b api.Monitor) int {
-		if a.Active == nil && b.Active != nil {
-			return 1
-		}
-		if a.Active != nil && b.Active == nil {
-			return -1
-		}
-		if a.Active == nil && b.Active == nil {
-			return slices.Compare([]rune(a.Edid), []rune(b.Edid))
-		}
-		ax := a.Active.PositionX
-		bx := b.Active.PositionX
-		if ax != bx {
-			return ax - bx
-		}
-		return slices.Compare([]rune(a.Edid), []rune(b.Edid))
-	})
+	SortMonitors(monitorsList)
 
 	return monitorsList, nil
 }

@@ -3,7 +3,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -201,9 +201,9 @@ func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.auth_token", cfg.AuthToken)
 
 	if len(cfg.Layouts) > 0 {
-		layouts := make([]map[string]interface{}, len(cfg.Layouts))
+		layouts := make([]map[string]any, len(cfg.Layouts))
 		for i, l := range cfg.Layouts {
-			layout := map[string]interface{}{
+			layout := map[string]any{
 				"id":   l.Id,
 				"name": l.Name,
 			}
@@ -214,10 +214,12 @@ func setAgent(w *viper.Viper, cfg *AgentConfig) {
 				layout["aliases"] = l.Aliases
 			}
 			if len(l.Monitors) > 0 {
-				monitors := make([]map[string]interface{}, len(l.Monitors))
+				monitors := make([]map[string]any, len(l.Monitors))
 				for j, m := range l.Monitors {
-					monitors[j] = map[string]interface{}{
+					monitors[j] = map[string]any{
+						"name":         m.Name,
 						"edid":         m.Edid,
+						"port":         m.Port,
 						"width":        m.Width,
 						"height":       m.Height,
 						"refresh_rate": m.RefreshRate,
@@ -339,41 +341,41 @@ func (c *AgentConfig) Validate() error {
 // Print outputs the config file contents to stdout
 func Print() error {
 	if configPath == "" {
-		fmt.Println("No config file found.")
-		fmt.Println()
-		fmt.Printf("Default path: %s\n", DefaultConfigPath())
-		fmt.Println("Run 'ottoman config init controller' or 'ottoman config init agent' to create one.")
+		log.Println("No config file found.")
+		log.Println()
+		log.Printf("Default path: %s\n", DefaultConfigPath())
+		log.Println("Run 'ottoman config init controller' or 'ottoman config init agent' to create one.")
 		return nil
 	}
 
-	fmt.Printf("# %s\n", configPath)
-	fmt.Println()
+	log.Printf("# %s\n", configPath)
+	log.Println()
 
 	content, err := os.ReadFile(configPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to read config file")
 	}
 
-	fmt.Print(string(content))
+	log.Print(string(content))
 	return nil
 }
 
 // PrintPaths outputs the config search paths
 func PrintPaths() {
-	fmt.Println("Config search paths:")
-	fmt.Println("  1. ./config.toml")
+	log.Println("Config search paths:")
+	log.Println("  1. ./config.toml")
 
 	if runtime.GOOS == "windows" {
 		if appData := os.Getenv("APPDATA"); appData != "" {
-			fmt.Printf("  2. %s\n", filepath.Join(appData, "ottoman", "config.toml"))
+			log.Printf("  2. %s\n", filepath.Join(appData, "ottoman", "config.toml"))
 		}
 	} else {
-		fmt.Println("  2. /etc/ottoman/config.toml")
+		log.Println("  2. /etc/ottoman/config.toml")
 		if home := os.Getenv("HOME"); home != "" {
-			fmt.Printf("  3. %s\n", filepath.Join(home, ".config", "ottoman", "config.toml"))
+			log.Printf("  3. %s\n", filepath.Join(home, ".config", "ottoman", "config.toml"))
 		}
 	}
 
-	fmt.Println()
-	fmt.Printf("Default config path: %s\n", DefaultConfigPath())
+	log.Println()
+	log.Printf("Default config path: %s\n", DefaultConfigPath())
 }

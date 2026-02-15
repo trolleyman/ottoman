@@ -51,7 +51,7 @@ func (s *Layouts) Get(id string) (api.Layout, bool) {
 
 // List returns all layouts
 func (s *Layouts) List() []api.Layout {
-	var layouts []api.Layout
+	var layouts = make([]api.Layout, 0, len(s.layouts))
 	for _, layout := range s.layouts {
 		layouts = append(layouts, layout)
 	}

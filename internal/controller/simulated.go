@@ -11,8 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -98,7 +96,7 @@ func NewSimulatedController(controllerCfg *config.ControllerConfig, agentCfg *co
 	// Sort layouts to pick default
 	sorted := make([]api.Layout, len(agentCfg.Layouts))
 	copy(sorted, agentCfg.Layouts)
-	sortLayouts(sorted)
+	display.SortLayouts(sorted)
 
 	// Set initial current layout to first layout
 	if len(sorted) > 0 {
@@ -116,35 +114,6 @@ func NewSimulatedController(controllerCfg *config.ControllerConfig, agentCfg *co
 	}
 
 	return s, nil
-}
-
-func sortLayouts(layouts []api.Layout) {
-	sort.Slice(layouts, func(i, j int) bool {
-		a := layouts[i]
-		b := layouts[j]
-
-		getAliasNum := func(aliases []string) (int, bool) {
-			for _, alias := range aliases {
-				if num, err := strconv.Atoi(alias); err == nil {
-					return num, true
-				}
-			}
-			return 0, false
-		}
-
-		aNum, aOk := getAliasNum(a.Aliases)
-		bNum, bOk := getAliasNum(b.Aliases)
-
-		if aOk && bOk {
-			if aNum != bNum {
-				return aNum < bNum
-			}
-		}
-		if a.Id != b.Id {
-			return a.Id < b.Id
-		}
-		return false
-	})
 }
 
 // deriveMonitors collects unique monitors by EDID across all layouts.
@@ -180,33 +149,40 @@ func deriveMonitors(layouts []api.Layout) []api.Monitor {
 func (s *SimulatedController) updateMonitorStates() {
 	layout, ok := s.layouts.Get(s.currentLayout)
 	if !ok {
-		// No current layout — all monitors inactive
-		for i := range s.monitors {
-			s.monitors[i].Active = nil
-		}
+		// No current layout — no monitors connected
+		s.monitors = nil
 		return
 	}
 
-	// Build lookup by EDID from the current layout
-	layoutMonitors := make(map[string]api.LayoutMonitor)
-	for _, m := range layout.Monitors {
-		layoutMonitors[m.Edid] = m
-	}
+	// Rebuild monitors list from the current layout only
+	s.monitors = make([]api.Monitor, 0, len(layout.Monitors))
+	for _, lm := range layout.Monitors {
+		// Extract manufacturer from EDID
+		manufacturer := lm.Edid
+		if idx := strings.Index(lm.Edid, ":"); idx >= 0 {
+			manufacturer = lm.Edid[:idx]
+		}
 
-	for i := range s.monitors {
-		if lm, ok := layoutMonitors[s.monitors[i].Edid]; ok {
-			s.monitors[i].Active = &api.ActiveMonitor{
+		mon := api.Monitor{
+			Edid:         lm.Edid,
+			Port:         lm.Port,
+			Name:         lm.Name,
+			Manufacturer: manufacturer,
+		}
+
+		// Only mark as active if dimensions are non-zero
+		if lm.Width > 0 && lm.Height > 0 {
+			mon.Active = &api.ActiveMonitor{
 				Width:       lm.Width,
 				Height:      lm.Height,
 				RefreshRate: lm.RefreshRate,
 				PositionX:   lm.PositionX,
 				PositionY:   lm.PositionY,
 				Primary:     lm.Primary,
-				Model:       s.monitors[i].Name,
+				Model:       lm.Name,
 			}
-		} else {
-			s.monitors[i].Active = nil
 		}
+		s.monitors = append(s.monitors, mon)
 	}
 }
 
@@ -1017,20 +993,20 @@ func (s *SimulatedController) Start() error {
 	for _, m := range s.monitors {
 		edids = append(edids, m.Edid)
 	}
-	fmt.Println()
-	fmt.Println("=== SIMULATED CONTROLLER ===")
-	fmt.Printf("Listen:   %s\n", s.controllerCfg.ListenAddress)
-	fmt.Printf("State:    %s\n", s.state)
-	fmt.Printf("Boot delay: %s\n", s.bootDelay)
-	fmt.Printf("Layouts:  %d\n", len(s.layouts.List()))
-	fmt.Printf("Monitors: %s\n", strings.Join(edids, ", "))
-	fmt.Println()
-	fmt.Println("Admin endpoints:")
-	fmt.Println("  POST /api/sim/reset     - Reset agent to offline")
-	fmt.Println("  GET  /api/sim/state     - Get current state")
-	fmt.Println("  POST /api/sim/set-state - Set state (offline/booting/online)")
-	fmt.Println("========================")
-	fmt.Println()
+	log.Println()
+	log.Println("=== SIMULATED CONTROLLER ===")
+	log.Printf("Listen:   %s\n", s.controllerCfg.ListenAddress)
+	log.Printf("State:    %s\n", s.state)
+	log.Printf("Boot delay: %s\n", s.bootDelay)
+	log.Printf("Layouts:  %d\n", len(s.layouts.List()))
+	log.Printf("Monitors: %s\n", strings.Join(edids, ", "))
+	log.Println()
+	log.Println("Admin endpoints:")
+	log.Println("  POST /api/sim/reset     - Reset agent to offline")
+	log.Println("  GET  /api/sim/state     - Get current state")
+	log.Println("  POST /api/sim/set-state - Set state (offline/booting/online)")
+	log.Println("========================")
+	log.Println()
 
 	// Handle graceful shutdown
 	stop := make(chan os.Signal, 1)

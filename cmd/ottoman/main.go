@@ -200,7 +200,7 @@ var monitorListCmd = &cobra.Command{
 		}
 
 		if len(monitors) == 0 {
-			fmt.Println("No monitors detected")
+			log.Println("No monitors detected")
 			return nil
 		}
 
@@ -213,13 +213,13 @@ var monitorListCmd = &cobra.Command{
 			if m.Active != nil && m.Active.Primary {
 				primary = " [PRIMARY]"
 			}
-			fmt.Printf("%s (%s) - %s%s\n", m.Edid, m.Name, status, primary)
-			fmt.Printf("  Port:       %s\n", m.Port)
+			log.Printf("%s (%s) - %s%s\n", m.Edid, m.Name, status, primary)
+			log.Printf("  Port:       %s\n", m.Port)
 			if m.Active != nil {
-				fmt.Printf("  Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
-				fmt.Printf("  Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
+				log.Printf("  Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
+				log.Printf("  Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
 				if m.Active.Model != "" {
-					fmt.Printf("  Model:      %s\n", m.Active.Model)
+					log.Printf("  Model:      %s\n", m.Active.Model)
 				}
 			}
 		}
@@ -294,7 +294,14 @@ var layoutAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to save config")
 		}
 
-		fmt.Printf("Added layout %q (%s)\n", layout.Name, layout.Id)
+		log.Printf("Added layout %q (%s)\n", layout.Name, layout.Id)
+		for _, m := range monitorConfigs {
+			primary := ""
+			if m.Primary {
+				primary = " [PRIMARY]"
+			}
+			log.Printf("  - %q EDID=%q Port=%q (%vx%v @ %.0fHz) @ %v,%v%s\n", m.Name, m.Edid, m.Port, m.Width, m.Height, m.RefreshRate, m.PositionX, m.PositionY, primary)
+		}
 		return nil
 	},
 }
@@ -310,7 +317,7 @@ var layoutListCmd = &cobra.Command{
 		}
 
 		if len(cfg.Agent.Layouts) == 0 {
-			fmt.Println("No layouts configured")
+			log.Println("No layouts configured")
 			return nil
 		}
 
@@ -323,7 +330,7 @@ var layoutListCmd = &cobra.Command{
 			if len(l.Aliases) > 0 {
 				aliases = fmt.Sprintf(" (aliases: %v)", l.Aliases)
 			}
-			fmt.Printf("%s%s [%s]%s - %d monitors\n", emoji, l.Name, l.Id, aliases, len(l.Monitors))
+			log.Printf("%s%s [%s]%s - %d monitors\n", emoji, l.Name, l.Id, aliases, len(l.Monitors))
 		}
 		return nil
 	},
@@ -345,11 +352,11 @@ var layoutShowCmd = &cobra.Command{
 		}
 
 		if len(monitors) == 0 {
-			fmt.Println("No monitors detected")
+			log.Println("No monitors detected")
 			return nil
 		}
 
-		fmt.Println("Current display configuration:")
+		log.Println("Current display configuration:")
 		for _, m := range monitors {
 			if m.Active == nil {
 				continue
@@ -358,9 +365,9 @@ var layoutShowCmd = &cobra.Command{
 			if m.Active.Primary {
 				primary = " [PRIMARY]"
 			}
-			fmt.Printf("  %s (%s)%s\n", m.Edid, m.Name, primary)
-			fmt.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
-			fmt.Printf("    Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
+			log.Printf("  %s (%s)%s\n", m.Edid, m.Name, primary)
+			log.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
+			log.Printf("    Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
 		}
 		return nil
 	},
@@ -393,7 +400,7 @@ var layoutAliasAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to save config")
 		}
 
-		fmt.Printf("Added alias %q to layout %q\n", args[1], args[0])
+		log.Printf("Added alias %q to layout %q\n", args[1], args[0])
 		return nil
 	},
 }
@@ -420,7 +427,7 @@ var layoutAliasRemoveCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to save config")
 		}
 
-		fmt.Printf("Removed alias %q from layout %q\n", args[1], args[0])
+		log.Printf("Removed alias %q from layout %q\n", args[1], args[0])
 		return nil
 	},
 }
@@ -443,9 +450,9 @@ var layoutApplyCmd = &cobra.Command{
 			return fmt.Errorf("no layout found matching %q", args[0])
 		}
 		if len(matches) > 1 {
-			fmt.Printf("Multiple layouts match %q:\n", args[0])
+			log.Printf("Multiple layouts match %q:\n", args[0])
 			for _, l := range matches {
-				fmt.Printf("  - %s [%s]\n", l.Name, l.Id)
+				log.Printf("  - %s [%s]\n", l.Name, l.Id)
 			}
 			return fmt.Errorf("ambiguous layout reference")
 		}
@@ -461,7 +468,7 @@ var layoutApplyCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to apply layout")
 		}
 
-		fmt.Printf("Applied layout %q (%s)\n", layout.Name, layout.Id)
+		log.Printf("Applied layout %q (%s)\n", layout.Name, layout.Id)
 		return nil
 	},
 }
@@ -474,14 +481,14 @@ var statusCmd = &cobra.Command{
 		controllerAddr, _ := cmd.Flags().GetString("controller")
 		agentAddr, _ := cmd.Flags().GetString("agent")
 
-		fmt.Println("Checking ottoman status...")
-		fmt.Println()
+		log.Println("Checking ottoman status...")
+		log.Println()
 
 		controllerStatus := controller.CheckStatus(controllerAddr)
 		agentStatus := agent.CheckStatus(agentAddr)
 
-		fmt.Printf("Controller (%s): %s\n", controllerAddr, controllerStatus)
-		fmt.Printf("Agent      (%s): %s\n", agentAddr, agentStatus)
+		log.Printf("Controller (%s): %s\n", controllerAddr, controllerStatus)
+		log.Printf("Agent      (%s): %s\n", agentAddr, agentStatus)
 
 		if controllerStatus != "OK" || agentStatus != "OK" {
 			return errors.New("one or more components are not reachable")
@@ -548,16 +555,16 @@ Examples:
 			if readErr != nil {
 				return errors.Wrap(readErr, "failed to read existing config")
 			}
-			fmt.Printf("=== Existing config (%s) ===\n", path)
-			fmt.Println(string(content))
-			fmt.Println("===========================")
+			log.Printf("=== Existing config (%s) ===\n", path)
+			log.Println(string(content))
+			log.Println("===========================")
 
 			answer, err := promptInput(reader, "Use this configuration? [Y/n]", "")
 			if err != nil {
 				return err
 			}
 			if answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes") {
-				fmt.Println("Keeping existing configuration.")
+				log.Println("Keeping existing configuration.")
 				return nil
 			}
 
@@ -585,7 +592,7 @@ Examples:
 			}
 		}
 
-		fmt.Printf("\nCreated config file: %s\n", path)
+		log.Printf("\nCreated config file: %s\n", path)
 		return nil
 	},
 }
@@ -593,9 +600,9 @@ Examples:
 // promptInput asks for user input with an optional default value
 func promptInput(reader *bufio.Reader, question, defaultVal string) (string, error) {
 	if defaultVal != "" {
-		fmt.Printf("%s [%s]: ", question, defaultVal)
+		log.Printf("%s [%s]: ", question, defaultVal)
 	} else {
-		fmt.Printf("%s: ", question)
+		log.Printf("%s: ", question)
 	}
 	answer, err := reader.ReadString('\n')
 	if err != nil {
@@ -643,7 +650,7 @@ func promptToken(reader *bufio.Reader, label, defaultVal string) (string, error)
 		if err != nil {
 			return "", errors.Wrap(err, "failed to generate token")
 		}
-		fmt.Printf("Generated token: %s\n", generated)
+		log.Printf("Generated token: %s\n", generated)
 		return generated, nil
 	}
 	return token, nil

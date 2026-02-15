@@ -269,7 +269,7 @@ func (c *Controller) Wake(ctx context.Context, request api.WakeRequestObject) (a
 
 // GetLayouts implements api.StrictServerInterface
 func (c *Controller) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
-	return proxyRequest[api.GetLayoutsResponseObject](ctx, c, "GET", "/api/layouts", nil, func(resp *http.Response) (api.GetLayoutsResponseObject, error) {
+	return proxyRequest(ctx, c, "GET", "/api/layouts", nil, func(resp *http.Response) (api.GetLayoutsResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.LayoutsResponse
@@ -288,7 +288,7 @@ func (c *Controller) GetLayouts(ctx context.Context, request api.GetLayoutsReque
 // SwitchLayout implements api.StrictServerInterface
 func (c *Controller) SwitchLayout(ctx context.Context, request api.SwitchLayoutRequestObject) (api.SwitchLayoutResponseObject, error) {
 	body, _ := json.Marshal(request.Body)
-	return proxyRequest[api.SwitchLayoutResponseObject](ctx, c, "POST", "/api/layouts/switch", body, func(resp *http.Response) (api.SwitchLayoutResponseObject, error) {
+	return proxyRequest(ctx, c, "POST", "/api/layouts/switch", body, func(resp *http.Response) (api.SwitchLayoutResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.SwitchLayoutResponse
@@ -312,7 +312,7 @@ func (c *Controller) SwitchLayout(ctx context.Context, request api.SwitchLayoutR
 
 // GetMonitors implements api.StrictServerInterface
 func (c *Controller) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
-	return proxyRequest[api.GetMonitorsResponseObject](ctx, c, "GET", "/api/monitors", nil, func(resp *http.Response) (api.GetMonitorsResponseObject, error) {
+	return proxyRequest(ctx, c, "GET", "/api/monitors", nil, func(resp *http.Response) (api.GetMonitorsResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.MonitorsResponse
@@ -330,7 +330,7 @@ func (c *Controller) GetMonitors(ctx context.Context, request api.GetMonitorsReq
 
 // GetCurrentLayout implements api.StrictServerInterface
 func (c *Controller) GetCurrentLayout(ctx context.Context, request api.GetCurrentLayoutRequestObject) (api.GetCurrentLayoutResponseObject, error) {
-	return proxyRequest[api.GetCurrentLayoutResponseObject](ctx, c, "GET", "/api/layouts/current", nil, func(resp *http.Response) (api.GetCurrentLayoutResponseObject, error) {
+	return proxyRequest(ctx, c, "GET", "/api/layouts/current", nil, func(resp *http.Response) (api.GetCurrentLayoutResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.SwitchLayoutResponse
@@ -349,7 +349,7 @@ func (c *Controller) GetCurrentLayout(ctx context.Context, request api.GetCurren
 // SaveCurrentLayout implements api.StrictServerInterface
 func (c *Controller) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLayoutRequestObject) (api.SaveCurrentLayoutResponseObject, error) {
 	body, _ := json.Marshal(request.Body)
-	return proxyRequest[api.SaveCurrentLayoutResponseObject](ctx, c, "POST", "/api/layouts/save-current", body, func(resp *http.Response) (api.SaveCurrentLayoutResponseObject, error) {
+	return proxyRequest(ctx, c, "POST", "/api/layouts/save-current", body, func(resp *http.Response) (api.SaveCurrentLayoutResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.SaveLayoutResponse
@@ -372,7 +372,7 @@ func (c *Controller) SaveCurrentLayout(ctx context.Context, request api.SaveCurr
 // RemoveLayout implements api.StrictServerInterface
 func (c *Controller) RemoveLayout(ctx context.Context, request api.RemoveLayoutRequestObject) (api.RemoveLayoutResponseObject, error) {
 	body, _ := json.Marshal(request.Body)
-	return proxyRequest[api.RemoveLayoutResponseObject](ctx, c, "POST", "/api/layouts/remove", body, func(resp *http.Response) (api.RemoveLayoutResponseObject, error) {
+	return proxyRequest(ctx, c, "POST", "/api/layouts/remove", body, func(resp *http.Response) (api.RemoveLayoutResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.RemoveLayoutResponse
@@ -396,7 +396,7 @@ func (c *Controller) RemoveLayout(ctx context.Context, request api.RemoveLayoutR
 
 // Shutdown implements api.StrictServerInterface
 func (c *Controller) Shutdown(ctx context.Context, request api.ShutdownRequestObject) (api.ShutdownResponseObject, error) {
-	return proxyRequest[api.ShutdownResponseObject](ctx, c, "POST", "/api/shutdown", nil, func(resp *http.Response) (api.ShutdownResponseObject, error) {
+	return proxyRequest(ctx, c, "POST", "/api/shutdown", nil, func(resp *http.Response) (api.ShutdownResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.ShutdownResponse

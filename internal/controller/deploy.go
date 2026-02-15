@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,9 +71,9 @@ func InstallService() error {
 
 	// Create ottoman user if it doesn't exist
 	if err := exec.Command("id", "ottoman").Run(); err != nil {
-		fmt.Println("Creating ottoman user...")
+		log.Println("Creating ottoman user...")
 		if err := exec.Command("useradd", "-r", "-s", "/bin/false", "ottoman").Run(); err != nil {
-			fmt.Printf("Warning: failed to create ottoman user: %v\n", err)
+			log.Printf("Warning: failed to create ottoman user: %v\n", err)
 		}
 	}
 
@@ -85,8 +86,8 @@ func InstallService() error {
 	// Check if config exists
 	configPath := filepath.Join(configDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Printf("Config not found at %s\n", configPath)
-		fmt.Println("Run 'ottoman config init controller' to create it.")
+		log.Printf("Config not found at %s\n", configPath)
+		log.Println("Run 'ottoman config init controller' to create it.")
 	}
 
 	// Reload systemd
@@ -99,9 +100,9 @@ func InstallService() error {
 		return errors.Wrap(err, "failed to enable service")
 	}
 
-	fmt.Println("Service installed successfully!")
-	fmt.Println("Start with: sudo systemctl start ottoman-controller")
-	fmt.Println("Check status: sudo systemctl status ottoman-controller")
+	log.Println("Service installed successfully!")
+	log.Println("Start with: sudo systemctl start ottoman-controller")
+	log.Println("Check status: sudo systemctl status ottoman-controller")
 
 	return nil
 }
@@ -145,10 +146,10 @@ func installUserService() error {
 		return errors.Wrap(err, "failed to enable service")
 	}
 
-	fmt.Println("User service installed successfully!")
-	fmt.Println("Start with: systemctl --user start ottoman-controller")
-	fmt.Println("Check status: systemctl --user status ottoman-controller")
-	fmt.Println("To start on boot, run: loginctl enable-linger")
+	log.Println("User service installed successfully!")
+	log.Println("Start with: systemctl --user start ottoman-controller")
+	log.Println("Check status: systemctl --user status ottoman-controller")
+	log.Println("To start on boot, run: loginctl enable-linger")
 
 	return nil
 }
@@ -165,11 +166,11 @@ func UninstallService() error {
 	}
 
 	// Stop service (ignore errors - might not be running)
-	fmt.Println("Stopping service...")
+	log.Println("Stopping service...")
 	exec.Command("systemctl", "stop", "ottoman-controller").Run()
 
 	// Disable service (ignore errors - might not be enabled)
-	fmt.Println("Disabling service...")
+	log.Println("Disabling service...")
 	exec.Command("systemctl", "disable", "ottoman-controller").Run()
 
 	// Remove service file
@@ -183,7 +184,7 @@ func UninstallService() error {
 		return errors.Wrap(err, "failed to reload systemd")
 	}
 
-	fmt.Println("Service uninstalled successfully!")
+	log.Println("Service uninstalled successfully!")
 	return nil
 }
 
@@ -205,6 +206,6 @@ func uninstallUserService() error {
 		return errors.Wrap(err, "failed to reload systemd")
 	}
 
-	fmt.Println("User service uninstalled successfully!")
+	log.Println("User service uninstalled successfully!")
 	return nil
 }

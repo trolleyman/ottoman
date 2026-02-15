@@ -426,7 +426,7 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 				PositionX:   m.Active.PositionX,
 				PositionY:   m.Active.PositionY,
 				Primary:     m.Active.Primary,
-				RefreshRate: int(m.Active.RefreshRate),
+				RefreshRate: m.Active.RefreshRate,
 				Width:       m.Active.Width,
 			}
 		}

@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
@@ -105,15 +106,15 @@ func installLinuxService() error {
 		return err
 	}
 
-	fmt.Println("Service installed successfully!")
-	fmt.Println()
-	fmt.Println("Commands:")
-	fmt.Println("  Start:   systemctl --user start ottoman-agent")
-	fmt.Println("  Stop:    systemctl --user stop ottoman-agent")
-	fmt.Println("  Status:  systemctl --user status ottoman-agent")
-	fmt.Println("  Logs:    journalctl --user -u ottoman-agent -f")
-	fmt.Println()
-	fmt.Println("To start on boot, run: loginctl enable-linger")
+	log.Println("Service installed successfully!")
+	log.Println()
+	log.Println("Commands:")
+	log.Println("  Start:   systemctl --user start ottoman-agent")
+	log.Println("  Stop:    systemctl --user stop ottoman-agent")
+	log.Println("  Status:  systemctl --user status ottoman-agent")
+	log.Println("  Logs:    journalctl --user -u ottoman-agent -f")
+	log.Println()
+	log.Println("To start on boot, run: loginctl enable-linger")
 
 	return nil
 }
@@ -247,10 +248,10 @@ func installWindowsService() error {
 		return err
 	}
 
-	fmt.Println("Task Scheduler task installed successfully!")
-	fmt.Println()
-	fmt.Println("The agent will start automatically at login (hidden).")
-	fmt.Println("To start now, run: schtasks /Run /TN OttomanAgent")
+	log.Println("Task Scheduler task installed successfully!")
+	log.Println()
+	log.Println("The agent will start automatically at login (hidden).")
+	log.Println("To start now, run: schtasks /Run /TN OttomanAgent")
 
 	// --- Install AHK script ---
 
@@ -278,9 +279,9 @@ func installWindowsService() error {
 	oldAhkShortcutPath := filepath.Join(startupDir, "Ottoman Hotkeys.vbs")
 	os.Remove(oldAhkShortcutPath)
 
-	fmt.Println("AHK script installed as shortcut successfully!")
-	fmt.Printf("  Script: %s\n", ahkPath)
-	fmt.Printf("  Shortcut: %s\n", ahkShortcutPath)
+	log.Println("AHK script installed as shortcut successfully!")
+	log.Printf("  Script: %s\n", ahkPath)
+	log.Printf("  Shortcut: %s\n", ahkShortcutPath)
 
 	return nil
 }
@@ -311,7 +312,7 @@ func uninstallLinuxService() error {
 	// Reload
 	run("systemctl", "--user", "daemon-reload")
 
-	fmt.Println("Service uninstalled.")
+	log.Println("Service uninstalled.")
 	return nil
 }
 
@@ -331,7 +332,7 @@ func uninstallWindowsService() error {
 	agentShortcutPath := filepath.Join(startupDir, "Ottoman Agent.vbs")
 	os.Remove(agentShortcutPath)
 
-	fmt.Println("Service uninstalled.")
+	log.Println("Service uninstalled.")
 	return nil
 }
 
@@ -377,7 +378,7 @@ func formatCmd(cmd string, args ...string) string {
 
 // run executes a command and prints it to stdout
 func run(name string, args ...string) error {
-	fmt.Printf("Running: %s\n", formatCmd(name, args...))
+	log.Printf("Running: %s\n", formatCmd(name, args...))
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -390,7 +391,7 @@ func run(name string, args ...string) error {
 // runSchtasks runs schtasks and attempts elevation if access is denied
 func runSchtasks(args ...string) error {
 	name := "schtasks"
-	fmt.Printf("Running: %s\n", formatCmd(name, args...))
+	log.Printf("Running: %s\n", formatCmd(name, args...))
 
 	var stderr bytes.Buffer
 	cmd := exec.Command(name, args...)
@@ -401,7 +402,7 @@ func runSchtasks(args ...string) error {
 		errStr := stderr.String()
 		// Check for Access is denied
 		if strings.Contains(errStr, "Access is denied") {
-			fmt.Println("Access denied. Attempting to run with elevation...")
+			log.Println("Access denied. Attempting to run with elevation...")
 			return runElevated(name, args...)
 		}
 		fmt.Fprint(os.Stderr, errStr)
