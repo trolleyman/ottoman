@@ -1,6 +1,10 @@
 package input
 
-import "log"
+import (
+	"log"
+
+	"github.com/trolleyman/ottoman/internal/api"
+)
 
 // SimulatedMouse is an in-memory mouse controller for testing without OS calls.
 type SimulatedMouse struct {
@@ -71,12 +75,12 @@ func NewSimulatedKeyboard() *SimulatedKeyboard {
 	return &SimulatedKeyboard{}
 }
 
-func (k *SimulatedKeyboard) KeyDown(key string, modifiers []string) error {
+func (k *SimulatedKeyboard) KeyDown(key string, modifiers []api.Modifier) error {
 	log.Printf("[SIM] KeyDown: %s mod=%v", key, modifiers)
 	return nil
 }
 
-func (k *SimulatedKeyboard) KeyUp(key string, modifiers []string) error {
+func (k *SimulatedKeyboard) KeyUp(key string, modifiers []api.Modifier) error {
 	log.Printf("[SIM] KeyUp: %s mod=%v", key, modifiers)
 	return nil
 }

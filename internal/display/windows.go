@@ -10,7 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/pkg/errors"
-	"github.com/trolleyman/ottoman/internal/common"
+	"github.com/trolleyman/ottoman/internal/api"
 	"golang.org/x/sys/windows"
 )
 
@@ -398,7 +398,7 @@ func outputTechnologyToString(tech int32) string {
 }
 
 // ListMonitors returns information about all monitors (active and inactive) using Windows Display Config API
-func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
+func (m *WindowsManager) ListMonitors() ([]api.Monitor, error) {
 	// Query all paths to discover every target (connected or not)
 	allPaths, allModes, err := queryDisplayConfig(QDC_ALL_PATHS)
 	if err != nil {
@@ -410,7 +410,7 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 		AdapterId windows.LUID
 		Id        uint32
 	}
-	monitors := make(map[targetKey]MonitorInfo)
+	monitors := make(map[targetKey]api.Monitor)
 
 	for _, path := range allPaths {
 		if path.TargetInfo.TargetAvailable == 0 {
@@ -437,8 +437,8 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 		friendlyName := utf16ToString(targetName.MonitorFriendlyDeviceName[:])
 		port := fmt.Sprintf("%s-%d", outputTechnologyToString(int32(targetName.OutputTechnology)), targetName.ConnectorInstance)
 
-		monitors[key] = MonitorInfo{
-			EDID:         edid,
+		monitors[key] = api.Monitor{
+			Edid:         edid,
 			Port:         port,
 			Name:         friendlyName,
 			Manufacturer: decodeEdidManufacturer(targetName.EdidManufactureId),
@@ -446,7 +446,7 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 		}
 	}
 
-	// Go through active paths and populate ConnectedInfo from source modes
+	// Go through active paths and populate api.ActiveMonitor from source modes
 	for _, path := range allPaths {
 		if path.Flags&DISPLAYCONFIG_PATH_ACTIVE == 0 {
 			continue
@@ -510,10 +510,10 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 
 		primary := posX == 0 && posY == 0
 
-		monitor.Active = &ConnectedInfo{
+		monitor.Active = &api.ActiveMonitor{
 			Width:       width,
 			Height:      height,
-			RefreshRate: refreshRate,
+			RefreshRate: int(refreshRate),
 			PositionX:   posX,
 			PositionY:   posY,
 			Primary:     primary,
@@ -523,12 +523,12 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 	}
 
 	// Collect results
-	var monitorsList []MonitorInfo
+	var monitorsList []api.Monitor
 	for _, monitor := range monitors {
 		monitorsList = append(monitorsList, monitor)
 	}
 
-	slices.SortFunc(monitorsList, func(a, b MonitorInfo) int {
+	slices.SortFunc(monitorsList, func(a, b api.Monitor) int {
 		if a.Active == nil && b.Active != nil {
 			return 1
 		}
@@ -536,14 +536,14 @@ func (m *WindowsManager) ListMonitors() ([]MonitorInfo, error) {
 			return -1
 		}
 		if a.Active == nil && b.Active == nil {
-			return slices.Compare([]rune(a.EDID), []rune(b.EDID))
+			return slices.Compare([]rune(a.Edid), []rune(b.Edid))
 		}
 		ax := a.Active.PositionX
 		bx := b.Active.PositionX
 		if ax != bx {
 			return ax - bx
 		}
-		return slices.Compare([]rune(a.EDID), []rune(b.EDID))
+		return slices.Compare([]rune(a.Edid), []rune(b.Edid))
 	})
 
 	return monitorsList, nil
@@ -648,13 +648,13 @@ func getDisplayPathsFromConfig() ([]displayPathInfo, error) {
 }
 
 // ApplyLayoutConfig applies a display configuration using SetDisplayConfig
-func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
-	log.Printf("Applying layout: %s (%s)", layout.ID, layout.Name)
+func (m *WindowsManager) ApplyLayoutConfig(layout api.Layout) error {
+	log.Printf("Applying layout: %s (%s)", layout.Id, layout.Name)
 
 	// Build map of EDIDs that should be enabled with their config
-	monitorsByEdid := make(map[string]common.Monitor)
+	monitorsByEdid := make(map[string]api.LayoutMonitor)
 	for _, mon := range layout.Monitors {
-		monitorsByEdid[mon.EDID] = mon
+		monitorsByEdid[mon.Edid] = mon
 	}
 
 	// Get all display path info
@@ -666,7 +666,7 @@ func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
 	// Collect mode data for each enabled monitor
 	type monitorModeData struct {
 		edid      string
-		layoutMon common.Monitor
+		layoutMon api.LayoutMonitor
 		info      *displayPathInfo
 		sourceId  uint32
 	}
@@ -748,7 +748,7 @@ func (m *WindowsManager) ApplyLayoutConfig(layout common.Layout) error {
 		path.TargetInfo.OutputTechnology = md.info.outputTech
 		path.TargetInfo.Rotation = md.info.rotation
 		path.TargetInfo.Scaling = md.info.scaling
-		path.TargetInfo.RefreshRate = md.info.refreshRate
+		path.TargetInfo.RefreshRate = md.info.refreshRate // Note: Windows API uses rational, we might need conversion if we were setting it from layoutMon, but here we use md.info which comes from current config query.
 		path.TargetInfo.ScanLineOrdering = md.info.scanLineOrder
 		path.TargetInfo.TargetAvailable = 1 // TRUE
 		path.TargetInfo.StatusFlags = DISPLAYCONFIG_TARGET_IN_USE

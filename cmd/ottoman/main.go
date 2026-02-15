@@ -9,17 +9,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	"github.com/trolleyman/ottoman/internal/client"
+	"github.com/trolleyman/ottoman/internal/agent"
+	"github.com/trolleyman/ottoman/internal/api"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
+	"github.com/trolleyman/ottoman/internal/controller"
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
-	"github.com/trolleyman/ottoman/internal/server"
 )
 
 // slugify converts a string into a URL-friendly slug
@@ -58,107 +60,107 @@ remote management capabilities.`,
 	},
 }
 
-// Server commands
-var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Server commands (runs on Raspberry Pi)",
+// Controller commands
+var controllerCmd = &cobra.Command{
+	Use:   "controller",
+	Short: "Controller commands (runs on Raspberry Pi)",
 }
 
-var serverRunCmd = &cobra.Command{
+var controllerRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run the server",
+	Short: "Run the controller",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := server.LoadConfig(configFile)
+		cfg, err := controller.LoadConfig(configFile)
 		if err != nil {
 			return errors.Wrap(err, "failed to load config")
 		}
-		return server.Run(cfg)
+		return controller.Run(cfg)
 	},
 }
 
-var serverSimulateCmd = &cobra.Command{
+var controllerSimulateCmd = &cobra.Command{
 	Use:   "simulate",
-	Short: "Run simulated server with mock client (for frontend testing)",
-	Long: `Run a simulated server that serves the real web frontend with mocked API
-endpoints. The simulated client starts offline — use Wake-on-LAN in the UI
+	Short: "Run simulated controller with mock agent (for frontend testing)",
+	Long: `Run a simulated controller that serves the real web frontend with mocked API
+endpoints. The simulated agent starts offline — use Wake-on-LAN in the UI
 to trigger a simulated boot sequence. Layouts and monitors are loaded from
-a client config file.
+a agent config file.
 
 Admin endpoints (no auth):
-  POST /api/sim/reset      Reset client to offline
+  POST /api/sim/reset      Reset agent to offline
   GET  /api/sim/state      Get current simulated state
   POST /api/sim/set-state  Set state directly (offline/booting/online)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		clientConfigFile, _ := cmd.Flags().GetString("client-config")
+		agentConfigFile, _ := cmd.Flags().GetString("agent-config")
 		bootDelay, _ := cmd.Flags().GetDuration("boot-delay")
 		startOnline, _ := cmd.Flags().GetBool("start-online")
 
-		// Load server config
-		serverCfg, err := server.LoadConfig(configFile)
+		// Load controller config
+		controllerCfg, err := controller.LoadConfig(configFile)
 		if err != nil {
-			return errors.Wrap(err, "failed to load server config")
+			return errors.Wrap(err, "failed to load controller config")
 		}
 
-		// Load client config for layout/monitor data
-		if clientConfigFile == "" {
-			return errors.New("--client-config is required")
+		// Load agent config for layout/monitor data
+		if agentConfigFile == "" {
+			return errors.New("--agent-config is required")
 		}
-		clientCfg, err := client.LoadConfig(clientConfigFile)
+		agentCfg, err := agent.LoadConfig(agentConfigFile)
 		if err != nil {
-			return errors.Wrap(err, "failed to load client config")
+			return errors.Wrap(err, "failed to load agent config")
 		}
 
-		return server.RunSimulated(serverCfg, clientCfg, bootDelay, startOnline)
+		return controller.RunSimulatedController(controllerCfg, agentCfg, bootDelay, startOnline)
 	},
 }
 
-var serverInstallCmd = &cobra.Command{
+var controllerInstallCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install systemd service for server",
+	Short: "Install systemd service for controller",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return server.InstallService()
+		return controller.InstallService()
 	},
 }
 
-var serverUninstallCmd = &cobra.Command{
+var controllerUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Uninstall systemd service for server",
+	Short: "Uninstall systemd service for controller",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return server.UninstallService()
+		return controller.UninstallService()
 	},
 }
 
-// Client commands
-var clientCmd = &cobra.Command{
-	Use:   "client",
-	Short: "Client commands (runs on desktop)",
+// Agent commands
+var agentCmd = &cobra.Command{
+	Use:   "agent",
+	Short: "Agent commands (runs on desktop)",
 }
 
-var clientRunCmd = &cobra.Command{
+var agentRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run the client agent",
+	Short: "Run the agent",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := client.LoadConfig(configFile)
+		cfg, err := agent.LoadConfig(configFile)
 		if err != nil {
 			return errors.Wrap(err, "failed to load config")
 		}
-		return client.Run(cfg)
+		return agent.Run(cfg)
 	},
 }
 
-var clientInstallCmd = &cobra.Command{
+var agentInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install autostart service (systemd on Linux, startup script on Windows)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.InstallService()
+		return agent.InstallService()
 	},
 }
 
-var clientUninstallCmd = &cobra.Command{
+var agentUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Remove autostart service",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.UninstallService()
+		return agent.UninstallService()
 	},
 }
 
@@ -172,7 +174,7 @@ var installCmd = &cobra.Command{
 
 It also creates a default configuration file if one doesn't exist.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return client.Install()
+		return agent.Install()
 	},
 }
 
@@ -211,7 +213,7 @@ var monitorListCmd = &cobra.Command{
 			if m.Active != nil && m.Active.Primary {
 				primary = " [PRIMARY]"
 			}
-			fmt.Printf("%s (%s) - %s%s\n", m.EDID, m.Name, status, primary)
+			fmt.Printf("%s (%s) - %s%s\n", m.Edid, m.Name, status, primary)
 			fmt.Printf("  Port:       %s\n", m.Port)
 			if m.Active != nil {
 				fmt.Printf("  Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
@@ -243,7 +245,7 @@ var layoutAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
 
 		mgr, err := display.NewManager(layouts)
 		if err != nil {
@@ -257,12 +259,13 @@ var layoutAddCmd = &cobra.Command{
 		}
 
 		// Convert to layout monitors
-		var monitorConfigs []common.Monitor
+		var monitorConfigs []api.LayoutMonitor
 		for _, m := range monitors {
 			if m.Active != nil {
-				monitorConfigs = append(monitorConfigs, common.Monitor{
+				monitorConfigs = append(monitorConfigs, api.LayoutMonitor{
+					Edid:        m.Edid,
 					Name:        m.Name,
-					EDID:        m.EDID,
+					Port:        m.Port,
 					Width:       m.Active.Width,
 					Height:      m.Active.Height,
 					RefreshRate: m.Active.RefreshRate,
@@ -274,22 +277,24 @@ var layoutAddCmd = &cobra.Command{
 		}
 
 		name := args[0]
-		layout := common.Layout{
-			ID:       slugify(name),
+		layout := api.Layout{
+			Id:       slugify(name),
 			Name:     name,
+			Aliases:  []string{},
 			Monitors: monitorConfigs,
 		}
 		if len(args) > 1 {
-			layout.Emoji = args[1]
+			emoji := args[1]
+			layout.Emoji = &emoji
 		}
 
 		layouts.Set(layout)
-		fullCfg.Client.Layouts = layouts.ToSlice()
-		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+		fullCfg.Agent.Layouts = layouts.ToSlice()
+		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
 			return errors.Wrap(err, "failed to save config")
 		}
 
-		fmt.Printf("Added layout %q (%s)\n", layout.Name, layout.ID)
+		fmt.Printf("Added layout %q (%s)\n", layout.Name, layout.Id)
 		return nil
 	},
 }
@@ -304,21 +309,21 @@ var layoutListCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		if len(cfg.Client.Layouts) == 0 {
+		if len(cfg.Agent.Layouts) == 0 {
 			fmt.Println("No layouts configured")
 			return nil
 		}
 
-		for _, l := range cfg.Client.Layouts {
+		for _, l := range cfg.Agent.Layouts {
 			emoji := ""
-			if l.Emoji != "" {
-				emoji = l.Emoji + " "
+			if l.Emoji != nil && *l.Emoji != "" {
+				emoji = *l.Emoji + " "
 			}
 			aliases := ""
 			if len(l.Aliases) > 0 {
 				aliases = fmt.Sprintf(" (aliases: %v)", l.Aliases)
 			}
-			fmt.Printf("%s%s [%s]%s - %d monitors\n", emoji, l.Name, l.ID, aliases, len(l.Monitors))
+			fmt.Printf("%s%s [%s]%s - %d monitors\n", emoji, l.Name, l.Id, aliases, len(l.Monitors))
 		}
 		return nil
 	},
@@ -353,7 +358,7 @@ var layoutShowCmd = &cobra.Command{
 			if m.Active.Primary {
 				primary = " [PRIMARY]"
 			}
-			fmt.Printf("  %s (%s)%s\n", m.EDID, m.Name, primary)
+			fmt.Printf("  %s (%s)%s\n", m.Edid, m.Name, primary)
 			fmt.Printf("    Resolution: %dx%d @ %.0fHz\n", m.Active.Width, m.Active.Height, m.Active.RefreshRate)
 			fmt.Printf("    Position:   (%d, %d)\n", m.Active.PositionX, m.Active.PositionY)
 		}
@@ -377,14 +382,14 @@ var layoutAliasAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
 
 		if !layouts.AddAlias(args[0], args[1]) {
 			return fmt.Errorf("layout %q not found", args[0])
 		}
 
-		fullCfg.Client.Layouts = layouts.ToSlice()
-		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+		fullCfg.Agent.Layouts = layouts.ToSlice()
+		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
 			return errors.Wrap(err, "failed to save config")
 		}
 
@@ -404,14 +409,14 @@ var layoutAliasRemoveCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Client.Layouts)
+		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
 
 		if !layouts.RemoveAlias(args[0], args[1]) {
 			return fmt.Errorf("layout %q not found or alias %q doesn't exist", args[0], args[1])
 		}
 
-		fullCfg.Client.Layouts = layouts.ToSlice()
-		if err := config.SaveClient(&fullCfg.Client, config.ConfigPath()); err != nil {
+		fullCfg.Agent.Layouts = layouts.ToSlice()
+		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
 			return errors.Wrap(err, "failed to save config")
 		}
 
@@ -431,7 +436,7 @@ var layoutApplyCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(cfg.Client.Layouts)
+		layouts := display.NewLayoutsFromSlice(cfg.Agent.Layouts)
 
 		matches := layouts.FindByIDOrAlias(args[0])
 		if len(matches) == 0 {
@@ -440,7 +445,7 @@ var layoutApplyCmd = &cobra.Command{
 		if len(matches) > 1 {
 			fmt.Printf("Multiple layouts match %q:\n", args[0])
 			for _, l := range matches {
-				fmt.Printf("  - %s [%s]\n", l.Name, l.ID)
+				fmt.Printf("  - %s [%s]\n", l.Name, l.Id)
 			}
 			return fmt.Errorf("ambiguous layout reference")
 		}
@@ -456,7 +461,7 @@ var layoutApplyCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to apply layout")
 		}
 
-		fmt.Printf("Applied layout %q (%s)\n", layout.Name, layout.ID)
+		fmt.Printf("Applied layout %q (%s)\n", layout.Name, layout.Id)
 		return nil
 	},
 }
@@ -464,21 +469,21 @@ var layoutApplyCmd = &cobra.Command{
 // Status command
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Check if both server and client are running and reachable",
+	Short: "Check if both controller and agent are running and reachable",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		serverAddr, _ := cmd.Flags().GetString("server")
-		clientAddr, _ := cmd.Flags().GetString("client")
+		controllerAddr, _ := cmd.Flags().GetString("controller")
+		agentAddr, _ := cmd.Flags().GetString("agent")
 
 		fmt.Println("Checking ottoman status...")
 		fmt.Println()
 
-		serverStatus := server.CheckStatus(serverAddr)
-		clientStatus := client.CheckStatus(clientAddr)
+		controllerStatus := controller.CheckStatus(controllerAddr)
+		agentStatus := agent.CheckStatus(agentAddr)
 
-		fmt.Printf("Server (%s): %s\n", serverAddr, serverStatus)
-		fmt.Printf("Client (%s): %s\n", clientAddr, clientStatus)
+		fmt.Printf("Controller (%s): %s\n", controllerAddr, controllerStatus)
+		fmt.Printf("Agent      (%s): %s\n", agentAddr, agentStatus)
 
-		if serverStatus != "OK" || clientStatus != "OK" {
+		if controllerStatus != "OK" || agentStatus != "OK" {
 			return errors.New("one or more components are not reachable")
 		}
 		return nil
@@ -513,21 +518,21 @@ var configPathsCmd = &cobra.Command{
 }
 
 var configInitCmd = &cobra.Command{
-	Use:   "init <client|server>",
-	Short: "Create a configuration file for client or server",
+	Use:   "init <agent|controller>",
+	Short: "Create a configuration file for agent or controller",
 	Long: `Create a configuration file with required settings.
 If the file already exists, it will be displayed and you will be asked
 whether to keep it or reconfigure.
 
 Examples:
-  ottoman config init client                        # Initialize client configuration
-  ottoman config init server                        # Initialize server configuration
-  ottoman config init server --output server.toml   # Write to specific path`,
+  ottoman config init agent                             # Initialize agent configuration
+  ottoman config init controller                        # Initialize controller configuration
+  ottoman config init controller --output config.toml   # Write to specific path`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := args[0]
-		if mode != "client" && mode != "server" {
-			return fmt.Errorf("invalid mode %q: must be 'client' or 'server'", mode)
+		if mode != "agent" && mode != "controller" {
+			return fmt.Errorf("invalid mode %q: must be 'agent' or 'controller'", mode)
 		}
 
 		path, _ := cmd.Flags().GetString("output")
@@ -547,7 +552,10 @@ Examples:
 			fmt.Println(string(content))
 			fmt.Println("===========================")
 
-			answer := promptInput(reader, "Use this configuration? [Y/n]", "")
+			answer, err := promptInput(reader, "Use this configuration? [Y/n]", "")
+			if err != nil {
+				return err
+			}
 			if answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes") {
 				fmt.Println("Keeping existing configuration.")
 				return nil
@@ -559,20 +567,20 @@ Examples:
 			config.Init("")
 		}
 
-		if mode == "client" {
-			cfg, err := initClientConfig(reader)
+		if mode == "agent" {
+			cfg, err := initAgentConfig(reader)
 			if err != nil {
 				return err
 			}
-			if err := config.SaveClient(cfg, path); err != nil {
+			if err := config.SaveAgent(cfg, path); err != nil {
 				return errors.Wrap(err, "failed to save config")
 			}
-		} else {
-			cfg, err := initServerConfig(reader)
+		} else { // controller
+			cfg, err := initControllerConfig(reader)
 			if err != nil {
 				return err
 			}
-			if err := config.SaveServer(cfg, path); err != nil {
+			if err := config.SaveController(cfg, path); err != nil {
 				return errors.Wrap(err, "failed to save config")
 			}
 		}
@@ -583,27 +591,53 @@ Examples:
 }
 
 // promptInput asks for user input with an optional default value
-func promptInput(reader *bufio.Reader, question, defaultVal string) string {
+func promptInput(reader *bufio.Reader, question, defaultVal string) (string, error) {
 	if defaultVal != "" {
 		fmt.Printf("%s [%s]: ", question, defaultVal)
 	} else {
 		fmt.Printf("%s: ", question)
 	}
-	answer, _ := reader.ReadString('\n')
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return "", errors.Wrap(err, "failed to read input")
+	}
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
-		return defaultVal
+		return defaultVal, nil
 	}
-	return answer
+	return answer, nil
+}
+
+// promptInteger asks for user input with an optional default value
+func promptInteger(reader *bufio.Reader, question string, defaultVal *int) (int, error) {
+	defaultString := ""
+	if defaultVal != nil {
+		defaultString = fmt.Sprintf("%d", *defaultVal)
+	}
+	answer, err := promptInput(reader, question, defaultString)
+	if err != nil {
+		return 0, err
+	}
+	if answer == "" {
+		return *defaultVal, nil
+	}
+	val, err := strconv.Atoi(answer)
+	if err != nil {
+		return 0, errors.Wrapf(err, "invalid integer: %q", answer)
+	}
+	return val, nil
 }
 
 // promptToken asks for an auth token, generating one if left blank
 func promptToken(reader *bufio.Reader, label, defaultVal string) (string, error) {
 	if defaultVal != "" {
-		token := promptInput(reader, label, defaultVal)
-		return token, nil
+		token, err := promptInput(reader, label, defaultVal)
+		return token, err
 	}
-	token := promptInput(reader, label+" (leave blank to generate)", "")
+	token, err := promptInput(reader, label+" (leave blank to generate)", "")
+	if err != nil {
+		return "", err
+	}
 	if token == "" {
 		generated, err := config.GenerateToken()
 		if err != nil {
@@ -615,15 +649,15 @@ func promptToken(reader *bufio.Reader, label, defaultVal string) (string, error)
 	return token, nil
 }
 
-// initClientConfig interactively creates a client config
-func initClientConfig(reader *bufio.Reader) (*config.ClientConfig, error) {
+// initAgentConfig interactively creates an agent config
+func initAgentConfig(reader *bufio.Reader) (*config.AgentConfig, error) {
 	// Try to load existing values
 	existing, _ := config.Load()
-	cfg := &config.ClientConfig{
-		ListenAddr: ":17294",
+	cfg := &config.AgentConfig{
+		ListenAddress: ":17294",
 	}
 	if existing != nil {
-		cfg = &existing.Client
+		cfg = &existing.Agent
 	}
 
 	var err error
@@ -631,27 +665,30 @@ func initClientConfig(reader *bufio.Reader) (*config.ClientConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.ListenAddr = promptInput(reader, "Listen address", cfg.ListenAddr)
+	cfg.ListenAddress, err = promptInput(reader, "Listen address", cfg.ListenAddress)
+	if err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
 
-// initServerConfig interactively creates a server config
-func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
+// initControllerConfig interactively creates a controller config
+func initControllerConfig(reader *bufio.Reader) (*config.ControllerConfig, error) {
 	// Try to load existing values
 	existing, _ := config.Load()
-	cfg := &config.ServerConfig{
-		ListenAddr: ":17293",
-		ClientAddr: "localhost:17294",
+	cfg := &config.ControllerConfig{
+		ListenAddress: ":17293",
+		Agent:         config.AgentControllerConfig{IPAddress: "127.0.0.1", Port: 17294},
 	}
 	if existing != nil {
-		cfg = &existing.Server
+		cfg = &existing.Controller
 	}
 
 	// Smart defaults from local network
 	localIP := getLocalIP()
-	if cfg.ClientAddr == "localhost:17294" && localIP != "" {
-		cfg.ClientAddr = localIP + ":17294"
+	if localIP != "" && cfg.Agent.IPAddress == "127.0.0.1" {
+		cfg.Agent.IPAddress = localIP
 	}
 
 	var err error
@@ -659,27 +696,32 @@ func initServerConfig(reader *bufio.Reader) (*config.ServerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.ListenAddr = promptInput(reader, "Listen address", cfg.ListenAddr)
-	cfg.ClientAddr = promptInput(reader, "Client address", cfg.ClientAddr)
-
-	// Wake target
-	fmt.Println("\n--- Wake-on-LAN Target ---")
-	if len(cfg.WakeTargets) == 0 {
-		cfg.WakeTargets = []config.WakeTarget{{Name: "desktop"}}
+	cfg.ListenAddress, err = promptInput(reader, "Listen address", cfg.ListenAddress)
+	if err != nil {
+		return nil, err
 	}
-	wt := &cfg.WakeTargets[0]
-	wt.Name = promptInput(reader, "Wake target name", wt.Name)
-
-	localMAC := getLocalMAC()
-	if wt.MACAddress == "" && localMAC != "" {
-		wt.MACAddress = localMAC
+	cfg.Agent.IPAddress, err = promptInput(reader, "Agent IP address", cfg.Agent.IPAddress)
+	if err != nil {
+		return nil, err
 	}
-	wt.MACAddress = promptInput(reader, "MAC address", wt.MACAddress)
-
-	if wt.IPAddress == "" && localIP != "" {
-		wt.IPAddress = localIP
+	cfg.Agent.Port, err = promptInteger(reader, "Agent port", &cfg.Agent.Port)
+	if err != nil {
+		return nil, err
 	}
-	wt.IPAddress = promptInput(reader, "IP address", wt.IPAddress)
+
+	if cfg.Agent.MACAddress == "" {
+		localMAC, err := getLocalMAC()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get local MAC address")
+		}
+		if localMAC != "" {
+			cfg.Agent.MACAddress = localMAC
+		}
+	}
+	cfg.Agent.MACAddress, err = promptInput(reader, "Agent MAC address", cfg.Agent.MACAddress)
+	if err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -700,11 +742,11 @@ func getLocalIP() string {
 	return ""
 }
 
-// getLocalMAC returns the MAC address of the primary network interface
-func getLocalMAC() string {
+// getLocalMAC returns the MAC address of the primary network interface. "" if no interface was found with a MAC address
+func getLocalMAC() (string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return ""
+		return "", errors.Wrap(err, "failed to get local MAC address")
 	}
 	for _, iface := range interfaces {
 		if iface.Flags&net.FlagLoopback != 0 || len(iface.HardwareAddr) == 0 {
@@ -716,31 +758,31 @@ func getLocalMAC() string {
 			continue
 		}
 		if iface.Flags&net.FlagUp != 0 {
-			return iface.HardwareAddr.String()
+			return iface.HardwareAddr.String(), nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file path")
 
-	// Server commands
-	serverCmd.AddCommand(serverRunCmd)
-	serverSimulateCmd.Flags().String("client-config", "", "path to client config for layout/monitor data (required)")
-	serverSimulateCmd.Flags().Duration("boot-delay", 1*time.Second, "simulated boot delay after WoL")
-	serverSimulateCmd.Flags().Bool("start-online", false, "start with simulated client already online")
-	serverCmd.AddCommand(serverSimulateCmd)
-	serverCmd.AddCommand(serverInstallCmd)
-	serverCmd.AddCommand(serverUninstallCmd)
+	// Controller commands
+	controllerCmd.AddCommand(controllerRunCmd)
+	controllerSimulateCmd.Flags().String("agent-config", "", "path to agent config for layout/monitor data (required)")
+	controllerSimulateCmd.Flags().Duration("boot-delay", 1*time.Second, "simulated boot delay after WoL")
+	controllerSimulateCmd.Flags().Bool("start-online", false, "start with simulated agent already online")
+	controllerCmd.AddCommand(controllerSimulateCmd)
+	controllerCmd.AddCommand(controllerInstallCmd)
+	controllerCmd.AddCommand(controllerUninstallCmd)
 
-	// Client commands
-	clientCmd.AddCommand(clientRunCmd)
-	clientCmd.AddCommand(layoutCmd)
-	clientCmd.AddCommand(monitorCmd)
-	clientCmd.AddCommand(clientInstallCmd)
-	clientCmd.AddCommand(clientUninstallCmd)
+	// Agent commands
+	agentCmd.AddCommand(agentRunCmd)
+	agentCmd.AddCommand(layoutCmd)
+	agentCmd.AddCommand(monitorCmd)
+	agentCmd.AddCommand(agentInstallCmd)
+	agentCmd.AddCommand(agentUninstallCmd)
 
 	// Monitor commands
 	monitorCmd.AddCommand(monitorListCmd)
@@ -755,8 +797,8 @@ func init() {
 	layoutAliasCmd.AddCommand(layoutAliasRemoveCmd)
 
 	// Status command
-	statusCmd.Flags().String("server", "localhost:17293", "Server address")
-	statusCmd.Flags().String("client", "localhost:17294", "Client address")
+	statusCmd.Flags().String("controller", "localhost:17293", "Controller address")
+	statusCmd.Flags().String("agent", "localhost:17294", "Agent address")
 
 	// Config commands
 	configCmd.AddCommand(configShowCmd)
@@ -765,8 +807,8 @@ func init() {
 	configInitCmd.Flags().StringP("output", "o", "", "output path for config file")
 
 	// Add commands to root
-	rootCmd.AddCommand(serverCmd)
-	rootCmd.AddCommand(clientCmd)
+	rootCmd.AddCommand(controllerCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(installCmd)

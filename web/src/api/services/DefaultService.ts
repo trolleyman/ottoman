@@ -1,0 +1,313 @@
+/* generated using openapi-typescript-codegen -- do not edit */
+/* istanbul ignore file */
+/* tslint:disable */
+/* eslint-disable */
+import type { AuthRequest } from '../models/AuthRequest';
+import type { AuthResponse } from '../models/AuthResponse';
+import type { LayoutsResponse } from '../models/LayoutsResponse';
+import type { MonitorsResponse } from '../models/MonitorsResponse';
+import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
+import type { RemoveLayoutResponse } from '../models/RemoveLayoutResponse';
+import type { SaveLayoutRequest } from '../models/SaveLayoutRequest';
+import type { SaveLayoutResponse } from '../models/SaveLayoutResponse';
+import type { ShutdownResponse } from '../models/ShutdownResponse';
+import type { SimSetStateRequest } from '../models/SimSetStateRequest';
+import type { SimStateResponse } from '../models/SimStateResponse';
+import type { StatusResponse } from '../models/StatusResponse';
+import type { SwitchLayoutRequest } from '../models/SwitchLayoutRequest';
+import type { SwitchLayoutResponse } from '../models/SwitchLayoutResponse';
+import type { WakeResponse } from '../models/WakeResponse';
+import type { CancelablePromise } from '../core/CancelablePromise';
+import type { BaseHttpRequest } from '../core/BaseHttpRequest';
+export class DefaultService {
+    constructor(public readonly httpRequest: BaseHttpRequest) {}
+    /**
+     * Health check
+     * @returns string OK
+     * @throws ApiError
+     */
+    public checkHealth(): CancelablePromise<string> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/health',
+        });
+    }
+    /**
+     * Get system status
+     * @returns StatusResponse OK
+     * @throws ApiError
+     */
+    public getStatus(): CancelablePromise<StatusResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/status',
+        });
+    }
+    /**
+     * Get agent status
+     * @returns StatusResponse OK
+     * @throws ApiError
+     */
+    public getAgentStatus(): CancelablePromise<StatusResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/status/agent',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Authenticate
+     * @param requestBody
+     * @returns AuthResponse Success
+     * @throws ApiError
+     */
+    public auth(
+        requestBody?: AuthRequest,
+    ): CancelablePromise<AuthResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/auth',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                401: `Unauthorized`,
+            },
+        });
+    }
+    /**
+     * Logout
+     * @returns AuthResponse Success
+     * @throws ApiError
+     */
+    public logout(): CancelablePromise<AuthResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/auth/logout',
+        });
+    }
+    /**
+     * Check authentication status
+     * @returns any Success
+     * @throws ApiError
+     */
+    public checkAuth(): CancelablePromise<{
+        /**
+         * Whether the user is authenticated.
+         */
+        authenticated?: boolean;
+    }> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/auth/check',
+            errors: {
+                401: `Unauthorized`,
+            },
+        });
+    }
+    /**
+     * Wake agent on LAN
+     * @returns WakeResponse Success
+     * @throws ApiError
+     */
+    public wake(): CancelablePromise<WakeResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/wake',
+            errors: {
+                401: `Unauthorized`,
+                404: `No wake target configured`,
+                500: `Internal Server Error`,
+            },
+        });
+    }
+    /**
+     * Get all monitors
+     * @returns MonitorsResponse Success
+     * @throws ApiError
+     */
+    public getMonitors(): CancelablePromise<MonitorsResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/monitors',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Get all layouts
+     * @returns LayoutsResponse Success
+     * @throws ApiError
+     */
+    public getLayouts(): CancelablePromise<LayoutsResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/layouts',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Switch layout
+     * @param requestBody
+     * @returns SwitchLayoutResponse Success
+     * @throws ApiError
+     */
+    public switchLayout(
+        requestBody?: SwitchLayoutRequest,
+    ): CancelablePromise<SwitchLayoutResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/layouts/switch',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request (Invalid body or ambiguous layout)`,
+                401: `Unauthorized`,
+                404: `Layout not found`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Get current layout
+     * @returns SwitchLayoutResponse Success
+     * @throws ApiError
+     */
+    public getCurrentLayout(): CancelablePromise<SwitchLayoutResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/layouts/current',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Save current layout
+     * @param requestBody
+     * @returns SaveLayoutResponse Success
+     * @throws ApiError
+     */
+    public saveCurrentLayout(
+        requestBody?: SaveLayoutRequest,
+    ): CancelablePromise<SaveLayoutResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/layouts/save-current',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request (Invalid body or missing name)`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Remove layout
+     * @param requestBody
+     * @returns RemoveLayoutResponse Success
+     * @throws ApiError
+     */
+    public removeLayout(
+        requestBody?: RemoveLayoutRequest,
+    ): CancelablePromise<RemoveLayoutResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/layouts/remove',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request (Invalid body)`,
+                401: `Unauthorized`,
+                404: `Layout not found`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Shutdown client
+     * @returns ShutdownResponse Success
+     * @throws ApiError
+     */
+    public shutdown(): CancelablePromise<ShutdownResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/shutdown',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Client unreachable)`,
+            },
+        });
+    }
+    /**
+     * Reset simulation
+     * @returns SimStateResponse Success
+     * @throws ApiError
+     */
+    public simReset(): CancelablePromise<SimStateResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/sim/reset',
+            errors: {
+                404: `Not Found (Server not in simulation mode)`,
+            },
+        });
+    }
+    /**
+     * Get simulation state
+     * @returns SimStateResponse Success
+     * @throws ApiError
+     */
+    public simState(): CancelablePromise<SimStateResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/sim/state',
+            errors: {
+                404: `Not Found (Server not in simulation mode)`,
+            },
+        });
+    }
+    /**
+     * Set simulation state
+     * @param requestBody
+     * @returns SimStateResponse Success
+     * @throws ApiError
+     */
+    public simSetState(
+        requestBody?: SimSetStateRequest,
+    ): CancelablePromise<SimStateResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/sim/set-state',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                404: `Not Found (Server not in simulation mode)`,
+            },
+        });
+    }
+    /**
+     * WebSocket Trackpad Connection
+     * Upgrades to WebSocket. Messages follow TrackpadSendArgs/TrackpadRecvArgs schemas.
+     * @returns void
+     * @throws ApiError
+     */
+    public connectTrackpad(): CancelablePromise<void> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/trackpad',
+        });
+    }
+}

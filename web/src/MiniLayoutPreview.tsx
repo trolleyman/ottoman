@@ -1,4 +1,4 @@
-import type { LayoutMonitor } from "./types";
+import type { LayoutMonitor } from "./api";
 
 export function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; scale: number }) {
   if (monitors.length === 0) return null;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorDisplay } from "./MonitorDisplay";
-import type { Modifier, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
 import { useStore } from "./store";
+import { Modifier, MouseButton, type TrackpadMessage } from "./api";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [connected, setConnected] = useState(false);
@@ -40,8 +40,8 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       setConnected(true);
       setConnecting(false);
       try {
-        const msg: TrackpadRecvArgs = JSON.parse(e.data);
-        if (msg.t === "p") {
+        const msg: TrackpadMessage = JSON.parse(e.data);
+        if (msg.type === "mousepositionupdate") {
           setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
         }
       } catch { /* ignore parse errors */ }
@@ -63,7 +63,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
-  const send = useCallback((msg: TrackpadSendArgs) => {
+  const send = useCallback((msg: TrackpadMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     }
@@ -74,11 +74,11 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
 
 function getModifiers(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }) {
   const mod: Modifier[] = [];
-  if (e.shiftKey) mod.push("shift");
-  if (e.ctrlKey) mod.push("ctrl");
-  if (e.altKey) mod.push("alt");
-  if (e.metaKey) mod.push("meta");
-  return mod.length > 0 ? mod : undefined;
+  if (e.shiftKey) mod.push(Modifier.SHIFT);
+  if (e.ctrlKey) mod.push(Modifier.CTRL);
+  if (e.altKey) mod.push(Modifier.ALT);
+  if (e.metaKey) mod.push(Modifier.META);
+  return mod.length > 0 ? mod : [];
 }
 
 interface TrackpadSettings {
@@ -97,7 +97,7 @@ function TouchArea({
 }: {
   connected: boolean;
   connecting: boolean;
-  send: (msg: TrackpadSendArgs) => void;
+  send: (msg: TrackpadMessage) => void;
   settings: TrackpadSettings;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
@@ -129,14 +129,14 @@ function TouchArea({
   const cursorInertiaFrame = useRef(0);
   const lastCursorTime = useRef(0);
 
-  const handleKey = useCallback((e: React.KeyboardEvent | KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent | KeyboardEvent) => {
     // Skip unidentified keys - handled by input event on mobile
     if (e.key === "Unidentified" || e.key === "Process") return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    send({ t: "key", key: e.key, mod: getModifiers(e) });
+    send({ type: "keydown", key: e.key, modifiers: getModifiers(e) });
   }, [send]);
 
   // Fallback for characters that don't produce proper keydown events (mobile symbol keyboards)
@@ -145,9 +145,7 @@ function TouchArea({
     if (!input) return;
     const value = input.value;
     if (value) {
-      for (const char of value) {
-        send({ t: "key", key: char });
-      }
+      send({ type: "text", text: value });
       input.value = "";
     }
   }, [send]);
@@ -191,7 +189,7 @@ function TouchArea({
 
     if (touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40) {
       isDragging.current = true;
-      send({ t: "d" });
+      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
     }
 
     lastTapPos.current = { x: touch.clientX, y: touch.clientY };
@@ -232,7 +230,7 @@ function TouchArea({
       }
 
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-        send({ t: "sc", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
+        send({ type: "mousescroll", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
       }
       return;
     }
@@ -244,7 +242,7 @@ function TouchArea({
       const dx = rawDx * settings.cursorSensitivity;
       const dy = rawDy * settings.cursorSensitivity;
 
-      send({ t: "m", dx, dy });
+      send({ type: "mousemoverel", dx, dy });
       lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
 
       const dt = now - lastCursorTime.current;
@@ -293,7 +291,7 @@ function TouchArea({
 
             const dx = cx * dt;
             const dy = cy * dt;
-            send({ t: "sc", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
+            send({ type: "mousescroll", dx: Math.round(-dx), dy: Math.round(-dy), precise: true });
             inertiaFrame.current = requestAnimationFrame(step);
           };
           inertiaFrame.current = requestAnimationFrame(step);
@@ -306,7 +304,7 @@ function TouchArea({
     lastTouchEndTime.current = now;
 
     if (isDragging.current) {
-      send({ t: "u" });
+      send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
       isDragging.current = false;
     } else {
       // Cursor inertia
@@ -334,7 +332,7 @@ function TouchArea({
 
           const dx = cx * dt;
           const dy = cy * dt;
-          send({ t: "m", dx, dy });
+          send({ type: "mousemoverel", dx, dy });
           cursorInertiaFrame.current = requestAnimationFrame(step);
         };
         cursorInertiaFrame.current = requestAnimationFrame(step);
@@ -345,7 +343,7 @@ function TouchArea({
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 10) {
-          send({ t: "c" });
+          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
         }
       }
     }
@@ -358,19 +356,19 @@ function TouchArea({
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
 
-    const mod = getModifiers(e);
+    const modifiers = getModifiers(e);
 
     // Middle click
     if (e.button === 1) {
       e.preventDefault();
-      send({ t: "c", btn: "middle", mod });
+      send({ type: "mouseclick", btn: MouseButton.MIDDLE, modifiers });
       return;
     }
 
     // Right click handled by onContextMenu
     if (e.button === 2) {
       e.preventDefault();
-      send({ t: "c", btn: "right", mod });
+      send({ type: "mouseclick", btn: MouseButton.RIGHT, modifiers }); // TODO: Implement MIDDLE/BACK/FORWARD
       return;
     }
 
@@ -386,15 +384,15 @@ function TouchArea({
     // Handle click/drag
     if (document.pointerLockElement && settings.clickAndDrag) {
       if (dragLocked.current) {
-        send({ t: "u", mod });
+        send({ type: "mouseup", btn: MouseButton.LEFT, modifiers }); // TODO: Left or right or other?
         dragLocked.current = false;
       } else {
-        send({ t: "d", mod });
+        send({ type: "mousedown", btn: MouseButton.LEFT, modifiers });
         dragLocked.current = true;
       }
     } else {
       mouseHeld.current = true;
-      send({ t: "d", mod });
+      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers });
     }
   };
 
@@ -409,14 +407,14 @@ function TouchArea({
 
       if (document.pointerLockElement) {
         // Pointer lock active: use movementX/Y
-        send({ t: "m", dx: e.movementX * settings.cursorSensitivity, dy: e.movementY * settings.cursorSensitivity });
+        send({ type: "mousemoverel", dx: e.movementX * settings.cursorSensitivity, dy: e.movementY * settings.cursorSensitivity });
       } else if (mouseHeld.current && lastMousePos.current) {
         // Fallback: track delta manually (after Escape cooldown denies pointer lock)
         const dx = (e.clientX - lastMousePos.current.x) * settings.cursorSensitivity;
         const dy = (e.clientY - lastMousePos.current.y) * settings.cursorSensitivity;
         lastMousePos.current = { x: e.clientX, y: e.clientY };
         if (dx !== 0 || dy !== 0) {
-          send({ t: "m", dx, dy });
+          send({ type: "mousemoverel", dx, dy });
         }
       }
     };
@@ -425,7 +423,7 @@ function TouchArea({
       if (mouseHeld.current) {
         mouseHeld.current = false;
         lastMousePos.current = null;
-        send({ t: "u", mod: getModifiers(e) });
+        send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: getModifiers(e) }); // TODO: Handle non-LEFT
       }
     };
 
@@ -433,11 +431,11 @@ function TouchArea({
       if (!document.pointerLockElement) {
         if (mouseHeld.current) {
           mouseHeld.current = false;
-          send({ t: "u" });
+          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
         }
         if (dragLocked.current) {
           dragLocked.current = false;
-          send({ t: "u" });
+          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
         }
         lastMousePos.current = null;
         // Don't blur - keep trackpad focused for keyboard events and easy re-lock
@@ -460,9 +458,9 @@ function TouchArea({
     const el = trackpadRef.current;
     if (!el || !connected) return;
 
-    el.addEventListener("keydown", handleKey);
-    return () => el.removeEventListener("keydown", handleKey);
-  }, [connected, handleKey]);
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, [connected, handleKeyDown]);
 
   // Wheel scroll handler (passive: false to allow preventDefault)
   useEffect(() => {
@@ -477,21 +475,21 @@ function TouchArea({
         const dx = Math.round(e.deltaX);
         const dy = Math.round(e.deltaY * settings.scrollSensitivity);
         if (dx !== 0 || dy !== 0) {
-          send({ t: "sc", dx, dy });
+          send({ type: "mousescroll", dx, dy });
         }
       } else if (e.deltaMode === 2) {
         // Page-based: treat as lines with a multiplier
         const dx = Math.round(e.deltaX * 10);
         const dy = Math.round(e.deltaY * 10 * settings.scrollSensitivity);
         if (dx !== 0 || dy !== 0) {
-          send({ t: "sc", dx, dy });
+          send({ type: "mousescroll", dx, dy });
         }
       } else {
         // Pixel-based (trackpads, smooth scrolling)
         const dx = Math.round(e.deltaX);
         const dy = Math.round(e.deltaY);
         if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-          send({ t: "sc", dx, dy, precise: true });
+          send({ type: "mousescroll", dx, dy, precise: true });
         }
       }
     };
@@ -546,7 +544,7 @@ function TouchArea({
         type="text"
         className="opacity-0 fixed top-0 left-0 h-0 w-0 pointer-events-none"
         autoComplete="off"
-        onKeyDown={handleKey}
+        onKeyDown={handleKeyDown}
         onInput={handleInput}
       />
       {!connected && (
@@ -574,7 +572,7 @@ export function Trackpad({
   connected: boolean;
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
-  send: (msg: TrackpadSendArgs) => void;
+  send: (msg: TrackpadMessage) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
   const currentLayout = useStore((s) => s.currentLayout);
@@ -605,13 +603,13 @@ export function Trackpad({
 
   // Check for local network connection and redirect if possible
   useEffect(() => {
-    if (!status?.local_ip || !status?.port) return;
-    if (window.location.hostname === status.local_ip) return;
+    if (!status?.ip_address || !status?.port) return;
+    if (window.location.hostname === status.ip_address) return;
 
     const checkLocalConnection = async () => {
       try {
         const protocol = window.location.protocol;
-        const localUrl = `${protocol}//${status.local_ip}:${status.port}`;
+        const localUrl = `${protocol}//${status.ip_address}:${status.port}`;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1000);
@@ -627,7 +625,7 @@ export function Trackpad({
     };
 
     checkLocalConnection();
-  }, [status?.local_ip, status?.port]);
+  }, [status?.ip_address, status?.port]);
 
   return (
     <section>
@@ -704,14 +702,14 @@ export function Trackpad({
           connecting={connecting}
           send={send}
           settings={settings}
-          />
+        />
         <MonitorDisplay
           layouts={layouts}
           currentLayout={currentLayout}
           cursorPos={cursorPos}
           connected={connected}
           loading={loading}
-          onSetPosition={(x, y) => send({ t: "a", x, y })}
+          onSetPosition={(x, y) => send({ type: "mousemoveto", x, y })}
         />
       </div>
     </section>

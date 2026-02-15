@@ -1,4 +1,4 @@
-import type { MonitorInfo } from "./types";
+import type { Monitor } from "./api";
 import { useStore } from "./store";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -12,7 +12,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MonitorCard({ monitor }: { monitor: MonitorInfo }) {
+function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   return (
     <div className={`rounded-xl border p-5 flex flex-col gap-3 ${a

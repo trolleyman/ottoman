@@ -3,65 +3,40 @@ package display
 import (
 	"slices"
 
-	"github.com/trolleyman/ottoman/internal/common"
+	"github.com/trolleyman/ottoman/internal/api"
 )
 
 // Manager handles display configuration switching
 type Manager interface {
-	ListMonitors() ([]MonitorInfo, error)
-	ApplyLayoutConfig(layout common.Layout) error
-}
-
-// MonitorInfo contains information about a monitor (connected or not)
-type MonitorInfo struct {
-	// Identification
-	EDID string `json:"edid,omitempty"` // EDID "MANUFACTURER:PRODUCT" e.g., "DEL:D0A2"
-	Port string `json:"port"`           // Port/connector name e.g., "HDMI-1", "DP-1"
-
-	// Display info
-	Name         string `json:"name,omitempty"`
-	Manufacturer string `json:"manufacturer,omitempty"`
-
-	// Active configuration (nil if monitor is not active/connected)
-	Active *ConnectedInfo `json:"active,omitempty"`
-}
-
-// ConnectedInfo contains the configuration of an active monitor
-type ConnectedInfo struct {
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	RefreshRate float64 `json:"refresh_rate"`
-	PositionX   int     `json:"position_x"`
-	PositionY   int     `json:"position_y"`
-	Primary     bool    `json:"primary"`
-	Model       string  `json:"model,omitempty"`
+	ListMonitors() ([]api.Monitor, error)
+	ApplyLayoutConfig(layout api.Layout) error
 }
 
 // Layouts manages display layout configurations
 type Layouts struct {
-	layouts map[string]common.Layout
+	layouts map[string]api.Layout
 }
 
 func NewLayouts() *Layouts {
 	return &Layouts{
-		layouts: make(map[string]common.Layout),
+		layouts: make(map[string]api.Layout),
 	}
 }
 
 // NewLayoutsFromSlice creates a Layouts store from a slice of layouts
-func NewLayoutsFromSlice(layouts []common.Layout) *Layouts {
+func NewLayoutsFromSlice(layouts []api.Layout) *Layouts {
 	s := &Layouts{
-		layouts: make(map[string]common.Layout),
+		layouts: make(map[string]api.Layout),
 	}
 	for _, layout := range layouts {
-		s.layouts[layout.ID] = layout
+		s.layouts[layout.Id] = layout
 	}
 	return s
 }
 
 // ToSlice returns all layouts as a slice (for saving to config)
-func (s *Layouts) ToSlice() []common.Layout {
-	layouts := make([]common.Layout, 0, len(s.layouts))
+func (s *Layouts) ToSlice() []api.Layout {
+	layouts := make([]api.Layout, 0, len(s.layouts))
 	for _, layout := range s.layouts {
 		layouts = append(layouts, layout)
 	}
@@ -69,14 +44,14 @@ func (s *Layouts) ToSlice() []common.Layout {
 }
 
 // Get returns a layout by id
-func (s *Layouts) Get(id string) (common.Layout, bool) {
+func (s *Layouts) Get(id string) (api.Layout, bool) {
 	layout, ok := s.layouts[id]
 	return layout, ok
 }
 
 // List returns all layouts
-func (s *Layouts) List() []common.Layout {
-	var layouts []common.Layout
+func (s *Layouts) List() []api.Layout {
+	var layouts []api.Layout
 	for _, layout := range s.layouts {
 		layouts = append(layouts, layout)
 	}
@@ -84,8 +59,8 @@ func (s *Layouts) List() []common.Layout {
 }
 
 // Set adds or updates a layout
-func (s *Layouts) Set(layout common.Layout) {
-	s.layouts[layout.ID] = layout
+func (s *Layouts) Set(layout api.Layout) {
+	s.layouts[layout.Id] = layout
 }
 
 // Delete removes a layout
@@ -94,12 +69,12 @@ func (s *Layouts) Delete(id string) {
 }
 
 // FindByIDOrAlias returns the layout matching the given ID, or a list of layouts with that alias
-func (s *Layouts) FindByIDOrAlias(query string) []common.Layout {
-	var matches []common.Layout
+func (s *Layouts) FindByIDOrAlias(query string) []api.Layout {
+	var matches []api.Layout
 	for _, layout := range s.layouts {
 		// Check ID
-		if layout.ID == query {
-			return []common.Layout{layout}
+		if layout.Id == query {
+			return []api.Layout{layout}
 		}
 		// Check aliases
 		if slices.Contains(layout.Aliases, query) {
@@ -110,16 +85,16 @@ func (s *Layouts) FindByIDOrAlias(query string) []common.Layout {
 }
 
 // GetClosest returns the layout that matches the provided monitors
-func (s *Layouts) GetClosest(monitors []MonitorInfo) (string, bool) {
+func (s *Layouts) GetClosest(monitors []api.Monitor) (string, bool) {
 	for _, layout := range s.layouts {
 		if matches(monitors, layout) {
-			return layout.ID, true
+			return layout.Id, true
 		}
 	}
 	return "", false
 }
 
-func matches(monitors []MonitorInfo, layout common.Layout) bool {
+func matches(monitors []api.Monitor, layout api.Layout) bool {
 	// Count active monitors (connected and configured)
 	activeMonitorsCount := 0
 	for _, m := range monitors {
@@ -143,8 +118,8 @@ func matches(monitors []MonitorInfo, layout common.Layout) bool {
 			}
 
 			// Match by EDID first, then by port
-			if lm.EDID != "" {
-				if lm.EDID != m.EDID {
+			if lm.Edid != "" {
+				if lm.Edid != m.Edid {
 					continue
 				}
 			} else if lm.Port != "" {

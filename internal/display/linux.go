@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/trolleyman/ottoman/internal/common"
+	"github.com/trolleyman/ottoman/internal/api"
 )
 
 // LinuxManager implements display management on Linux using xrandr
@@ -28,7 +28,7 @@ func newPlatformManager(store *Layouts) (Manager, error) {
 }
 
 // ListMonitors returns information about connected monitors
-func (m *LinuxManager) ListMonitors() ([]MonitorInfo, error) {
+func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
 	cmd := exec.Command("xrandr", "--query")
 	output, err := cmd.Output()
 	if err != nil {
@@ -39,8 +39,8 @@ func (m *LinuxManager) ListMonitors() ([]MonitorInfo, error) {
 }
 
 // parseXrandrOutput parses xrandr --query output
-func parseXrandrOutput(output string) ([]MonitorInfo, error) {
-	var monitors []MonitorInfo
+func parseXrandrOutput(output string) ([]api.Monitor, error) {
+	var monitors []api.Monitor
 
 	// Regex patterns
 	// Matches: "DP-1 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis) 597mm x 336mm"
@@ -49,8 +49,8 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 	modePattern := regexp.MustCompile(`^\s+(\d+)x(\d+)\s+([\d.]+)(\*)?(\+)?`)
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
-	var currentMonitor *MonitorInfo
-	var currentActive *ConnectedInfo
+	var currentMonitor *api.Monitor
+	var currentActive *api.ActiveMonitor
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -69,15 +69,18 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 			connected := matches[2] == "connected"
 			primary := matches[3] == "primary"
 
-			currentMonitor = &MonitorInfo{
-				Port: port,
-				Name: port, // Use port as name on Linux
+			currentMonitor = &api.Monitor{
+				Edid:         "",   // Not available from xrandr
+				Port:         port,
+				Name:         port, // Use port as name on Linux
+				Manufacturer: "",   // Not available from xrandr
 			}
 			currentActive = nil
 
 			if connected {
-				currentActive = &ConnectedInfo{
+				currentActive = &api.ActiveMonitor{
 					Primary: primary,
+					Model:   "", // Not available from xrandr
 				}
 			}
 
@@ -112,7 +115,7 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 						currentActive.Width = width
 						currentActive.Height = height
 					}
-					currentActive.RefreshRate = refreshRate
+					currentActive.RefreshRate = int(refreshRate)
 				}
 			}
 		}
@@ -130,7 +133,7 @@ func parseXrandrOutput(output string) ([]MonitorInfo, error) {
 }
 
 // ApplyLayoutConfig applies a display configuration using xrandr
-func (m *LinuxManager) ApplyLayoutConfig(layout common.Layout) error {
+func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 	args := m.buildXrandrArgs(layout)
 	cmd := exec.Command("xrandr", args...)
 	output, err := cmd.CombinedOutput()
@@ -141,7 +144,7 @@ func (m *LinuxManager) ApplyLayoutConfig(layout common.Layout) error {
 }
 
 // buildXrandrArgs builds xrandr command arguments for a layout
-func (m *LinuxManager) buildXrandrArgs(layout common.Layout) []string {
+func (m *LinuxManager) buildXrandrArgs(layout api.Layout) []string {
 	var args []string
 
 	for _, mon := range layout.Monitors {

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { Layout } from "./types";
 import { MiniLayoutPreview } from "./MiniLayoutPreview";
+import type { Layout } from "./api";
 
 export function MonitorDisplay({
   layouts,

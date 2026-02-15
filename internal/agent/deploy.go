@@ -1,4 +1,4 @@
-package client
+package agent
 
 import (
 	"bytes"
@@ -31,19 +31,19 @@ func InstallPaths() (binPath, configDir string) {
 	return
 }
 
-// Install registers the ottoman client as a service for autostart.
+// Install registers the ottoman agent as a service for autostart.
 // This is called after the binary has been deployed to the target location.
 func Install() error {
 	return InstallService()
 }
 
 const linuxSystemdService = `[Unit]
-Description=Ottoman Display Control Client
+Description=Ottoman Display Control Agent
 After=graphical.target
 
 [Service]
 Type=simple
-ExecStart=%s client run
+ExecStart=%s agent run
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
@@ -90,7 +90,7 @@ func installLinuxService() error {
 	}
 
 	serviceContent := fmt.Sprintf(linuxSystemdService, binPath, home)
-	servicePath := filepath.Join(serviceDir, "ottoman-client.service")
+	servicePath := filepath.Join(serviceDir, "ottoman-agent.service")
 
 	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write service file")
@@ -101,17 +101,17 @@ func installLinuxService() error {
 		return err
 	}
 
-	if err := run("systemctl", "--user", "enable", "ottoman-client"); err != nil {
+	if err := run("systemctl", "--user", "enable", "ottoman-agent"); err != nil {
 		return err
 	}
 
 	fmt.Println("Service installed successfully!")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  Start:   systemctl --user start ottoman-client")
-	fmt.Println("  Stop:    systemctl --user stop ottoman-client")
-	fmt.Println("  Status:  systemctl --user status ottoman-client")
-	fmt.Println("  Logs:    journalctl --user -u ottoman-client -f")
+	fmt.Println("  Start:   systemctl --user start ottoman-agent")
+	fmt.Println("  Stop:    systemctl --user stop ottoman-agent")
+	fmt.Println("  Status:  systemctl --user status ottoman-agent")
+	fmt.Println("  Logs:    journalctl --user -u ottoman-agent -f")
 	fmt.Println()
 	fmt.Println("To start on boot, run: loginctl enable-linger")
 
@@ -168,7 +168,7 @@ const autohotkeyScript = `#Requires AutoHotkey v2.0
 
 ; Define the function once
 ApplyLayout(num) {
-    Run(A_ScriptDir "\ottoman.exe client layout apply " num, , "Hide")
+    Run(A_ScriptDir "\ottoman.exe agent layout apply " num, , "Hide")
 }
 
 ; Call the function for each hotkey
@@ -187,8 +187,8 @@ const windowsAHKStartupVbs = `Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run """%s""", 1, False
 `
 
-const windowsClientVbs = `Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" client run", 0, True
+const windowsAgentVbs = `Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run """%s"" agent run", 0, True
 `
 
 // installWindowsService creates a startup shortcut/script for Windows
@@ -214,19 +214,19 @@ func installWindowsService() error {
 	}
 
 	// Clean up previous installations (ignore errors)
-	exec.Command("schtasks", "/End", "/TN", "OttomanClient").Run()
-	exec.Command("schtasks", "/Delete", "/TN", "OttomanClient", "/F").Run()
+	exec.Command("schtasks", "/End", "/TN", "OttomanAgent").Run()
+	exec.Command("schtasks", "/Delete", "/TN", "OttomanAgent", "/F").Run()
 	exec.Command("schtasks", "/End", "/TN", "OttomanHotkeys").Run()
 	exec.Command("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F").Run()
 
-	// Create VBS launcher for Client (to hide window)
-	clientVbsPath := filepath.Join(configDir, "ottoman-client.vbs")
-	clientVbsContent := fmt.Sprintf(windowsClientVbs, binPath)
-	if err := os.WriteFile(clientVbsPath, []byte(clientVbsContent), 0644); err != nil {
-		return errors.Wrap(err, "failed to write client startup script")
+	// Create VBS launcher for Agent (to hide window)
+	agentVbsPath := filepath.Join(configDir, "ottoman-agent.vbs")
+	agentVbsContent := fmt.Sprintf(windowsAgentVbs, binPath)
+	if err := os.WriteFile(agentVbsPath, []byte(agentVbsContent), 0644); err != nil {
+		return errors.Wrap(err, "failed to write agent startup script")
 	}
 
-	// --- Install Scheduled Task (Main Client) ---
+	// --- Install Scheduled Task (Main Agent) ---
 
 	currentUser, err := user.Current()
 	if err != nil {
@@ -234,7 +234,7 @@ func installWindowsService() error {
 	}
 
 	// Create XML definition
-	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Client", currentUser.Username, "wscript.exe", fmt.Sprintf(`//nologo "%s"`, clientVbsPath))
+	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Agent", currentUser.Username, "wscript.exe", fmt.Sprintf(`//nologo "%s"`, agentVbsPath))
 	xmlPath := filepath.Join(configDir, "ottoman_task.xml")
 	if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write task XML")
@@ -243,14 +243,14 @@ func installWindowsService() error {
 
 	// Register Task
 	// /F forces overwrite
-	if err := runSchtasks("/Create", "/TN", "OttomanClient", "/XML", xmlPath, "/F"); err != nil {
+	if err := runSchtasks("/Create", "/TN", "OttomanAgent", "/XML", xmlPath, "/F"); err != nil {
 		return err
 	}
 
 	fmt.Println("Task Scheduler task installed successfully!")
 	fmt.Println()
-	fmt.Println("The client will start automatically at login (hidden).")
-	fmt.Println("To start now, run: schtasks /Run /TN OttomanClient")
+	fmt.Println("The agent will start automatically at login (hidden).")
+	fmt.Println("To start now, run: schtasks /Run /TN OttomanAgent")
 
 	// --- Install AHK script ---
 
@@ -301,11 +301,11 @@ func uninstallLinuxService() error {
 	home := os.Getenv("HOME")
 
 	// Stop and disable
-	run("systemctl", "--user", "stop", "ottoman-client")
-	run("systemctl", "--user", "disable", "ottoman-client")
+	run("systemctl", "--user", "stop", "ottoman-agent")
+	run("systemctl", "--user", "disable", "ottoman-agent")
 
 	// Remove service file
-	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-client.service")
+	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-agent.service")
 	os.Remove(servicePath)
 
 	// Reload
@@ -320,16 +320,16 @@ func uninstallWindowsService() error {
 	startupDir := filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
 
 	// Remove Scheduled Tasks
-	runSchtasks("/Delete", "/TN", "OttomanClient", "/F")
+	runSchtasks("/Delete", "/TN", "OttomanAgent", "/F")
 	// runSchtasks("/Delete", "/TN", "OttomanHotkeys", "/F") // No longer used
 
 	// Remove AHK shortcut
 	ahkShortcutPath := filepath.Join(startupDir, "Ottoman Hotkeys.lnk")
 	os.Remove(ahkShortcutPath)
 
-	// Remove old client shortcut (cleanup)
-	clientShortcutPath := filepath.Join(startupDir, "Ottoman Client.vbs")
-	os.Remove(clientShortcutPath)
+	// Remove old agent shortcut (cleanup)
+	agentShortcutPath := filepath.Join(startupDir, "Ottoman Agent.vbs")
+	os.Remove(agentShortcutPath)
 
 	fmt.Println("Service uninstalled.")
 	return nil

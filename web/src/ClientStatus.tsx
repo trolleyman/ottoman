@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useStore } from "./store";
 
 export function ClientStatus() {
-  const clientStatus = useStore((s) => s.clientStatus);
-  const clientInfo = useStore((s) => s.clientInfo);
-  const loading = useStore((s) => s.clientLoading);
+  const clientStatus = useStore((s) => s.agentStatus);
+  const clientInfo = useStore((s) => s.agentInfo);
+  const loading = useStore((s) => s.agentLoading);
   const storeWake = useStore((s) => s.wake);
   const storeShutdown = useStore((s) => s.shutdown);
 

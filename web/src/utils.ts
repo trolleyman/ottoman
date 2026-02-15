@@ -1,7 +1,19 @@
-import type { Layout, LayoutMonitor, MonitorInfo } from "./types";
+import type { Layout, LayoutMonitor, Monitor } from "./api";
 
-export async function fetchJSON<T>(url: string): Promise<T> {
+export async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+export async function postJSON<TRequest, TResponse>(url: string, data: TRequest): Promise<TResponse> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -42,7 +54,7 @@ export function sortedLayouts(layouts: Layout[]): Layout[] {
 }
 
 /** Sort monitors: active first, then left-to-right, top-to-bottom */
-export function sortedMonitors(monitors: MonitorInfo[]): MonitorInfo[] {
+export function sortedMonitors(monitors: Monitor[]): Monitor[] {
   return [...monitors].sort((a, b) => {
     // Active monitors before inactive
     if (!!a.active !== !!b.active) return a.active ? -1 : 1;

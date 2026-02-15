@@ -1,4 +1,4 @@
-package server
+package controller
 
 import (
 	"fmt"
@@ -10,13 +10,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-const systemdServiceTemplate = `[Unit]
-Description=Ottoman Home Automation Server
+const systemdControllerTemplate = `[Unit]
+Description=Ottoman Home Automation Controller
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%s server run
+ExecStart=%s controller run
 Restart=always
 RestartSec=5
 User=ottoman
@@ -26,13 +26,13 @@ Group=ottoman
 WantedBy=multi-user.target
 `
 
-const systemdUserServiceTemplate = `[Unit]
-Description=Ottoman Home Automation Server
+const systemdUserControllerTemplate = `[Unit]
+Description=Ottoman Home Automation Controller
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%s server run
+ExecStart=%s controller run
 Restart=always
 RestartSec=5
 
@@ -62,8 +62,8 @@ func InstallService() error {
 	}
 
 	// Write service file
-	servicePath := "/etc/systemd/system/ottoman-server.service"
-	serviceContent := fmt.Sprintf(systemdServiceTemplate, binPath)
+	servicePath := "/etc/systemd/system/ottoman-controller.service"
+	serviceContent := fmt.Sprintf(systemdControllerTemplate, binPath)
 	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write service file")
 	}
@@ -86,7 +86,7 @@ func InstallService() error {
 	configPath := filepath.Join(configDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		fmt.Printf("Config not found at %s\n", configPath)
-		fmt.Println("Run 'ottoman config init server' to create it.")
+		fmt.Println("Run 'ottoman config init controller' to create it.")
 	}
 
 	// Reload systemd
@@ -95,13 +95,13 @@ func InstallService() error {
 	}
 
 	// Enable service
-	if err := exec.Command("systemctl", "enable", "ottoman-server").Run(); err != nil {
+	if err := exec.Command("systemctl", "enable", "ottoman-controller").Run(); err != nil {
 		return errors.Wrap(err, "failed to enable service")
 	}
 
 	fmt.Println("Service installed successfully!")
-	fmt.Println("Start with: sudo systemctl start ottoman-server")
-	fmt.Println("Check status: sudo systemctl status ottoman-server")
+	fmt.Println("Start with: sudo systemctl start ottoman-controller")
+	fmt.Println("Check status: sudo systemctl status ottoman-controller")
 
 	return nil
 }
@@ -129,8 +129,8 @@ func installUserService() error {
 		return errors.Wrap(err, "failed to create systemd user directory")
 	}
 
-	serviceContent := fmt.Sprintf(systemdUserServiceTemplate, binPath)
-	servicePath := filepath.Join(serviceDir, "ottoman-server.service")
+	serviceContent := fmt.Sprintf(systemdUserControllerTemplate, binPath)
+	servicePath := filepath.Join(serviceDir, "ottoman-controller.service")
 
 	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
 		return errors.Wrap(err, "failed to write service file")
@@ -141,13 +141,13 @@ func installUserService() error {
 		return errors.Wrap(err, "failed to reload systemd")
 	}
 
-	if err := exec.Command("systemctl", "--user", "enable", "ottoman-server").Run(); err != nil {
+	if err := exec.Command("systemctl", "--user", "enable", "ottoman-controller").Run(); err != nil {
 		return errors.Wrap(err, "failed to enable service")
 	}
 
 	fmt.Println("User service installed successfully!")
-	fmt.Println("Start with: systemctl --user start ottoman-server")
-	fmt.Println("Check status: systemctl --user status ottoman-server")
+	fmt.Println("Start with: systemctl --user start ottoman-controller")
+	fmt.Println("Check status: systemctl --user status ottoman-controller")
 	fmt.Println("To start on boot, run: loginctl enable-linger")
 
 	return nil
@@ -166,14 +166,14 @@ func UninstallService() error {
 
 	// Stop service (ignore errors - might not be running)
 	fmt.Println("Stopping service...")
-	exec.Command("systemctl", "stop", "ottoman-server").Run()
+	exec.Command("systemctl", "stop", "ottoman-controller").Run()
 
 	// Disable service (ignore errors - might not be enabled)
 	fmt.Println("Disabling service...")
-	exec.Command("systemctl", "disable", "ottoman-server").Run()
+	exec.Command("systemctl", "disable", "ottoman-controller").Run()
 
 	// Remove service file
-	servicePath := "/etc/systemd/system/ottoman-server.service"
+	servicePath := "/etc/systemd/system/ottoman-controller.service"
 	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
 		return errors.Wrap(err, "failed to remove service file")
 	}
@@ -191,11 +191,11 @@ func uninstallUserService() error {
 	home := os.Getenv("HOME")
 
 	// Stop and disable
-	exec.Command("systemctl", "--user", "stop", "ottoman-server").Run()
-	exec.Command("systemctl", "--user", "disable", "ottoman-server").Run()
+	exec.Command("systemctl", "--user", "stop", "ottoman-controller").Run()
+	exec.Command("systemctl", "--user", "disable", "ottoman-controller").Run()
 
 	// Remove service file
-	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-server.service")
+	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-controller.service")
 	if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
 		return errors.Wrap(err, "failed to remove service file")
 	}

@@ -88,10 +88,10 @@ func TestExampleConfigsLoadWithViper(t *testing.T) {
 				t.Fatalf("failed to load %s: %v", ex.name, err)
 			}
 
-			if ex.hasServer && cfg.Server.ListenAddr == "" {
+			if ex.hasServer && cfg.Controller.ListenAddress == "" {
 				t.Error("server.listen_addr should be set")
 			}
-			if ex.hasClient && cfg.Client.ListenAddr == "" {
+			if ex.hasClient && cfg.Agent.ListenAddress == "" {
 				t.Error("client.listen_addr should be set")
 			}
 		})

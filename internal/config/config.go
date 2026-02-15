@@ -11,7 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
-	"github.com/trolleyman/ottoman/internal/common"
+	"github.com/trolleyman/ottoman/internal/api"
 )
 
 // GenerateToken creates a cryptographically random token
@@ -25,40 +25,36 @@ func GenerateToken() (string, error) {
 
 // Config holds the complete ottoman configuration
 type Config struct {
-	Server ServerConfig `mapstructure:"server"`
-	Client ClientConfig `mapstructure:"client"`
+	Controller ControllerConfig `mapstructure:"controller"`
+	Agent      AgentConfig      `mapstructure:"agent"`
 }
 
-// ServerConfig holds server configuration
-type ServerConfig struct {
-	ListenAddr   string       `mapstructure:"listen_addr"`
-	AuthToken    string       `mapstructure:"auth_token"`
-	Username     string       `mapstructure:"username"`
-	PasswordHash string       `mapstructure:"password_hash"`
-	WakeTargets  []WakeTarget `mapstructure:"wake_targets"`
-	ClientAddr   string       `mapstructure:"client_addr"`
+// ControllerConfig holds controller configuration
+type ControllerConfig struct {
+	ListenAddress string                `mapstructure:"listen_address"`
+	AuthToken     string                `mapstructure:"auth_token"`
+	Agent         AgentControllerConfig `mapstructure:"agent"`
 }
 
-// ClientConfig holds client configuration
-type ClientConfig struct {
-	ListenAddr string          `mapstructure:"listen_addr"`
-	AuthToken  string          `mapstructure:"auth_token"`
-	Layouts    []common.Layout `mapstructure:"layouts"`
-	Trackpad   TrackpadConfig  `mapstructure:"trackpad"`
+// AgentControllerConfig holds the configuration for how to contact the agent
+type AgentControllerConfig struct {
+	MACAddress string `mapstructure:"mac_address" json:"mac_address"`
+	IPAddress  string `mapstructure:"ip_address" json:"ip_address,omitempty"`
+	Port       int    `mapstructure:"port" json:"port,omitempty"`
+}
+
+// AgentConfig holds agent configuration
+type AgentConfig struct {
+	ListenAddress string         `mapstructure:"listen_address"`
+	AuthToken     string         `mapstructure:"auth_token"`
+	Layouts       []api.Layout   `mapstructure:"layouts"`
+	Trackpad      TrackpadConfig `mapstructure:"trackpad"`
 }
 
 // TrackpadConfig holds trackpad configuration
 type TrackpadConfig struct {
 	Sensitivity float64 `mapstructure:"sensitivity"`
 	Friction    float64 `mapstructure:"friction"`
-}
-
-// WakeTarget represents a device that can be woken via WoL
-type WakeTarget struct {
-	Name       string `mapstructure:"name" json:"name"`
-	MACAddress string `mapstructure:"mac_address" json:"mac_address"`
-	IPAddress  string `mapstructure:"ip_address" json:"ip_address,omitempty"`
-	Port       int    `mapstructure:"port" json:"port,omitempty"`
 }
 
 var (
@@ -93,16 +89,14 @@ func Init(cfgFile string) {
 }
 
 func setDefaults() {
-	// Server defaults
-	v.SetDefault("server.listen_addr", ":17293")
-	v.SetDefault("server.client_addr", "localhost:17294")
-	v.SetDefault("server.wake_targets", []WakeTarget{})
+	v.SetDefault("controller.listen_address", ":17293")
+	v.SetDefault("controller.agent.ip_address", "127.0.0.1")
+	v.SetDefault("controller.agent.port", "17294")
 
-	// Client defaults
-	v.SetDefault("client.listen_addr", ":17294")
-	v.SetDefault("client.layouts", []common.Layout{})
-	v.SetDefault("client.trackpad_sensitivity", 1.5)
-	v.SetDefault("client.trackpad_friction", 0.92)
+	v.SetDefault("agent.listen_address", ":17294")
+	v.SetDefault("agent.layouts", []api.Layout{})
+	v.SetDefault("agent.trackpad_sensitivity", 1.5)
+	v.SetDefault("agent.trackpad_friction", 0.92)
 }
 
 func addConfigPaths() {
@@ -148,22 +142,22 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-// GetServer returns just the server configuration
-func GetServer() (*ServerConfig, error) {
+// GetController returns just the controller configuration
+func GetController() (*ControllerConfig, error) {
 	cfg, err := Load()
 	if err != nil {
 		return nil, err
 	}
-	return &cfg.Server, nil
+	return &cfg.Controller, nil
 }
 
-// GetClient returns just the client configuration
-func GetClient() (*ClientConfig, error) {
+// GetAgent returns just the agent configuration
+func GetAgent() (*AgentConfig, error) {
 	cfg, err := Load()
 	if err != nil {
 		return nil, err
 	}
-	return &cfg.Client, nil
+	return &cfg.Agent, nil
 }
 
 // ConfigPath returns the path of the loaded config file, or empty if using defaults
@@ -202,30 +196,19 @@ func ensureConfigDir(path string) error {
 	return nil
 }
 
-// SaveClient writes client configuration to a file (client section only)
-func SaveClient(cfg *ClientConfig, path string) error {
-	if path == "" {
-		path = DefaultConfigPath()
-	}
-	if err := ensureConfigDir(path); err != nil {
-		return err
-	}
-
-	w := viper.New()
-	w.SetConfigType("toml")
-
-	w.Set("client.listen_addr", cfg.ListenAddr)
-	w.Set("client.auth_token", cfg.AuthToken)
+func setAgent(w *viper.Viper, cfg *AgentConfig) {
+	w.Set("agent.listen_address", cfg.ListenAddress)
+	w.Set("agent.auth_token", cfg.AuthToken)
 
 	if len(cfg.Layouts) > 0 {
 		layouts := make([]map[string]interface{}, len(cfg.Layouts))
 		for i, l := range cfg.Layouts {
 			layout := map[string]interface{}{
-				"id":   l.ID,
+				"id":   l.Id,
 				"name": l.Name,
 			}
-			if l.Emoji != "" {
-				layout["emoji"] = l.Emoji
+			if l.Emoji != nil && *l.Emoji != "" {
+				layout["emoji"] = *l.Emoji
 			}
 			if len(l.Aliases) > 0 {
 				layout["aliases"] = l.Aliases
@@ -234,7 +217,7 @@ func SaveClient(cfg *ClientConfig, path string) error {
 				monitors := make([]map[string]interface{}, len(l.Monitors))
 				for j, m := range l.Monitors {
 					monitors[j] = map[string]interface{}{
-						"edid":         m.EDID,
+						"edid":         m.Edid,
 						"width":        m.Width,
 						"height":       m.Height,
 						"refresh_rate": m.RefreshRate,
@@ -247,17 +230,12 @@ func SaveClient(cfg *ClientConfig, path string) error {
 			}
 			layouts[i] = layout
 		}
-		w.Set("client.layouts", layouts)
+		w.Set("agent.layouts", layouts)
 	}
-
-	if err := w.WriteConfigAs(path); err != nil {
-		return errors.Wrap(err, "failed to write config file")
-	}
-	return nil
 }
 
-// SaveServer writes server configuration to a file (server section only)
-func SaveServer(cfg *ServerConfig, path string) error {
+// SaveAgent writes agent configuration to a file
+func SaveAgent(cfg *AgentConfig, path string) error {
 	if path == "" {
 		path = DefaultConfigPath()
 	}
@@ -268,33 +246,7 @@ func SaveServer(cfg *ServerConfig, path string) error {
 	w := viper.New()
 	w.SetConfigType("toml")
 
-	w.Set("server.listen_addr", cfg.ListenAddr)
-	w.Set("server.auth_token", cfg.AuthToken)
-	if cfg.Username != "" {
-		w.Set("server.username", cfg.Username)
-	}
-	if cfg.PasswordHash != "" {
-		w.Set("server.password_hash", cfg.PasswordHash)
-	}
-	w.Set("server.client_addr", cfg.ClientAddr)
-
-	if len(cfg.WakeTargets) > 0 {
-		targets := make([]map[string]interface{}, len(cfg.WakeTargets))
-		for i, t := range cfg.WakeTargets {
-			target := map[string]interface{}{
-				"name":        t.Name,
-				"mac_address": t.MACAddress,
-			}
-			if t.IPAddress != "" {
-				target["ip_address"] = t.IPAddress
-			}
-			if t.Port != 0 {
-				target["port"] = t.Port
-			}
-			targets[i] = target
-		}
-		w.Set("server.wake_targets", targets)
-	}
+	setAgent(w, cfg)
 
 	if err := w.WriteConfigAs(path); err != nil {
 		return errors.Wrap(err, "failed to write config file")
@@ -302,7 +254,35 @@ func SaveServer(cfg *ServerConfig, path string) error {
 	return nil
 }
 
-// Save writes both server and client configuration (deprecated, use SaveClient/SaveServer)
+func setController(w *viper.Viper, cfg *ControllerConfig) {
+	w.Set("controller.listen_address", cfg.ListenAddress)
+	w.Set("controller.auth_token", cfg.AuthToken)
+	w.Set("controller.agent.mac_address", cfg.Agent.MACAddress)
+	w.Set("controller.agent.ip_address", cfg.Agent.IPAddress)
+	w.Set("controller.agent.port", cfg.Agent.Port)
+}
+
+// SaveController writes controller configuration to a file
+func SaveController(cfg *ControllerConfig, path string) error {
+	if path == "" {
+		path = DefaultConfigPath()
+	}
+	if err := ensureConfigDir(path); err != nil {
+		return err
+	}
+
+	w := viper.New()
+	w.SetConfigType("toml")
+
+	setController(w, cfg)
+
+	if err := w.WriteConfigAs(path); err != nil {
+		return errors.Wrap(err, "failed to write config file")
+	}
+	return nil
+}
+
+// Save writes both controller and agent configuration
 func Save(cfg *Config, path string) error {
 	if path == "" {
 		path = DefaultConfigPath()
@@ -314,71 +294,8 @@ func Save(cfg *Config, path string) error {
 	w := viper.New()
 	w.SetConfigType("toml")
 
-	// Server values
-	w.Set("server.listen_addr", cfg.Server.ListenAddr)
-	w.Set("server.auth_token", cfg.Server.AuthToken)
-	if cfg.Server.Username != "" {
-		w.Set("server.username", cfg.Server.Username)
-	}
-	if cfg.Server.PasswordHash != "" {
-		w.Set("server.password_hash", cfg.Server.PasswordHash)
-	}
-	w.Set("server.client_addr", cfg.Server.ClientAddr)
-
-	if len(cfg.Server.WakeTargets) > 0 {
-		targets := make([]map[string]interface{}, len(cfg.Server.WakeTargets))
-		for i, t := range cfg.Server.WakeTargets {
-			target := map[string]interface{}{
-				"name":        t.Name,
-				"mac_address": t.MACAddress,
-			}
-			if t.IPAddress != "" {
-				target["ip_address"] = t.IPAddress
-			}
-			if t.Port != 0 {
-				target["port"] = t.Port
-			}
-			targets[i] = target
-		}
-		w.Set("server.wake_targets", targets)
-	}
-
-	// Client values
-	w.Set("client.listen_addr", cfg.Client.ListenAddr)
-	w.Set("client.auth_token", cfg.Client.AuthToken)
-
-	if len(cfg.Client.Layouts) > 0 {
-		layouts := make([]map[string]interface{}, len(cfg.Client.Layouts))
-		for i, l := range cfg.Client.Layouts {
-			layout := map[string]interface{}{
-				"id":   l.ID,
-				"name": l.Name,
-			}
-			if l.Emoji != "" {
-				layout["emoji"] = l.Emoji
-			}
-			if len(l.Aliases) > 0 {
-				layout["aliases"] = l.Aliases
-			}
-			if len(l.Monitors) > 0 {
-				monitors := make([]map[string]interface{}, len(l.Monitors))
-				for j, m := range l.Monitors {
-					monitors[j] = map[string]interface{}{
-						"edid":         m.EDID,
-						"width":        m.Width,
-						"height":       m.Height,
-						"refresh_rate": m.RefreshRate,
-						"position_x":   m.PositionX,
-						"position_y":   m.PositionY,
-						"primary":      m.Primary,
-					}
-				}
-				layout["monitors"] = monitors
-			}
-			layouts[i] = layout
-		}
-		w.Set("client.layouts", layouts)
-	}
+	setAgent(w, &cfg.Agent)
+	setController(w, &cfg.Controller)
 
 	if err := w.WriteConfigAs(path); err != nil {
 		return errors.Wrap(err, "failed to write config file")
@@ -386,31 +303,34 @@ func Save(cfg *Config, path string) error {
 	return nil
 }
 
-// ValidateServer checks that server configuration is valid
-func (c *ServerConfig) Validate() error {
-	if c.ListenAddr == "" {
-		return errors.New("server.listen_addr is required")
+// Validate checks that controller configuration is valid
+func (c *ControllerConfig) Validate() error {
+	if c.ListenAddress == "" {
+		return errors.New("controller.listen_address is required")
 	}
 
-	if c.ClientAddr == "" {
-		return errors.New("server.client_addr is required")
+	if c.Agent.IPAddress == "" {
+		return errors.New("controller.agent.ip_address is required")
+	}
+	if c.Agent.Port == 0 {
+		return errors.New("controller.agent.port is required")
 	}
 
-	if c.AuthToken == "" && c.Username == "" {
-		return errors.New("server.auth_token is required (run 'ottoman config init server' to configure)")
+	if c.AuthToken == "" {
+		return errors.New("controller.auth_token is required (run 'ottoman config init controller' to configure)")
 	}
 
 	return nil
 }
 
-// ValidateClient checks that client configuration is valid
-func (c *ClientConfig) Validate() error {
-	if c.ListenAddr == "" {
-		return errors.New("client.listen_addr is required")
+// Validate checks that agent configuration is valid
+func (c *AgentConfig) Validate() error {
+	if c.ListenAddress == "" {
+		return errors.New("agent.listen_address is required")
 	}
 
 	if c.AuthToken == "" {
-		return errors.New("client.auth_token is required (run 'ottoman config init client' to configure)")
+		return errors.New("agent.auth_token is required (run 'ottoman config init agent' to configure)")
 	}
 
 	return nil
@@ -422,7 +342,7 @@ func Print() error {
 		fmt.Println("No config file found.")
 		fmt.Println()
 		fmt.Printf("Default path: %s\n", DefaultConfigPath())
-		fmt.Println("Run 'ottoman config init client' or 'ottoman config init server' to create one.")
+		fmt.Println("Run 'ottoman config init controller' or 'ottoman config init agent' to create one.")
 		return nil
 	}
 

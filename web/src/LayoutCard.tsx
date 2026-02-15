@@ -1,6 +1,6 @@
-import type { Layout } from "./types";
 import { sortedLayoutMonitors } from "./utils";
 import { MiniLayoutPreview } from "./MiniLayoutPreview";
+import type { Layout } from "./api";
 
 export function LayoutCard({
   layout,

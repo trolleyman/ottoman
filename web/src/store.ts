@@ -1,15 +1,12 @@
 import { create } from "zustand";
-import type {
-  StatusResponse,
-  ClientStatusResponse,
-  Layout,
-  MonitorInfo,
-  LayoutsResponse,
-  SwitchResponse,
-} from "./types";
-import { fetchJSON, sortedLayouts, sortedMonitors } from "./utils";
+import { OttomanClient, type StatusResponse, type Layout, type Monitor } from "./api";
+import { sortedLayouts, sortedMonitors } from "./utils";
 
-type ClientOnlineStatus = "online" | "offline" | "waking" | "shutting_down";
+export const client = new OttomanClient({
+  WITH_CREDENTIALS: true,
+});
+
+type AgentOnlineStatus = "online" | "offline" | "waking" | "shutting_down";
 
 interface OttomanStore {
   // ── Auth ──────────────────────────────────────────────
@@ -22,10 +19,10 @@ interface OttomanStore {
   status: StatusResponse | null;
   statusLoading: boolean;
 
-  // ── Client Status ─────────────────────────────────────
-  clientStatus: ClientOnlineStatus;
-  clientInfo: ClientStatusResponse | null;
-  clientLoading: boolean;
+  // ── Agent Status ──────────────────────────────────────
+  agentStatus: AgentOnlineStatus;
+  agentInfo: StatusResponse | null;
+  agentLoading: boolean;
 
   // ── Layouts ───────────────────────────────────────────
   layouts: Layout[];
@@ -35,7 +32,7 @@ interface OttomanStore {
   switching: boolean;
 
   // ── Monitors ──────────────────────────────────────────
-  monitors: MonitorInfo[];
+  monitors: Monitor[];
   monitorsLoading: boolean;
   monitorsError: string | null;
 
@@ -45,7 +42,7 @@ interface OttomanStore {
   // ── Actions ───────────────────────────────────────────
   refreshAll: (silent: boolean) => Promise<void>;
   fetchStatus: (silent: boolean) => Promise<void>;
-  fetchClientStatus: (silent: boolean) => Promise<void>;
+  fetchAgentStatus: (silent: boolean) => Promise<void>;
   fetchLayouts: (silent: boolean) => Promise<void>;
   fetchMonitors: (silent: boolean) => Promise<void>;
 
@@ -65,10 +62,10 @@ interface OttomanStore {
   // ── Internal ──────────────────────────────────────────
   _pollTimer: ReturnType<typeof setInterval> | null;
   _inflightStatus: Promise<void> | null;
-  _inflightClientStatus: Promise<void> | null;
+  _inflightAgentStatus: Promise<void> | null;
   _inflightLayouts: Promise<void> | null;
   _inflightMonitors: Promise<void> | null;
-  _prevClientOnline: boolean | null;
+  _prevAgentOnline: boolean | null;
 }
 
 export const useStore = create<OttomanStore>((set, get) => ({
@@ -77,34 +74,31 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   checkAuth: async () => {
     try {
-      const res = await fetch("/api/auth/check");
-      set({ authed: res.ok });
+      const res = await client.default.checkAuth();
+      set({ authed: res.authenticated ?? false });
     } catch {
       set({ authed: false });
     }
   },
 
   login: async (token: string) => {
-    const res = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token.trim() }),
-    });
-    const data = await res.json();
+    const data = await client.default.auth({ token: token.trim() });
     if (data.success) {
+      client.request.config.TOKEN = token.trim();
       set({ authed: true });
     }
     return data;
   },
 
   logout: async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await client.default.logout();
+    client.request.config.TOKEN = undefined;
     get().stopPolling();
     set({
       authed: false,
       status: null,
-      clientStatus: "offline",
-      clientInfo: null,
+      agentStatus: "offline",
+      agentInfo: null,
       layouts: [],
       currentLayout: "",
       monitors: [],
@@ -115,10 +109,10 @@ export const useStore = create<OttomanStore>((set, get) => ({
   status: null,
   statusLoading: false,
 
-  // ── Client Status ─────────────────────────────────────
-  clientStatus: "offline",
-  clientInfo: null,
-  clientLoading: false,
+  // ── Agent Status ──────────────────────────────────────
+  agentStatus: "offline",
+  agentInfo: null,
+  agentLoading: false,
 
   // ── Layouts ───────────────────────────────────────────
   layouts: [],
@@ -138,10 +132,10 @@ export const useStore = create<OttomanStore>((set, get) => ({
   // ── Internal ──────────────────────────────────────────
   _pollTimer: null,
   _inflightStatus: null,
-  _inflightClientStatus: null,
+  _inflightAgentStatus: null,
   _inflightLayouts: null,
   _inflightMonitors: null,
-  _prevClientOnline: null,
+  _prevAgentOnline: null,
 
   // ── Fetch Actions ─────────────────────────────────────
 
@@ -152,7 +146,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
     const promise = (async () => {
       try {
-        const data = await fetchJSON<StatusResponse>("/api/status");
+        const data = await client.default.getStatus();
         set({ status: data });
       } catch {
         // Ignore errors
@@ -165,39 +159,39 @@ export const useStore = create<OttomanStore>((set, get) => ({
     return promise;
   },
 
-  fetchClientStatus: async (silent: boolean) => {
-    if (get()._inflightClientStatus) return get()._inflightClientStatus!;
+  fetchAgentStatus: async (silent: boolean) => {
+    if (get()._inflightAgentStatus) return get()._inflightAgentStatus!;
 
-    if (!silent) set({ clientLoading: true });
+    if (!silent) set({ agentLoading: true });
 
     const promise = (async () => {
       try {
-        const data = await fetchJSON<ClientStatusResponse>("/api/status/client");
-        const wasOnline = get()._prevClientOnline;
+        const data = await client.default.getAgentStatus();
+        const wasOnline = get()._prevAgentOnline;
         set({
-          clientInfo: data,
-          clientStatus: "online",
-          _prevClientOnline: true,
+          agentInfo: data,
+          agentStatus: "online",
+          _prevAgentOnline: true,
         });
 
-        // Client just came online — refresh layouts and monitors
+        // Agent just came online — refresh layouts and monitors
         if (wasOnline === false) {
           get().fetchLayouts(true);
           get().fetchMonitors(true);
         }
       } catch {
-        const { clientStatus } = get();
+        const { agentStatus } = get();
         // Preserve transitional states (waking/shutting_down), otherwise set offline
-        if (clientStatus !== "waking" && clientStatus !== "shutting_down") {
-          set({ clientStatus: "offline" });
+        if (agentStatus !== "waking" && agentStatus !== "shutting_down") {
+          set({ agentStatus: "offline" });
         }
-        set({ _prevClientOnline: false });
+        set({ _prevAgentOnline: false });
       } finally {
-        set({ clientLoading: false, _inflightClientStatus: null });
+        set({ agentLoading: false, _inflightAgentStatus: null });
       }
     })();
 
-    set({ _inflightClientStatus: promise });
+    set({ _inflightAgentStatus: promise });
     return promise;
   },
 
@@ -208,9 +202,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
     const promise = (async () => {
       try {
-        const data = await fetchJSON<LayoutsResponse>("/api/layouts");
+        const data = await client.default.getLayouts();
         set({
-          layouts: sortedLayouts(data.layouts ?? []),
+          layouts: sortedLayouts(data.layouts),
           currentLayout: data.current_layout ?? "",
           layoutsError: null,
         });
@@ -232,7 +226,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
     const promise = (async () => {
       try {
-        const data = await fetchJSON<MonitorInfo[]>("/api/monitors");
+        const data = await client.default.getMonitors();
         set({
           monitors: sortedMonitors(data),
           monitorsError: null,
@@ -252,7 +246,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     set((s) => ({ refreshKey: s.refreshKey + 1 }));
     await Promise.allSettled([
       get().fetchStatus(silent),
-      get().fetchClientStatus(silent),
+      get().fetchAgentStatus(silent),
       get().fetchLayouts(silent),
       get().fetchMonitors(silent),
     ]);
@@ -282,14 +276,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
     if (get().switching || id === get().currentLayout) return;
     set({ switching: true });
     try {
-      const res = await fetch("/api/layouts/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout: id }),
-      });
-      const data: SwitchResponse = await res.json();
+      const data = await client.default.switchLayout({ layout: id });
       if (data.success) {
-        set({ currentLayout: data.current_layout });
+        set({ currentLayout: data.current_layout ?? "" });
         get().refreshAll(false);
       } else {
         alert(data.message || "Switch failed");
@@ -304,12 +293,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   removeLayout: async (id: string) => {
     if (!confirm("Are you sure you want to delete this layout?")) return;
     try {
-      const res = await fetch("/api/layouts/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout: id }),
-      });
-      const data = await res.json();
+      const data = await client.default.removeLayout({ layout: id });
       if (data.success) {
         get().fetchLayouts(false);
       } else {
@@ -322,12 +306,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   saveCurrentLayout: async (name: string, emoji: string) => {
     try {
-      const res = await fetch("/api/layouts/save-current", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, emoji }),
-      });
-      const data = await res.json();
+      const data = await client.default.saveCurrentLayout({ name, emoji });
       if (data.success) {
         get().fetchLayouts(false);
       } else {
@@ -342,10 +321,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   wake: async () => {
     try {
-      const res = await fetch("/api/wake", { method: "POST" });
-      const data = await res.json();
+      const data = await client.default.wake();
       if (data.success) {
-        set({ clientStatus: "waking" });
+        set({ agentStatus: "waking" });
       } else {
         alert("Failed: " + data.message);
       }
@@ -357,10 +335,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
   shutdown: async () => {
     if (!confirm("Are you sure you want to shut down?")) return;
     try {
-      const res = await fetch("/api/shutdown", { method: "POST" });
-      const data = await res.json();
+      const data = await client.default.shutdown();
       if (data.success) {
-        set({ clientStatus: "shutting_down" });
+        set({ agentStatus: "shutting_down" });
       } else {
         alert("Failed: " + data.message);
       }

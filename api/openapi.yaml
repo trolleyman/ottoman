@@ -28,6 +28,143 @@ paths:
               schema:
                 $ref: '#/components/schemas/StatusResponse'
 
+  /api/status/agent:
+    get:
+      summary: Get agent status
+      operationId: getAgentStatus
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth:
+    post:
+      summary: Authenticate
+      operationId: auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /api/auth/logout:
+    post:
+      summary: Logout
+      operationId: logout
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /api/auth/check:
+    get:
+      summary: Check authentication status
+      operationId: checkAuth
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                    description: Whether the user is authenticated.
+                    example: true
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /api/wake:
+    post:
+      summary: Wake agent on LAN
+      operationId: wake
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WakeResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No wake target configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/monitors:
+    get:
+      summary: Get all monitors
+      operationId: getMonitors
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/layouts:
     get:
       summary: Get all layouts
@@ -39,6 +176,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LayoutsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/layouts/switch:
     post:
@@ -48,17 +197,239 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                layout_id:
-                  type: string
+              $ref: '#/components/schemas/SwitchLayoutRequest'
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SwitchResponse'
+                $ref: '#/components/schemas/SwitchLayoutResponse'
+        '400':
+          description: Bad Request (Invalid body or ambiguous layout)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Layout not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/layouts/current:
+    get:
+      summary: Get current layout
+      operationId: getCurrentLayout
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwitchLayoutResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/layouts/save-current:
+    post:
+      summary: Save current layout
+      operationId: saveCurrentLayout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveLayoutRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveLayoutResponse'
+        '400':
+          description: Bad Request (Invalid body or missing name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/layouts/remove:
+    post:
+      summary: Remove layout
+      operationId: removeLayout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveLayoutRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveLayoutResponse'
+        '400':
+          description: Bad Request (Invalid body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Layout not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/shutdown:
+    post:
+      summary: Shutdown client
+      operationId: shutdown
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShutdownResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Client unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sim/reset:
+    post:
+      summary: Reset simulation
+      operationId: simReset
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimStateResponse'
+        '404':
+          description: Not Found (Server not in simulation mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sim/state:
+    get:
+      summary: Get simulation state
+      operationId: simState
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimStateResponse'
+        '404':
+          description: Not Found (Server not in simulation mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sim/set-state:
+    post:
+      summary: Set simulation state
+      operationId: simSetState
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SimSetStateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimStateResponse'
+        '404':
+          description: Not Found (Server not in simulation mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   # NOTE: This endpoint upgrades to WebSocket, but we define it here
   # so clients know it exists. The payload types are in components.
@@ -74,20 +445,64 @@ paths:
 components:
   schemas:
     # --- Shared Types ---
+    ErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: integer }
+        details: { type: string }
+
     StatusResponse:
       type: object
-      required: [status, version, uptime, ip_address, port]
+      required: [status, version, uptime, hostname, ip_address, port, secret]
       properties:
         status: { type: string }
         version: { type: string }
         uptime: { type: string }
-        ip_address: { type: string }
-        port: { type: string }
+        hostname: { type: string, format: hostname }
+        ip_address:
+          oneOf:
+            - type: string
+              format: ipv4
+            - type: string
+              format: ipv6
+        port: { type: string, format: uint16 }
         secret: { type: string }
 
+    Monitor:
+      type: object
+      required: [edid, port, name, manufacturer]
+      properties:
+        edid: { type: string }
+        port: { type: string }
+        name: { type: string }
+        manufacturer: { type: string }
+        active: { $ref: '#/components/schemas/ActiveMonitor' }
+
+    ActiveMonitor:
+      type: object
+      required: [width, height, refresh_rate, position_x, position_y, primary, model]
+      properties:
+        width: { type: integer }
+        height: { type: integer }
+        refresh_rate: { type: integer }
+        position_x: { type: integer }
+        position_y: { type: integer }
+        primary: { type: boolean }
+        model: { type: string }
+
+    MonitorsResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/Monitor'
+
+    # --- Layout Types ---
     LayoutMonitor:
       type: object
+      required: [name, edid, port, width, height, refresh_rate, position_x, position_y, primary]
       properties:
+        name: { type: string }
         edid: { type: string }
         port: { type: string }
         width: { type: integer }
@@ -99,10 +514,14 @@ components:
 
     Layout:
       type: object
+      required: [id, name, monitors, aliases]
       properties:
         id: { type: string }
         name: { type: string }
         emoji: { type: string }
+        aliases:
+          type: array
+          items: { type: string }
         monitors:
           type: array
           items:
@@ -110,6 +529,7 @@ components:
 
     LayoutsResponse:
       type: object
+      required: [layouts, current_layout]
       properties:
         layouts:
           type: array
@@ -117,54 +537,209 @@ components:
             $ref: '#/components/schemas/Layout'
         current_layout: { type: string }
 
-    SwitchResponse:
+    SwitchLayoutRequest:
       type: object
+      required: [layout]
+      properties:
+        layout: { type: string }
+
+    SwitchLayoutResponse:
+      type: object
+      required: [success, current_layout]
       properties:
         success: { type: boolean }
         current_layout: { type: string }
         message: { type: string }
 
+    AuthRequest:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+
+    AuthResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    WakeResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    SaveLayoutRequest:
+      type: object
+      required: [name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        emoji: { type: string }
+
+    SaveLayoutResponse:
+      type: object
+      required: [success, layout]
+      properties:
+        success: { type: boolean }
+        layout: { $ref: '#/components/schemas/Layout' }
+        message: { type: string }
+
+    RemoveLayoutRequest:
+      type: object
+      required: [layout]
+      properties:
+        layout: { type: string }
+
+    RemoveLayoutResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    ShutdownResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    SimStateResponse:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string }
+
+    SimSetStateRequest:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string }
+
     # --- WebSocket Types ---
-    TrackpadRecvArgs:
+    MouseButton:
+      type: string
+      enum: ["left", "right", "middle", "back", "forward"]
+
+    Modifier:
+      type: string
+      enum: ["alt", "ctrl", "meta", "shift"]
+
+    TrackpadMessageMousePositionUpdate:
       type: object
+      required: [type, x, 'y']
       properties:
-        t: { type: string, enum: ["p"] }
+        type: { type: string, enum: ["mousepositionupdate"] }
         x: { type: integer }
-        y: { type: integer }
+        'y': { type: integer }
 
-    # The Discriminated Union for Mouse Events
-    TrackpadSendArgs:
+    TrackpadMessageMouseMoveRelative:
       type: object
-      oneOf:
-        - $ref: '#/components/schemas/MsgMove'
-        - $ref: '#/components/schemas/MsgClick'
-        - $ref: '#/components/schemas/MsgKey'
-      discriminator:
-        propertyName: t
-        mapping:
-          m: '#/components/schemas/MsgMove'
-          c: '#/components/schemas/MsgClick'
-          k: '#/components/schemas/MsgKey'
-
-    MsgMove:
-      type: object
-      required: [t, dx, dy]
+      required: [type, dx, dy]
       properties:
-        t: { type: string, enum: ["m"] }
-        dx: { type: integer }
-        dy: { type: integer }
+        type: { type: string, enum: ["mousemoverel"] }
+        dx: { type: number, format: double }
+        dy: { type: number, format: double }
 
-    MsgClick:
+    TrackpadMessageMouseMoveTo:
       type: object
-      required: [t]
+      required: [type, x, 'y']
       properties:
-        t: { type: string, enum: ["c", "d", "u"] }
-        btn: { type: string, enum: ["left", "right", "middle"] }
-        mod: { type: array, items: { type: string } }
+        type: { type: string, enum: ["mousemoveto"] }
+        x: { type: integer }
+        'y': { type: integer }
 
-    MsgKey:
+    TrackpadMessageMouseClick:
       type: object
-      required: [t, text]
+      required: [type, btn, modifiers]
       properties:
-        t: { type: string, enum: ["k"] }
+        type: { type: string, enum: ["mouseclick"] }
+        btn: { $ref: '#/components/schemas/MouseButton' }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    TrackpadMessageMouseDown:
+      type: object
+      required: [type, btn, modifiers]
+      properties:
+        type: { type: string, enum: ["mousedown"] }
+        btn: { $ref: '#/components/schemas/MouseButton' }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    TrackpadMessageMouseUp:
+      type: object
+      required: [type, btn, modifiers]
+      properties:
+        type: { type: string, enum: ["mouseup"] }
+        btn: { $ref: '#/components/schemas/MouseButton' }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    TrackpadMessageMouseScroll:
+      type: object
+      required: [type, dx, dy]
+      properties:
+        type: { type: string, enum: ["mousescroll"] }
+        dx: { type: number }
+        dy: { type: number }
+        precise: { type: boolean }
+
+    TrackpadMessageKeyDown:
+      type: object
+      required: [type, key, modifiers]
+      properties:
+        type: { type: string, enum: ["keydown"] }
+        key: { type: string }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    TrackpadMessageKeyUp:
+      type: object
+      required: [type, key, modifiers]
+      properties:
+        type: { type: string, enum: ["keyup"] }
+        key: { type: string }
+        modifiers:
+          type: array
+          items: { $ref: '#/components/schemas/Modifier' }
+
+    TrackpadMessageText:
+      type: object
+      required: [type, text]
+      properties:
+        type: { type: string, enum: ["text"] }
         text: { type: string }
+
+    TrackpadMessage:
+      oneOf:
+        - $ref: '#/components/schemas/TrackpadMessageMousePositionUpdate'
+        - $ref: '#/components/schemas/TrackpadMessageMouseMoveRelative'
+        - $ref: '#/components/schemas/TrackpadMessageMouseMoveTo'
+        - $ref: '#/components/schemas/TrackpadMessageMouseClick'
+        - $ref: '#/components/schemas/TrackpadMessageMouseDown'
+        - $ref: '#/components/schemas/TrackpadMessageMouseUp'
+        - $ref: '#/components/schemas/TrackpadMessageMouseScroll'
+        - $ref: '#/components/schemas/TrackpadMessageKeyDown'
+        - $ref: '#/components/schemas/TrackpadMessageKeyUp'
+        - $ref: '#/components/schemas/TrackpadMessageText'
+      discriminator:
+        propertyName: type
+        mapping:
+          mousepositionupdate: '#/components/schemas/TrackpadMessageMousePositionUpdate'
+          mousemoverel: '#/components/schemas/TrackpadMessageMouseMoveRelative'
+          mousemoveto: '#/components/schemas/TrackpadMessageMouseMoveTo'
+          mouseclick: '#/components/schemas/TrackpadMessageMouseClick'
+          mousedown: '#/components/schemas/TrackpadMessageMouseDown'
+          mouseup: '#/components/schemas/TrackpadMessageMouseUp'
+          mousescroll: '#/components/schemas/TrackpadMessageMouseScroll'
+          keydown: '#/components/schemas/TrackpadMessageKeyDown'
+          keyup: '#/components/schemas/TrackpadMessageKeyUp'
+          text: '#/components/schemas/TrackpadMessageText'

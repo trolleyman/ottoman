@@ -513,83 +513,83 @@ func Lint() error {
 	return runV("golangci-lint", "run")
 }
 
-// RunServer runs the server locally.
-func RunServer() error {
+// RunController runs the controller locally.
+func RunController() error {
 	mg.Deps(buildWebFiles)
-	serverConfigFile := filepath.Join("magefiles", "dev_server.toml")
-	_, err := os.Stat(serverConfigFile)
+	controllerConfigFile := filepath.Join("magefiles", "dev_controller.toml")
+	_, err := os.Stat(controllerConfigFile)
 	if os.IsNotExist(err) {
-		err = runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigFile)
+		err = runV("go", "run", "./cmd/ottoman", "config", "init", "controller", "--output", controllerConfigFile)
 	} else if err != nil {
-		return fmt.Errorf("failed to read %q: %w", serverConfigFile, err)
+		return fmt.Errorf("failed to read %q: %w", controllerConfigFile, err)
 	} else {
-		fmt.Printf("Loading existing config: %s\n", serverConfigFile)
+		fmt.Printf("Loading existing config: %s\n", controllerConfigFile)
 	}
-	return runV("go", "run", "./cmd/ottoman", "--config", serverConfigFile, "server", "run")
+	return runV("go", "run", "./cmd/ottoman", "--config", controllerConfigFile, "controller", "run")
 }
 
-// RunClient runs the client locally.
-func RunClient() error {
+// RunAgent runs the agent locally.
+func RunAgent() error {
 	mg.Deps(buildWebFiles)
-	clientConfigFile := filepath.Join("magefiles", "dev_client.toml")
-	_, err := os.Stat(clientConfigFile)
+	agentConfigFile := filepath.Join("magefiles", "dev_agent.toml")
+	_, err := os.Stat(agentConfigFile)
 	if os.IsNotExist(err) {
-		err = runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile)
+		err = runV("go", "run", "./cmd/ottoman", "config", "init", "agent", "--output", agentConfigFile)
 		if err != nil {
-			return fmt.Errorf("failed to run config init client: %w", err)
+			return fmt.Errorf("failed to run config init agent: %w", err)
 		}
 	} else if err != nil {
-		return fmt.Errorf("failed to read %q: %w", clientConfigFile, err)
+		return fmt.Errorf("failed to read %q: %w", agentConfigFile, err)
 	} else {
-		fmt.Printf("Loading existing config: %s\n", clientConfigFile)
+		fmt.Printf("Loading existing config: %s\n", agentConfigFile)
 	}
-	return runV("go", "run", "./cmd/ottoman", "--config", clientConfigFile, "client", "run")
+	return runV("go", "run", "./cmd/ottoman", "--config", agentConfigFile, "agent", "run")
 }
 
-// RunSimulated runs a simulated server for frontend WoL testing.
+// RunSimulated runs a simulated controller for frontend WoL testing.
 func RunSimulated() error {
 	mg.Deps(buildWebFiles)
 
-	serverConfigFile := filepath.Join("magefiles", "dev_server.toml")
-	clientConfigFile := filepath.Join("magefiles", "dev_client.toml")
+	controllerConfigFile := filepath.Join("magefiles", "dev_controller.toml")
+	agentConfigFile := filepath.Join("magefiles", "dev_agent.toml")
 
-	// Ensure server config exists
-	if _, err := os.Stat(serverConfigFile); os.IsNotExist(err) {
-		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigFile); err != nil {
-			return fmt.Errorf("failed to init server config: %w", err)
+	// Ensure controller config exists
+	if _, err := os.Stat(controllerConfigFile); os.IsNotExist(err) {
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "controller", "--output", controllerConfigFile); err != nil {
+			return fmt.Errorf("failed to init controller config: %w", err)
 		}
 	} else if err != nil {
-		return fmt.Errorf("failed to read %q: %w", serverConfigFile, err)
+		return fmt.Errorf("failed to read %q: %w", controllerConfigFile, err)
 	}
 
-	// Ensure client config exists
-	if _, err := os.Stat(clientConfigFile); os.IsNotExist(err) {
-		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigFile); err != nil {
-			return fmt.Errorf("failed to init client config: %w", err)
+	// Ensure agent config exists
+	if _, err := os.Stat(agentConfigFile); os.IsNotExist(err) {
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "agent", "--output", agentConfigFile); err != nil {
+			return fmt.Errorf("failed to init agent config: %w", err)
 		}
 	} else if err != nil {
-		return fmt.Errorf("failed to read %q: %w", clientConfigFile, err)
+		return fmt.Errorf("failed to read %q: %w", agentConfigFile, err)
 	}
 
 	return runV("go", "run", "./cmd/ottoman",
-		"--config", serverConfigFile,
-		"server", "simulate",
-		"--client-config", clientConfigFile)
+		"--config", controllerConfigFile,
+		"controller", "simulate",
+		"--agent-config", agentConfigFile)
 }
 
 // DeployConfig holds deployment configuration
 type DeployConfig struct {
-	Client ClientDeployConfig `toml:"client"`
-	Server ServerDeployConfig `toml:"server"`
+	Agent      AgentDeployConfig      `toml:"agent"`
+	Controller ControllerDeployConfig `toml:"controller"`
 }
 
-// ClientDeployConfig holds client deployment settings
-type ClientDeployConfig struct {
+// AgentDeployConfig holds agent deployment settings
+type AgentDeployConfig struct {
 	BinaryPath string `toml:"binary_path"`
 }
 
-// ServerDeployConfig holds server deployment settings
-type ServerDeployConfig struct {
+// ControllerDeployConfig holds controller deployment settings
+type ControllerDeployConfig struct {
 	SSHTarget  string `toml:"ssh_target"`
 	DeployPath string `toml:"deploy_path"`
 	ConfigPath string `toml:"config_path"`
@@ -675,15 +675,15 @@ func defaultClientBinaryPath() string {
 	}
 }
 
-// DeployClient builds and deploys the client locally.
+// DeployAgent builds and deploys the agent locally.
 // Interactively asks for settings and saves them to magefiles/deploy.toml.
-func DeployClient() error {
-	fmt.Println("=== Ottoman Client Deployment ===\n")
+func DeployAgent() error {
+	fmt.Println("=== Ottoman Agent Deployment ===\n")
 
-	clientConfigPath := filepath.Join("magefiles", "deploy_client.toml")
+	agentConfigPath := filepath.Join("magefiles", "deploy_agent.toml")
 	reconfigure := hasFlag("--config")
 	deployConfigExists := fileExists(deployConfigPath)
-	clientConfigExists := fileExists(clientConfigPath)
+	agentConfigExists := fileExists(agentConfigPath)
 
 	// Load existing config
 	cfg, err := loadDeployConfig()
@@ -692,7 +692,7 @@ func DeployClient() error {
 		cfg = &DeployConfig{}
 	}
 
-	if !reconfigure && deployConfigExists && clientConfigExists {
+	if !reconfigure && deployConfigExists && agentConfigExists {
 		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
 		if content, err := os.ReadFile(deployConfigPath); err == nil {
 			fmt.Println(string(content))
@@ -701,11 +701,11 @@ func DeployClient() error {
 		reader := bufio.NewReader(os.Stdin)
 
 		// Get binary path
-		defaultPath := cfg.Client.BinaryPath
+		defaultPath := cfg.Agent.BinaryPath
 		if defaultPath == "" {
 			defaultPath = defaultClientBinaryPath()
 		}
-		cfg.Client.BinaryPath = prompt(reader, "Binary install path", defaultPath)
+		cfg.Agent.BinaryPath = prompt(reader, "Binary install path", defaultPath)
 
 		// Save deploy config
 		if err := saveDeployConfig(cfg); err != nil {
@@ -713,19 +713,19 @@ func DeployClient() error {
 		}
 		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
 
-		// Generate client config via config init
-		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "client", "--output", clientConfigPath); err != nil {
+		// Generate agent config via config init
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "agent", "--output", agentConfigPath); err != nil {
 			return fmt.Errorf("config init failed: %w", err)
 		}
 	}
 
 	// Stop existing service/process to allow binary overwrite
 	if runtime.GOOS == "windows" {
-		exec.Command("schtasks", "/End", "/TN", "OttomanClient").Run()
+		exec.Command("schtasks", "/End", "/TN", "OttomanAgent").Run()
 		// Force kill to ensure file is released
 		exec.Command("taskkill", "/F", "/IM", "ottoman.exe").Run()
 	} else {
-		exec.Command("systemctl", "--user", "stop", "ottoman-client").Run()
+		exec.Command("systemctl", "--user", "stop", "ottoman-agent").Run()
 	}
 
 	// Build for current platform
@@ -741,32 +741,32 @@ func DeployClient() error {
 	builtBinary := filepath.Join(buildDir, binary+ext)
 
 	// Copy binary to target location
-	if err := copyFile(builtBinary, cfg.Client.BinaryPath); err != nil {
+	if err := copyFile(builtBinary, cfg.Agent.BinaryPath); err != nil {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
 	// Make executable on Unix
 	if runtime.GOOS != "windows" {
-		if err := os.Chmod(cfg.Client.BinaryPath, 0755); err != nil {
+		if err := os.Chmod(cfg.Agent.BinaryPath, 0755); err != nil {
 			return fmt.Errorf("failed to make binary executable: %w", err)
 		}
 	}
 
 	// Copy config to actual config location
 	configDst := defaultConfigPath()
-	if err := copyFile(clientConfigPath, configDst); err != nil {
+	if err := copyFile(agentConfigPath, configDst); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
 	// Run install command to register service
-	if err := runV(cfg.Client.BinaryPath, "client", "install"); err != nil {
+	if err := runV(cfg.Agent.BinaryPath, "agent", "install"); err != nil {
 		return fmt.Errorf("failed to register service: %w", err)
 	}
 
 	// Start services on Windows
 	if runtime.GOOS == "windows" {
-		fmt.Println("Starting OttomanClient task...")
-		if err := exec.Command("schtasks", "/Run", "/TN", "OttomanClient").Run(); err != nil {
+		fmt.Println("Starting OttomanAgent task...")
+		if err := exec.Command("schtasks", "/Run", "/TN", "OttomanAgent").Run(); err != nil {
 			fmt.Printf("Warning: failed to start task: %v\n", err)
 		}
 
@@ -779,7 +779,7 @@ func DeployClient() error {
 		}
 	}
 
-	fmt.Println("\n=== Client deployment complete! ===")
+	fmt.Println("\n=== Agent deployment complete! ===")
 	return nil
 }
 
@@ -797,16 +797,16 @@ func defaultConfigPath() string {
 	return "config.toml"
 }
 
-// DeployServer deploys the server to a Raspberry Pi via SSH.
+// DeployController deploys the controller to a Raspberry Pi via SSH.
 // Interactively asks for deployment settings (saved to magefiles/deploy.toml)
-// and delegates server config creation to `ottoman config init server`.
-func DeployServer() error {
-	fmt.Println("=== Ottoman Server Deployment ===\n")
+// and delegates controller config creation to `ottoman config init controller`.
+func DeployController() error {
+	fmt.Println("=== Ottoman Controller Deployment ===\n")
 
-	serverConfigPath := filepath.Join("magefiles", "deploy_server.toml")
+	controllerConfigPath := filepath.Join("magefiles", "deploy_controller.toml")
 	reconfigure := hasFlag("--config")
 	deployConfigExists := fileExists(deployConfigPath)
-	serverConfigExists := fileExists(serverConfigPath)
+	controllerConfigExists := fileExists(controllerConfigPath)
 
 	// Load existing deploy config
 	cfg, err := loadDeployConfig()
@@ -815,7 +815,7 @@ func DeployServer() error {
 		cfg = &DeployConfig{}
 	}
 
-	if !reconfigure && deployConfigExists && serverConfigExists {
+	if !reconfigure && deployConfigExists && controllerConfigExists {
 		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
 		if content, err := os.ReadFile(deployConfigPath); err == nil {
 			fmt.Println(string(content))
@@ -826,24 +826,24 @@ func DeployServer() error {
 		// Prompt for deployment settings
 		fmt.Println("--- Deployment Settings ---")
 
-		if cfg.Server.SSHTarget == "" {
-			cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", "")
+		if cfg.Controller.SSHTarget == "" {
+			cfg.Controller.SSHTarget = prompt(reader, "SSH target (user@host)", "")
 		} else {
-			cfg.Server.SSHTarget = prompt(reader, "SSH target (user@host)", cfg.Server.SSHTarget)
+			cfg.Controller.SSHTarget = prompt(reader, "SSH target (user@host)", cfg.Controller.SSHTarget)
 		}
-		if cfg.Server.SSHTarget == "" {
+		if cfg.Controller.SSHTarget == "" {
 			return fmt.Errorf("SSH target is required")
 		}
 
-		if cfg.Server.DeployPath == "" {
-			cfg.Server.DeployPath = "~/.local/share/ottoman/ottoman"
+		if cfg.Controller.DeployPath == "" {
+			cfg.Controller.DeployPath = "~/.local/share/ottoman/ottoman"
 		}
-		cfg.Server.DeployPath = prompt(reader, "Remote binary path", cfg.Server.DeployPath)
+		cfg.Controller.DeployPath = prompt(reader, "Remote binary path", cfg.Controller.DeployPath)
 
-		if cfg.Server.ConfigPath == "" {
-			cfg.Server.ConfigPath = "~/.config/ottoman/config.toml"
+		if cfg.Controller.ConfigPath == "" {
+			cfg.Controller.ConfigPath = "~/.config/ottoman/config.toml"
 		}
-		cfg.Server.ConfigPath = prompt(reader, "Remote config path", cfg.Server.ConfigPath)
+		cfg.Controller.ConfigPath = prompt(reader, "Remote config path", cfg.Controller.ConfigPath)
 
 		// Save deploy config
 		if err := saveDeployConfig(cfg); err != nil {
@@ -851,8 +851,8 @@ func DeployServer() error {
 		}
 		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
 
-		// Generate server config via config init
-		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "server", "--output", serverConfigPath); err != nil {
+		// Generate controller config via config init
+		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "controller", "--output", controllerConfigPath); err != nil {
 			return fmt.Errorf("config init failed: %w", err)
 		}
 	}
@@ -865,68 +865,68 @@ func DeployServer() error {
 	binaryPath := filepath.Join(buildDir, "ottoman-linux-arm")
 
 	// Create directories on remote (use path.Dir for Unix paths, not filepath.Dir)
-	deployDir := path.Dir(expandPath(cfg.Server.DeployPath))
-	configDir := path.Dir(expandPath(cfg.Server.ConfigPath))
+	deployDir := path.Dir(expandPath(cfg.Controller.DeployPath))
+	configDir := path.Dir(expandPath(cfg.Controller.ConfigPath))
 
-	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("mkdir -p '%s'", deployDir)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("mkdir -p '%s'", deployDir)); err != nil {
 		return fmt.Errorf("failed to create deploy directory: %w", err)
 	}
 
-	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("mkdir -p '%s'", configDir)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("mkdir -p '%s'", configDir)); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	// Stop service if running (ignore errors as it might not exist yet)
-	_ = run("ssh", cfg.Server.SSHTarget, "systemctl --user stop ottoman-server")
+	_ = run("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
 
 	// Remove binary if it exists
-	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("rm -f '%s'", cfg.Server.DeployPath)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("rm -f '%s'", cfg.Controller.DeployPath)); err != nil {
 		return fmt.Errorf("failed to remove existing binary: %w", err)
 	}
 
 	// Copy binary (use scpPath to handle ~ properly)
-	if err := run("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Server.SSHTarget, scpPath(cfg.Server.DeployPath))); err != nil {
+	if err := run("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
 	// Make executable
-	if err := run("ssh", cfg.Server.SSHTarget, fmt.Sprintf("chmod +x %s", cfg.Server.DeployPath)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("chmod +x %s", cfg.Controller.DeployPath)); err != nil {
 		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
 	// Write config file
-	if err := run("scp", serverConfigPath, fmt.Sprintf("%s:%s", cfg.Server.SSHTarget, scpPath(cfg.Server.ConfigPath))); err != nil {
+	if err := run("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
 	// Install systemd service
-	installCmd := fmt.Sprintf("%s server install", cfg.Server.DeployPath)
-	if err := run("ssh", cfg.Server.SSHTarget, installCmd); err != nil {
+	installCmd := fmt.Sprintf("%s controller install", cfg.Controller.DeployPath)
+	if err := run("ssh", cfg.Controller.SSHTarget, installCmd); err != nil {
 		return fmt.Errorf("failed to install service: %w", err)
 	}
 
 	// Enable lingering to ensure service starts on boot
-	if err := run("ssh", cfg.Server.SSHTarget, "loginctl enable-linger"); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, "loginctl enable-linger"); err != nil {
 		fmt.Printf("Warning: failed to enable lingering: %v\n", err)
 	}
 
 	// Restart service
-	if err := run("ssh", cfg.Server.SSHTarget, "systemctl --user restart ottoman-server"); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, "systemctl --user restart ottoman-controller"); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
 	// Checking status
 	fmt.Println("\nDeployed - checking status:")
-	if err := run("ssh", cfg.Server.SSHTarget, "systemctl --user status ottoman-server"); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, "systemctl --user status ottoman-controller"); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
-	fmt.Println("\n=== Server deployment complete! ===")
+	fmt.Println("\n=== Controller deployment complete! ===")
 	return nil
 }
 
 func DeployAll() error {
-	mg.SerialDeps(DeployServer, DeployClient)
+	mg.SerialDeps(DeployController, DeployAgent)
 	return nil
 }
 
@@ -947,4 +947,46 @@ func scpPath(path string) string {
 // Deps installs Go dependencies.
 func Deps() error {
 	return run("go", "mod", "tidy")
+}
+
+type Generate mg.Namespace
+
+// All runs both Go and TypeScript generation
+func (Generate) All() {
+	mg.Deps(Generate.Go, Generate.TypeScript)
+}
+
+// Go generates the Go server interface and types
+func (Generate) Go() error {
+	fmt.Println("🚀 Generating Go API...")
+
+	// Ensure internal/api exists
+	if err := os.MkdirAll("internal/api", 0755); err != nil {
+		return err
+	}
+
+	// Generate the Server Interface and Types
+	// We use "server" generation because both the Controller (Pi)
+	// and Agent (Desktop) implement this API to some degree.
+	return run("go", "generate", "./...")
+}
+
+// TypeScript generates the React client
+func (Generate) TypeScript() error {
+	fmt.Println("🚀 Generating TypeScript Client...")
+
+	// Ensure web/src/api exists
+	if err := os.MkdirAll("web/src/api", 0755); err != nil {
+		return err
+	}
+
+	// uses openapi-typescript-codegen
+	// --client fetch: Uses the native Fetch API (lightweight, no axios)
+	// --name OttomanClient: The name of the client class
+	return run("bun", "x", "openapi-typescript-codegen",
+		"--input", "api/openapi.yaml",
+		"--output", "web/src/api",
+		"--client", "fetch",
+		"--name", "OttomanClient",
+	)
 }
