@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"github.com/trolleyman/ottoman/internal/api"
@@ -25,36 +26,36 @@ func GenerateToken() (string, error) {
 
 // Config holds the complete ottoman configuration
 type Config struct {
-	Controller ControllerConfig `mapstructure:"controller"`
-	Agent      AgentConfig      `mapstructure:"agent"`
+	Controller ControllerConfig `json:"controller"`
+	Agent      AgentConfig      `json:"agent"`
 }
 
 // ControllerConfig holds controller configuration
 type ControllerConfig struct {
-	ListenAddress string                `mapstructure:"listen_address"`
-	AuthToken     string                `mapstructure:"auth_token"`
-	Agent         AgentControllerConfig `mapstructure:"agent"`
+	ListenAddress string                `json:"listen_address"`
+	AuthToken     string                `json:"auth_token"`
+	Agent         AgentControllerConfig `json:"agent"`
 }
 
 // AgentControllerConfig holds the configuration for how to contact the agent
 type AgentControllerConfig struct {
-	MACAddress string `mapstructure:"mac_address" json:"mac_address"`
-	IPAddress  string `mapstructure:"ip_address" json:"ip_address,omitempty"`
-	Port       int    `mapstructure:"port" json:"port,omitempty"`
+	MACAddress string `json:"mac_address"`
+	IPAddress  string `json:"ip_address,omitempty"`
+	Port       int    `json:"port,omitempty"`
 }
 
 // AgentConfig holds agent configuration
 type AgentConfig struct {
-	ListenAddress string         `mapstructure:"listen_address"`
-	AuthToken     string         `mapstructure:"auth_token"`
-	Layouts       []api.Layout   `mapstructure:"layouts"`
-	Trackpad      TrackpadConfig `mapstructure:"trackpad"`
+	ListenAddress string         `json:"listen_address"`
+	AuthToken     string         `json:"auth_token"`
+	Layouts       []api.Layout   `json:"layouts"`
+	Trackpad      TrackpadConfig `json:"trackpad"`
 }
 
 // TrackpadConfig holds trackpad configuration
 type TrackpadConfig struct {
-	Sensitivity float64 `mapstructure:"sensitivity"`
-	Friction    float64 `mapstructure:"friction"`
+	Sensitivity float64 `json:"sensitivity"`
+	Friction    float64 `json:"friction"`
 }
 
 var (
@@ -135,7 +136,9 @@ func Load() (*Config, error) {
 	}
 
 	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg, func(c *mapstructure.DecoderConfig) {
+		c.TagName = "json"
+	}); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal config")
 	}
 
