@@ -85,13 +85,13 @@ const (
 
 // ActiveMonitor defines model for ActiveMonitor.
 type ActiveMonitor struct {
-	Height      int    `json:"height"`
-	Model       string `json:"model"`
-	PositionX   int    `json:"position_x"`
-	PositionY   int    `json:"position_y"`
-	Primary     bool   `json:"primary"`
-	RefreshRate int    `json:"refresh_rate"`
-	Width       int    `json:"width"`
+	Height      int     `json:"height"`
+	Model       string  `json:"model"`
+	PositionX   int     `json:"position_x"`
+	PositionY   int     `json:"position_y"`
+	Primary     bool    `json:"primary"`
+	RefreshRate float64 `json:"refresh_rate"`
+	Width       int     `json:"width"`
 }
 
 // AuthRequest defines model for AuthRequest.
@@ -123,15 +123,15 @@ type Layout struct {
 
 // LayoutMonitor defines model for LayoutMonitor.
 type LayoutMonitor struct {
-	Edid        string `json:"edid"`
-	Height      int    `json:"height"`
-	Name        string `json:"name"`
-	Port        string `json:"port"`
-	PositionX   int    `json:"position_x"`
-	PositionY   int    `json:"position_y"`
-	Primary     bool   `json:"primary"`
-	RefreshRate int    `json:"refresh_rate"`
-	Width       int    `json:"width"`
+	Edid        string  `json:"edid"`
+	Height      int     `json:"height"`
+	Name        string  `json:"name"`
+	Port        string  `json:"port"`
+	PositionX   int     `json:"position_x"`
+	PositionY   int     `json:"position_y"`
+	Primary     bool    `json:"primary"`
+	RefreshRate float64 `json:"refresh_rate"`
+	Width       int     `json:"width"`
 }
 
 // LayoutsResponse defines model for LayoutsResponse.

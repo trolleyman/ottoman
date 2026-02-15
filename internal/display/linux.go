@@ -70,7 +70,7 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 			primary := matches[3] == "primary"
 
 			currentMonitor = &api.Monitor{
-				Edid:         "",   // Not available from xrandr
+				Edid:         "", // Not available from xrandr
 				Port:         port,
 				Name:         port, // Use port as name on Linux
 				Manufacturer: "",   // Not available from xrandr
@@ -115,7 +115,7 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 						currentActive.Width = width
 						currentActive.Height = height
 					}
-					currentActive.RefreshRate = int(refreshRate)
+					currentActive.RefreshRate = refreshRate
 				}
 			}
 		}

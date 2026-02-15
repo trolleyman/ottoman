@@ -513,7 +513,7 @@ func (m *WindowsManager) ListMonitors() ([]api.Monitor, error) {
 		monitor.Active = &api.ActiveMonitor{
 			Width:       width,
 			Height:      height,
-			RefreshRate: int(refreshRate),
+			RefreshRate: refreshRate,
 			PositionX:   posX,
 			PositionY:   posY,
 			Primary:     primary,

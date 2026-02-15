@@ -486,7 +486,7 @@ components:
       properties:
         width: { type: integer }
         height: { type: integer }
-        refresh_rate: { type: integer }
+        refresh_rate: { type: number, format: double }
         position_x: { type: integer }
         position_y: { type: integer }
         primary: { type: boolean }
@@ -507,7 +507,7 @@ components:
         port: { type: string }
         width: { type: integer }
         height: { type: integer }
-        refresh_rate: { type: integer }
+        refresh_rate: { type: number, format: double }
         position_x: { type: integer }
         position_y: { type: integer }
         primary: { type: boolean }
