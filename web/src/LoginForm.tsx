@@ -1,11 +1,9 @@
 import { useState } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
+import { useStore } from "./store";
 
-export function LoginForm({
-  onSuccess,
-}: {
-  onSuccess: () => void;
-}) {
+export function LoginForm() {
+  const login = useStore((s) => s.login);
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -16,16 +14,9 @@ export function LoginForm({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        onSuccess();
-      } else {
-        setError(data.message || "Authentication failed");
+      const result = await login(token);
+      if (!result.success) {
+        setError(result.message || "Authentication failed");
       }
     } catch {
       setError("Connection failed");

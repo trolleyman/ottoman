@@ -10,11 +10,13 @@ import (
 
 // API request/response types
 
-// StatusResponse is returned by health check endpoints
+// StatusResponse is returned by status endpoints
 type StatusResponse struct {
-	Status  string `json:"status"`
-	Version string `json:"version,omitempty"`
-	Uptime  string `json:"uptime,omitempty"`
+	Status    string `json:"status"`
+	Version   string `json:"version,omitempty"`
+	Uptime    string `json:"uptime,omitempty"`
+	Hostname  string `json:"hostname,omitempty"`
+	IPAddress string `json:"ip_address,omitempty"`
 }
 
 // ErrorResponse is returned on API errors
@@ -55,9 +57,7 @@ type ListLayoutsResponse struct {
 
 // AuthRequest is used for login
 type AuthRequest struct {
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	Token    string `json:"token,omitempty"`
+	Token string `json:"token,omitempty"`
 }
 
 // AuthResponse is returned after authentication

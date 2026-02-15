@@ -240,4 +240,3 @@ MIT
 - minor features
    - Add HDR info at least of monitors
    - Add monitor logical size to monitor info (e.g. `XxY (X2xY2 @ Nx)` - `2680x1400 (1920x1080 @ 2x)` - dimensions are wrong here but give impression)
-   - Display client name in ClientStatus (from hostname - computer name on windows)

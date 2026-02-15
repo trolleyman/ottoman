@@ -125,7 +125,7 @@ export function MonitorDisplay({
         <MiniLayoutPreview monitors={monitors} scale={scale} />
         {hasCursor && (
           <div
-            className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 z-10 shadow-[0_0_4px_rgba(239,68,68,0.7)] pointer-events-none"
+            className="absolute w-2 h-2 rounded-full bg-red-500 -translate-x-1/2 -translate-y-1/2 shadow-[0_0_4px_rgba(239,68,68,0.7)] pointer-events-none"
             style={{ left: dotX, top: dotY }}
           />
         )}

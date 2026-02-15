@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
 import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
@@ -6,42 +6,31 @@ import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
 import { Monitors } from "./Monitors";
 import { ClientStatus } from "./ClientStatus";
 import { Layouts } from "./Layouts";
+import { useStore } from "./store";
 
 export default function App() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  // refreshSignal triggers refreshes. silent=true avoids showing loading indicators for polling.
-  const [refreshSignal, setRefreshSignal] = useState({ key: 0, silent: false });
+  const authed = useStore((s) => s.authed);
+  const checkAuth = useStore((s) => s.checkAuth);
+  const refreshAll = useStore((s) => s.refreshAll);
+  const startPolling = useStore((s) => s.startPolling);
+  const stopPolling = useStore((s) => s.stopPolling);
+  const logout = useStore((s) => s.logout);
+  const refreshKey = useStore((s) => s.refreshKey);
 
-  const { connected, connecting, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshSignal.key);
+  const { connected, connecting, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshKey);
 
   // Check auth on mount
   useEffect(() => {
-    fetch("/api/auth/check")
-      .then((res) => setAuthed(res.ok))
-      .catch(() => setAuthed(false));
-  }, []);
+    checkAuth();
+  }, [checkAuth]);
 
-  const refresh = useCallback(() => {
-    setRefreshSignal((prev) => ({ key: prev.key + 1, silent: false }));
-  }, []);
-
-  const refreshSilent = useCallback(() => {
-    setRefreshSignal((prev) => ({ key: prev.key + 1, silent: true }));
-  }, []);
-
-  // Periodic refresh
+  // Start polling when authenticated
   useEffect(() => {
     if (!authed) return;
-    const interval = setInterval(() => {
-      refreshSilent();
-    }, 5000);
-    return () => clearInterval(interval);
+    refreshAll(false);
+    startPolling();
+    return () => stopPolling();
   }, [authed]);
-
-  const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setAuthed(false);
-  };
 
   // Auth check pending
   if (authed === null) {
@@ -54,7 +43,7 @@ export default function App() {
 
   // Not authenticated — show login
   if (!authed) {
-    return <LoginForm onSuccess={() => setAuthed(true)} />;
+    return <LoginForm />;
   }
 
   return (
@@ -67,7 +56,7 @@ export default function App() {
           </OttomanWithLogo>
           <div className="flex items-center gap-4">
             <button
-              onClick={refresh}
+              onClick={() => refreshAll(false)}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
             >
               Refresh
@@ -81,22 +70,13 @@ export default function App() {
           </div>
         </header>
 
-        <ClientStatus
-          authed={!!authed}
-          refreshSignal={refreshSignal}
-          onWake={refreshSilent}
-          onShutdown={refreshSilent}
-          onOnline={refreshSilent}
-          onOffline={refreshSilent}
-        />
+        <ClientStatus />
 
-        <Layouts authed={!!authed} refreshSignal={refreshSignal} onChange={refresh} />
+        <Layouts />
 
-        <Monitors authed={!!authed} refreshSignal={refreshSignal} />
+        <Monitors />
 
         <Trackpad
-          authed={!!authed}
-          refreshSignal={refreshSignal}
           connected={connected}
           connecting={connecting}
           cursorPos={cursorPos}

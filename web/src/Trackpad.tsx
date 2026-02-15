@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorDisplay } from "./MonitorDisplay";
-import type { Layout, LayoutsResponse, Modifier, StatusResponse, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
-import { fetchJSON, sortedLayouts } from "./utils";
+import type { Modifier, TrackpadRecvArgs, TrackpadSendArgs } from "./types";
+import { useStore } from "./store";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [connected, setConnected] = useState(false);
@@ -566,23 +566,21 @@ function TouchArea({
 }
 
 export function Trackpad({
-  authed,
-  refreshSignal,
   connected,
   connecting,
   cursorPos,
   send,
 }: {
-  authed: boolean;
-  refreshSignal: { key: number; silent: boolean };
   connected: boolean;
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
   send: (msg: TrackpadSendArgs) => void;
 }) {
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-  const [currentLayout, setCurrentLayout] = useState("");
-  const [loading, setLoading] = useState(false);
+  const layouts = useStore((s) => s.layouts);
+  const currentLayout = useStore((s) => s.currentLayout);
+  const loading = useStore((s) => s.layoutsLoading);
+  const status = useStore((s) => s.status);
+
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<TrackpadSettings>({
     cursorSensitivity: 1.5,
@@ -605,56 +603,31 @@ export function Trackpad({
     }
   }, [showSettings]);
 
-  const fetchLayouts = useCallback(async (silent: boolean) => {
-    if (!authed) return;
-    if (!silent) setLoading(true);
-    try {
-      const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
-      setLayouts(sortedLayouts(layoutsData.layouts ?? []));
-      setCurrentLayout(layoutsData.current_layout ?? "");
-    } catch {
-      setLayouts([]);
-      setCurrentLayout("");
-    } finally {
-      setLoading(false);
-    }
-  }, [authed]);
-
-  useEffect(() => {
-    fetchLayouts(refreshSignal.silent);
-  }, [fetchLayouts, refreshSignal]);
-
   // Check for local network connection and redirect if possible
   useEffect(() => {
-    if (!authed) return;
+    if (!status?.local_ip || !status?.port) return;
+    if (window.location.hostname === status.local_ip) return;
 
     const checkLocalConnection = async () => {
       try {
-        const status = await fetchJSON<StatusResponse & { hostname?: string }>("/api/status");
-        if (status.local_ip && status.port) {
-          // If we are already on the local IP, do nothing
-          if (window.location.hostname === status.local_ip) return;
+        const protocol = window.location.protocol;
+        const localUrl = `${protocol}//${status.local_ip}:${status.port}`;
 
-          // Try to contact the local IP via /health (has CORS headers)
-          const protocol = window.location.protocol;
-          const localUrl = `${protocol}//${status.local_ip}:${status.port}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const resp = await fetch(`${localUrl}/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1000);
-          const resp = await fetch(`${localUrl}/health`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-
-          if (resp.ok) {
-            window.location.href = localUrl;
-          }
+        if (resp.ok) {
+          window.location.href = localUrl;
         }
-      } catch (e) {
+      } catch {
         // Ignore errors (e.g. not on same network)
       }
     };
 
     checkLocalConnection();
-  }, [authed]);
+  }, [status?.local_ip, status?.port]);
 
   return (
     <section>
@@ -669,15 +642,12 @@ export function Trackpad({
         <div className="relative" ref={settingsRef}>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full hover:bg-zinc-800 cursor-pointer"
+            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
+            {showSettings ? "Close" : "Settings"}
           </button>
           {showSettings && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-10 flex flex-col gap-4">
+            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-20 flex flex-col gap-4">
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})</label>
                 <input

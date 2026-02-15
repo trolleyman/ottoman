@@ -1,11 +1,15 @@
 [[tools.go]]
-version = "1.25.7"
+version = "1.26.0"
 backend = "core:go"
-"platforms.windows-x64" = { checksum = "sha256:c75e5f4ff62d085cc0017be3ad19d5536f46825fa05db06ec468941f847e3228", url = "https://dl.google.com/go/go1.25.7.windows-amd64.zip"}
+"platforms.windows-x64" = { checksum = "sha256:9bbe0fc64236b2b51f6255c05c4232532b8ecc0e6d2e00950bd3021d8a4d07d4", url = "https://dl.google.com/go/go1.26.0.windows-amd64.zip"}
 
 [[tools."go:github.com/cweill/gotests/gotests"]]
 version = "1.9.0"
 backend = "go:github.com/cweill/gotests/gotests"
+
+[[tools."go:github.com/deepmap/oapi-codegen/cmd/oapi-codegen"]]
+version = "1.16.3"
+backend = "go:github.com/deepmap/oapi-codegen/cmd/oapi-codegen"
 
 [[tools."go:github.com/go-delve/delve/cmd/dlv"]]
 version = "1.26.0"
@@ -20,5 +24,21 @@ version = "1.15.0"
 backend = "go:github.com/magefile/mage"
 
 [[tools."go:golang.org/x/tools/gopls"]]
-version = "0.21.0"
+version = "0.21.1"
 backend = "go:golang.org/x/tools/gopls"
+
+[[tools.node]]
+version = "25.6.1"
+backend = "core:node"
+
+[[tools.npm]]
+version = "11.10.0"
+backend = "npm:npm"
+
+[[tools."npm:@hey-api/openapi-ts"]]
+version = "0.92.4"
+backend = "npm:@hey-api/openapi-ts"
+
+[[tools."npm:openapi-typescript-codegen"]]
+version = "0.30.0"
+backend = "npm:openapi-typescript-codegen"

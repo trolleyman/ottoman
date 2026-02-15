@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
 import type { MonitorInfo } from "./types";
-import { fetchJSON, sortedMonitors } from "./utils";
+import { useStore } from "./store";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -59,34 +58,10 @@ function MonitorCard({ monitor }: { monitor: MonitorInfo }) {
   );
 }
 
-export function Monitors({
-  authed,
-  refreshSignal,
-}: {
-  authed: boolean;
-  refreshSignal: { key: number; silent: boolean };
-}) {
-  const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchMonitors = useCallback(async (silent: boolean) => {
-    if (!authed) return;
-    if (!silent) setLoading(true);
-    try {
-      const monitorsData = await fetchJSON<MonitorInfo[]>("/api/monitors");
-      setMonitors(sortedMonitors(monitorsData));
-      setError(null);
-    } catch (e) {
-      setError("Failed to load monitors");
-    } finally {
-      setLoading(false);
-    }
-  }, [authed]);
-
-  useEffect(() => {
-    fetchMonitors(refreshSignal.silent);
-  }, [fetchMonitors, refreshSignal]);
+export function Monitors() {
+  const monitors = useStore((s) => s.monitors);
+  const loading = useStore((s) => s.monitorsLoading);
+  const error = useStore((s) => s.monitorsError);
 
   return (
     <section>

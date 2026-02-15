@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -92,6 +93,7 @@ func (c *Client) setupRoutes() error {
 	// Health check (no auth)
 	c.router.HandleFunc("GET /health", c.handleHealth)
 	c.router.HandleFunc("GET /api/status", c.handleStatus)
+	c.router.HandleFunc("GET /api/status/client", c.handleStatus)
 
 	// Auth endpoints (no auth required for login/logout)
 	c.router.HandleFunc("POST /api/auth", c.handleAuth)
@@ -210,12 +212,25 @@ func (c *Client) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 
 // handleStatus returns detailed status
 func (c *Client) handleStatus(w http.ResponseWriter, r *http.Request) {
+	hostname, _ := os.Hostname()
 	uptime := time.Since(c.startTime).Round(time.Second).String()
 	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
-		Status:  "ok",
-		Version: "dev",
-		Uptime:  uptime,
+		Status:    "ok",
+		Version:   "dev",
+		Uptime:    uptime,
+		Hostname:  hostname,
+		IPAddress: getOutboundIP(),
 	})
+}
+
+func getOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
 
 // handleListLayouts returns available display layouts

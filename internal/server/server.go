@@ -73,6 +73,7 @@ func (s *Server) setupRoutes() error {
 	// Health check (no auth required)
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /api/status", s.handleStatus)
+	s.router.HandleFunc("GET /api/status/client", s.requireAuth(s.handleClientStatus))
 
 	// Auth endpoints
 	s.router.HandleFunc("POST /api/auth", s.handleAuth)
@@ -151,56 +152,36 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-// handleStatus returns detailed status
+// handleStatus returns server status (does not contact client)
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	_, port, _ := net.SplitHostPort(s.config.ListenAddr)
 	if port == "" {
 		port = "80"
 	}
 
-	clientStatus := "offline"
-	var clientIP, clientMAC string
-
-	s.mu.RLock()
-	target := s.wakeTarget
-	s.mu.RUnlock()
-
-	if target != nil {
-		clientIP = target.IPAddress
-		clientMAC = target.MACAddress
-
-		// Check if online
-		clientPort := "8081" // Default
-		if _, p, err := net.SplitHostPort(s.config.ClientAddr); err == nil {
-			clientPort = p
-		}
-
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(clientIP, clientPort), 200*time.Millisecond)
-		if err == nil {
-			clientStatus = "online"
-			conn.Close()
-		}
-	}
-
 	uptime := time.Since(s.startTime).Round(time.Second).String()
-	resp := map[string]interface{}{
+	common.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "ok",
 		"version":  "dev",
 		"uptime":   uptime,
 		"local_ip": s.localIP,
 		"port":     port,
 		"secret":   s.secret,
-	}
+	})
+}
 
-	if target != nil {
-		resp["client"] = map[string]string{
-			"ip_address":  clientIP,
-			"mac_address": clientMAC,
-			"status":      clientStatus,
-		}
+// handleClientStatus proxies to client's /api/status
+func (s *Server) handleClientStatus(w http.ResponseWriter, r *http.Request) {
+	resp, err := s.proxyToClient("GET", "/api/status", nil)
+	if err != nil {
+		common.WriteError(w, http.StatusBadGateway, err.Error())
+		return
 	}
+	defer resp.Body.Close()
 
-	common.WriteJSON(w, http.StatusOK, resp)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // handleAuth validates a token and sets an auth cookie

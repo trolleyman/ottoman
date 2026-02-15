@@ -1,0 +1,18 @@
+asyncapi: 2.6.0
+info:
+  title: Ottoman Trackpad API
+  version: 1.0.0
+channels:
+  /api/trackpad:
+    bindings:
+      ws:
+        method: GET
+        bindingVersion: '0.1.0'
+    publish:
+      summary: Client sends mouse/keyboard commands to Server
+      message:
+        $ref: './openapi.yaml#/components/schemas/TrackpadSendArgs'
+    subscribe:
+      summary: Server sends position updates/acks to Client
+      message:
+        $ref: './openapi.yaml#/components/schemas/TrackpadRecvArgs'

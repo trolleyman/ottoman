@@ -5,70 +5,8 @@ go = "latest"
 "go:github.com/cweill/gotests/gotests" = "latest"
 "go:github.com/josharian/impl" = "latest"
 "go:github.com/magefile/mage" = "latest"
-
-[env]
-BUILD_DIR = "build"
-
-[tasks.build]
-description = "Build for current platform"
-run = "mage build"
-
-[tasks."build:all"]
-description = "Build for all platforms"
-run = "mage buildAll"
-
-[tasks."build:pi"]
-description = "Build for Raspberry Pi (linux/arm)"
-run = "mage buildPi"
-
-[tasks."build:windows"]
-description = "Build for Windows (windows/amd64)"
-run = "mage buildWindows"
-
-[tasks."build:linux"]
-description = "Build for Linux desktop (linux/amd64)"
-run = "mage buildLinux"
-
-[tasks.clean]
-description = "Remove build artifacts"
-run = "mage clean"
-
-[tasks.test]
-description = "Run tests"
-run = "mage test"
-
-[tasks.lint]
-description = "Run linter"
-run = "mage lint"
-
-[tasks.format]
-description = "Run formatter"
-run = "mage format"
-
-[tasks."run:server"]
-description = "Run server locally"
-run = "mage runServer"
-
-[tasks."run:client"]
-description = "Run client locally"
-run = "mage runClient"
-
-[tasks."run:simulated-client"]
-description = "Run simulated client locally"
-run = "mage runSimulatedClient"
-
-[tasks."deploy:pi"]
-description = "Deploy server to Raspberry Pi"
-run = "mage deployServer"
-
-[tasks."deploy:client"]
-description = "Deploy client locally"
-run = "mage deployClient"
-
-[tasks."deploy:all"]
-description = "Deploy all"
-run = "mage deployAll"
-
-[tasks.deps]
-description = "Install Go dependencies"
-run = "mage deps"
+"go:github.com/deepmap/oapi-codegen/cmd/oapi-codegen" = "latest"
+"npm:openapi-typescript-codegen" = "latest"
+node = "latest"
+npm = "latest"
+"npm:@hey-api/openapi-ts" = "latest"

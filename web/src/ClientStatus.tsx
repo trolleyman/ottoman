@@ -1,102 +1,37 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { StatusResponse, ClientStatus } from "./types";
-import { fetchJSON } from "./utils";
+import { useState } from "react";
+import { useStore } from "./store";
 
-export function ClientStatus({
-  authed,
-  refreshSignal,
-  onWake,
-  onShutdown,
-  onOnline,
-  onOffline,
-}: {
-  authed: boolean;
-  refreshSignal: { key: number; silent: boolean };
-  onWake?: () => void;
-  onShutdown?: () => void;
-  onOnline?: () => void;
-  onOffline?: () => void;
-}) {
-  const [client, setClient] = useState<ClientStatus | null>(null);
+export function ClientStatus() {
+  const clientStatus = useStore((s) => s.clientStatus);
+  const clientInfo = useStore((s) => s.clientInfo);
+  const loading = useStore((s) => s.clientLoading);
+  const storeWake = useStore((s) => s.wake);
+  const storeShutdown = useStore((s) => s.shutdown);
+
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const prevStatusRef = useRef<string | null>(null);
-
-  const fetchStatus = useCallback(async (silent: boolean) => {
-    if (!authed) return;
-    if (!silent) setLoading(true);
-    try {
-      const data = await fetchJSON<StatusResponse>("/api/status");
-      if (data.client) {
-        setClient(data.client);
-
-        // Handle callbacks based on status change
-        if (prevStatusRef.current !== data.client.status) {
-          if (data.client.status === "online") onOnline?.();
-          if (data.client.status === "offline") onOffline?.();
-          prevStatusRef.current = data.client.status;
-        }
-      }
-    } catch {
-      // Ignore errors
-    } finally {
-      setLoading(false);
-    }
-  }, [authed, onOnline, onOffline]);
-
-  useEffect(() => {
-    fetchStatus(refreshSignal.silent);
-  }, [fetchStatus, refreshSignal]);
-
-  // Poll status
-  useEffect(() => {
-    if (!authed) return;
-    const id = setInterval(() => fetchStatus(true), 3000);
-    return () => clearInterval(id);
-  }, [authed, fetchStatus]);
 
   const wake = async () => {
     setBusy(true);
     try {
-      const res = await fetch("/api/wake", { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
-        onWake?.();
-      } else {
-        alert("Failed: " + data.message);
-      }
-    } catch {
-      alert("Failed to send wake packet");
+      await storeWake();
     } finally {
       setBusy(false);
     }
   };
 
   const shutdown = async () => {
-    if (!confirm("Are you sure you want to shut down?")) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/shutdown", { method: "POST" });
-      const data = await res.json();
-      if (data.success) {
-        onShutdown?.();
-      } else {
-        alert("Failed: " + data.message);
-      }
-    } catch {
-      alert("Failed to send shutdown command");
+      await storeShutdown();
     } finally {
       setBusy(false);
     }
   };
 
-  if (!client) return null;
-
-  const isOnline = client.status === "online";
-  const isOffline = client.status === "offline";
-  const isWaking = client.status === "waking";
-  const isShuttingDown = client.status === "shutting_down";
+  const isOnline = clientStatus === "online";
+  const isOffline = clientStatus === "offline";
+  const isWaking = clientStatus === "waking";
+  const isShuttingDown = clientStatus === "shutting_down";
   const isBusy = busy || isWaking || isShuttingDown;
 
   const formatStatus = (s: string) => {
@@ -111,7 +46,7 @@ export function ClientStatus({
         <div>
           <div className="flex items-center gap-2">
             <span className={`font-medium ${isOnline ? "text-green-400" : isOffline ? "text-red-400" : "text-zinc-300"}`}>
-              {isOnline ? "Online" : isOffline ? "Offline" : formatStatus(client.status)}
+              {isOnline ? "Online" : isOffline ? "Offline" : formatStatus(clientStatus)}
             </span>
             {(isBusy || loading) && (
               <svg className="animate-spin h-3.5 w-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none">
@@ -120,8 +55,12 @@ export function ClientStatus({
               </svg>
             )}
           </div>
-          <div className="text-xs text-zinc-500 font-mono mt-1">{client.ip_address}</div>
-          <div className="text-[10px] text-zinc-600 font-mono">{client.mac_address}</div>
+          {clientInfo && (
+            <>
+              <div className="text-xs text-zinc-500 font-mono mt-1">{clientInfo.hostname}</div>
+              <div className="text-[10px] text-zinc-600 font-mono">{clientInfo.ip_address}</div>
+            </>
+          )}
         </div>
 
         <div>

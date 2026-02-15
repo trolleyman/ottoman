@@ -1,11 +1,11 @@
-# CLAUDE.md
+# ottoman
 
 ## Project Overview
 
 Ottoman is a home automation system for controlling a Windows/Linux desktop computer remotely from a Raspberry Pi Zero 2 W. It consists of two components that run from a single binary:
 
-- **Server** (Raspberry Pi): Web interface, Wake-on-LAN, HTTP proxy to client, periodic IP reporting
-- **Client** (Desktop): HTTP REST API for display switching with platform-specific implementations
+- **Controller** (Raspberry Pi): Web interface, Wake-on-LAN, HTTP proxy to agent, periodic IP reporting
+- **Agent** (Desktop): HTTP REST API for display switching with platform-specific implementations
 
 ## Build Commands
 
@@ -29,8 +29,9 @@ mage clean             # Remove build artifacts
 ## Run Locally
 
 ```bash
-mage runServer         # Run server locally
-mage runClient         # Run client locally
+mage runController     # Run controller locally
+mage runAgent          # Run agent locally
+mage runSimulated      # Run simulated controller + agent locally
 ```
 
 ## Project Structure
@@ -40,14 +41,14 @@ cmd/ottoman/main.go      # CLI entry point (Cobra commands)
 internal/
   config/                # Unified configuration (Viper + TOML)
     config.go            # Config loading, validation, defaults
-  server/                # Raspberry Pi server component
-    server.go            # HTTP server, routes, proxy logic
+  controller/            # Raspberry Pi controller component
+    controller.go        # HTTP server, routes, proxy logic
     wol.go               # Wake-on-LAN implementation
     config.go            # Server config wrapper
     deploy.go            # Systemd service installation
-  client/                # Desktop client component
-    client.go            # HTTP API for display control
-    config.go            # Client config wrapper
+  agent/                 # Desktop agent component
+    agent.go             # HTTP API for display control
+    config.go            # Agent config wrapper
     deploy.go            # Service registration (systemd/Windows startup)
   display/               # Display management abstraction
     display.go           # Interface & layout store
@@ -66,7 +67,7 @@ web/                     # React frontend
 
 - **Build System**: Mage (magefile.org) - tasks defined in `magefiles/magefile.go`
 - **CLI Framework**: Cobra (spf13/cobra)
-- **Configuration**: Viper with TOML format - unified `ottoman.toml` for both server and client
+- **Configuration**: Viper with TOML format - unified `ottoman.toml` for both agent and controller
 - **HTTP**: Standard library `net/http`
 - **Platform-specific code**: Build tags (`//go:build windows`, `//go:build linux`)
 - **Config search paths** (unified `ottoman.toml`):
@@ -80,9 +81,9 @@ web/                     # React frontend
 ## Deployment Commands
 
 ```bash
-mage deployClient        # Deploy client (build + copy + register service)
-mage deployServer        # Deploy server via SSH to Raspberry Pi
-mage deployAll           # Deploy client + server
+mage deployAgent         # Deploy agent (build + copy + register service)
+mage deployController    # Deploy controller via SSH to Raspberry Pi
+mage deployAll           # Deploy controller + agent
 ```
 
 Deployment settings are saved to `magefiles/deploy.toml` (gitignored).
@@ -97,19 +98,22 @@ ottoman config init      # Create default config file
 
 ## API Endpoints
 
-**Server** (port 8080):
-- `GET /health` - Health check
-- `GET /api/status` - Status with uptime
-- `POST /api/wake` - Send WoL packet (auth required)
-- `GET /api/layouts` - Proxy to client layouts
-- `POST /api/layouts/switch` - Proxy layout switch
-
-**Client** (port 8081):
-- `GET /health` - Health check
-- `GET /api/status` - Status with uptime
-- `GET /api/layouts` - List available layouts (auth required)
-- `POST /api/layouts/switch` - Switch display layout (auth required)
-- `GET /api/monitors` - List connected monitors (auth required)
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | `GET` | No | Health check |
+| `/api/status` | `GET` | Yes | Detailed status (controller or agent) |
+| `/api/status/agent` | `GET` | Agent status |
+| `/api/auth` | `POST` | No | Login with token |
+| `/api/auth/logout` | `POST` | No | Logout |
+| `/api/auth/check` | `GET` | Yes | Auth check |
+| `/api/wake` | `POST` | Wake agent (only on controller) |
+| `/api/layouts` | `GET` | Get all stored layouts |
+| `/api/layouts/switch` | `POST` | Switch to specified layout |
+| `/api/layouts/save-current` | `POST` | Save the current layout as a new layout |
+| `/api/layouts/remove` | `POST` | Remove the specified layout |
+| `/api/monitors` | `GET` | Get all monitors, including disconnected |
+| `/api/shutdown` | `POST` | Shut down agent |
+| `/api/trackpad` | `GET` | Open mouse / keyboard WebSocket controller |
 
 # Debug
 When running you may encounter `unsupported OS: MINGW64_NT-10.0-26200` - ignore this.

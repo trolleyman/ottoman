@@ -1,105 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
-import type { Layout, LayoutsResponse, SwitchResponse } from "./types";
-import { computeUniformScale, fetchJSON, sortedLayouts } from "./utils";
+import { useState } from "react";
+import { computeUniformScale } from "./utils";
 import { LayoutCard } from "./LayoutCard";
+import { useStore } from "./store";
 
-export function Layouts({
-  authed,
-  refreshSignal,
-  onChange,
-}: {
-  authed: boolean;
-  refreshSignal: { key: number; silent: boolean };
-  onChange: () => void;
-}) {
-  const [layouts, setLayouts] = useState<Layout[]>([]);
-  const [currentLayout, setCurrentLayout] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [switching, setSwitching] = useState(false);
+export function Layouts() {
+  const layouts = useStore((s) => s.layouts);
+  const currentLayout = useStore((s) => s.currentLayout);
+  const loading = useStore((s) => s.layoutsLoading);
+  const error = useStore((s) => s.layoutsError);
+  const switching = useStore((s) => s.switching);
+  const switchLayout = useStore((s) => s.switchLayout);
+  const removeLayout = useStore((s) => s.removeLayout);
+  const saveCurrentLayout = useStore((s) => s.saveCurrentLayout);
 
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [newLayoutName, setNewLayoutName] = useState("");
   const [newLayoutEmoji, setNewLayoutEmoji] = useState("");
 
-  const fetchLayouts = useCallback(async (silent: boolean) => {
-    if (!authed) return;
-    if (!silent) setLoading(true);
-    try {
-      const layoutsData = await fetchJSON<LayoutsResponse>("/api/layouts");
-      setLayouts(sortedLayouts(layoutsData.layouts ?? []));
-      setCurrentLayout(layoutsData.current_layout ?? "");
-      setError(null);
-    } catch (e) {
-      setError("Failed to load layouts");
-    } finally {
-      setLoading(false);
-    }
-  }, [authed]);
-
-  useEffect(() => {
-    fetchLayouts(refreshSignal.silent);
-  }, [fetchLayouts, refreshSignal]);
-
-  const switchLayout = async (name: string) => {
-    if (switching || name === currentLayout) return;
-    setSwitching(true);
-    try {
-      const res = await fetch("/api/layouts/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout: name }),
-      });
-      const data: SwitchResponse = await res.json();
-      if (data.success) {
-        setCurrentLayout(data.current_layout);
-        onChange();
-      } else {
-        alert(data.message || "Switch failed");
-      }
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Switch failed");
-    } finally {
-      setSwitching(false);
-    }
-  };
-
-  const removeLayout = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this layout?")) return;
-    try {
-      const res = await fetch("/api/layouts/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layout: id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchLayouts(false);
-      } else {
-        alert(data.message || "Failed to remove layout");
-      }
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to remove layout");
-    }
-  };
-
   const handleSave = async () => {
-    try {
-      const res = await fetch("/api/layouts/save-current", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newLayoutName, emoji: newLayoutEmoji }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchLayouts(false);
-      } else {
-        alert(data.message || "Failed to save layout");
-      }
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save layout");
-    }
-
+    await saveCurrentLayout(newLayoutName, newLayoutEmoji);
     setShowSaveForm(false);
     setNewLayoutName("");
     setNewLayoutEmoji("");
@@ -117,9 +36,9 @@ export function Layouts({
         {layouts.length > 0 && (
           <button
             onClick={() => setShowSaveForm(!showSaveForm)}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
+            className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors border border-zinc-700 cursor-pointer text-lg leading-none"
           >
-            {showSaveForm ? "Cancel" : "Save Current"}
+            {showSaveForm ? "\u00d7" : "+"}
           </button>
         )}
       </div>

@@ -1,0 +1,170 @@
+openapi: 3.0.3
+info:
+  title: Ottoman Controller API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: checkHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
+
+  /api/status:
+    get:
+      summary: Get system status
+      operationId: getStatus
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+
+  /api/layouts:
+    get:
+      summary: Get all layouts
+      operationId: getLayouts
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LayoutsResponse'
+
+  /api/layouts/switch:
+    post:
+      summary: Switch layout
+      operationId: switchLayout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                layout_id:
+                  type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwitchResponse'
+
+  # NOTE: This endpoint upgrades to WebSocket, but we define it here
+  # so clients know it exists. The payload types are in components.
+  /api/trackpad:
+    get:
+      summary: WebSocket Trackpad Connection
+      operationId: connectTrackpad
+      description: "Upgrades to WebSocket. Messages follow TrackpadSendArgs/TrackpadRecvArgs schemas."
+      responses:
+        '101':
+          description: Switching Protocols
+
+components:
+  schemas:
+    # --- Shared Types ---
+    StatusResponse:
+      type: object
+      required: [status, version, uptime, ip_address, port]
+      properties:
+        status: { type: string }
+        version: { type: string }
+        uptime: { type: string }
+        ip_address: { type: string }
+        port: { type: string }
+        secret: { type: string }
+
+    LayoutMonitor:
+      type: object
+      properties:
+        edid: { type: string }
+        port: { type: string }
+        width: { type: integer }
+        height: { type: integer }
+        refresh_rate: { type: integer }
+        position_x: { type: integer }
+        position_y: { type: integer }
+        primary: { type: boolean }
+
+    Layout:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        emoji: { type: string }
+        monitors:
+          type: array
+          items:
+            $ref: '#/components/schemas/LayoutMonitor'
+
+    LayoutsResponse:
+      type: object
+      properties:
+        layouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Layout'
+        current_layout: { type: string }
+
+    SwitchResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        current_layout: { type: string }
+        message: { type: string }
+
+    # --- WebSocket Types ---
+    TrackpadRecvArgs:
+      type: object
+      properties:
+        t: { type: string, enum: ["p"] }
+        x: { type: integer }
+        y: { type: integer }
+
+    # The Discriminated Union for Mouse Events
+    TrackpadSendArgs:
+      type: object
+      oneOf:
+        - $ref: '#/components/schemas/MsgMove'
+        - $ref: '#/components/schemas/MsgClick'
+        - $ref: '#/components/schemas/MsgKey'
+      discriminator:
+        propertyName: t
+        mapping:
+          m: '#/components/schemas/MsgMove'
+          c: '#/components/schemas/MsgClick'
+          k: '#/components/schemas/MsgKey'
+
+    MsgMove:
+      type: object
+      required: [t, dx, dy]
+      properties:
+        t: { type: string, enum: ["m"] }
+        dx: { type: integer }
+        dy: { type: integer }
+
+    MsgClick:
+      type: object
+      required: [t]
+      properties:
+        t: { type: string, enum: ["c", "d", "u"] }
+        btn: { type: string, enum: ["left", "right", "middle"] }
+        mod: { type: array, items: { type: string } }
+
+    MsgKey:
+      type: object
+      required: [t, text]
+      properties:
+        t: { type: string, enum: ["k"] }
+        text: { type: string }

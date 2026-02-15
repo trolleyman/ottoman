@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -219,6 +220,7 @@ func (s *SimulatedServer) setupRoutes() error {
 	// Health check (no auth required)
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /api/status", s.handleStatus)
+	s.router.HandleFunc("GET /api/status/client", s.handleClientStatus)
 
 	// Auth endpoints
 	s.router.HandleFunc("POST /api/auth", s.handleAuth)
@@ -318,39 +320,33 @@ func (s *SimulatedServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SimulatedServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+	_, port, _ := net.SplitHostPort(s.serverCfg.ListenAddr)
+	if port == "" {
+		port = "80"
+	}
+
 	uptime := time.Since(s.startTime).Round(time.Second).String()
-
-	s.mu.RLock()
-	state := s.state
-	target := s.wakeTarget
-	s.mu.RUnlock()
-
-	statusStr := "offline"
-	switch state {
-	case clientOnline:
-		statusStr = "online"
-	case clientBooting:
-		statusStr = "waking"
-	}
-
-	resp := map[string]interface{}{
+	common.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "ok",
-		"version":  "simulated",
+		"version":  "dev",
 		"uptime":   uptime,
-		"local_ip": "127.0.0.1",
-		"port":     "8080",
+		"local_ip": s.wakeTarget.IPAddress,
+		"port":     port,
 		"secret":   "simulated-secret",
-	}
+	})
+}
 
-	if target != nil {
-		resp["client"] = map[string]string{
-			"ip_address":  target.IPAddress,
-			"mac_address": target.MACAddress,
-			"status":      statusStr,
-		}
-	}
-
-	common.WriteJSON(w, http.StatusOK, resp)
+// handleStatus returns detailed status
+func (c *SimulatedServer) handleClientStatus(w http.ResponseWriter, r *http.Request) {
+	hostname, _ := os.Hostname()
+	uptime := time.Since(c.startTime).Round(time.Second).String()
+	common.WriteJSON(w, http.StatusOK, common.StatusResponse{
+		Status:    "ok",
+		Version:   "dev",
+		Uptime:    uptime,
+		Hostname:  hostname,
+		IPAddress: getOutboundIP(),
+	})
 }
 
 func (s *SimulatedServer) handleAuth(w http.ResponseWriter, r *http.Request) {
