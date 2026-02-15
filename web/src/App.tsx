@@ -21,15 +21,6 @@ export default function App() {
       .catch(() => setAuthed(false));
   }, []);
 
-  // Periodic refresh
-  useEffect(() => {
-    if (!authed) return;
-    const interval = setInterval(() => {
-      setRefreshSignal((prev) => ({ key: prev.key + 1, silent: true }));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [authed]);
-
   const refresh = useCallback(() => {
     setRefreshSignal((prev) => ({ key: prev.key + 1, silent: false }));
   }, []);
@@ -37,6 +28,15 @@ export default function App() {
   const refreshSilent = useCallback(() => {
     setRefreshSignal((prev) => ({ key: prev.key + 1, silent: true }));
   }, []);
+
+  // Periodic refresh
+  useEffect(() => {
+    if (!authed) return;
+    const interval = setInterval(() => {
+      refreshSilent();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [authed]);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });

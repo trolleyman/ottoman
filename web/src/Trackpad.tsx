@@ -584,7 +584,6 @@ export function Trackpad({
   const [currentLayout, setCurrentLayout] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [clientName, setClientName] = useState("");
   const [settings, setSettings] = useState<TrackpadSettings>({
     cursorSensitivity: 1.5,
     cursorFriction: 0.92,
@@ -632,9 +631,6 @@ export function Trackpad({
     const checkLocalConnection = async () => {
       try {
         const status = await fetchJSON<StatusResponse & { hostname?: string }>("/api/status");
-        if (status.hostname) {
-          setClientName(status.hostname);
-        }
         if (status.local_ip && status.port) {
           // If we are already on the local IP, do nothing
           if (window.location.hostname === status.local_ip) return;
@@ -664,7 +660,7 @@ export function Trackpad({
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          {clientName || "Trackpad"}
+          {"Trackpad"}
           <span
             className={`inline-block w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-400"
               }`}
