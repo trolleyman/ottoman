@@ -33,15 +33,45 @@ export function Layouts() {
             <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
           )}
         </h2>
-        {layouts.length > 0 && (
-          <button
-            onClick={() => setShowSaveForm(!showSaveForm)}
-            className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors border border-zinc-700 cursor-pointer text-lg leading-none"
-          >
-            {showSaveForm ? "\u00d7" : "+"}
-          </button>
-        )}
+        <button
+          onClick={() => setShowSaveForm(!showSaveForm)}
+          className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors border border-zinc-700 cursor-pointer text-lg leading-none"
+        >
+          {showSaveForm ? "\u00d7" : "+"}
+        </button>
       </div>
+
+      {showSaveForm && (
+        <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+          <div className="flex-1 w-full">
+            <label className="block text-xs text-zinc-500 mb-1">Name</label>
+            <input
+              type="text"
+              value={newLayoutName}
+              onChange={(e) => setNewLayoutName(e.target.value)}
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+              placeholder="My Layout"
+            />
+          </div>
+          <div className="w-full sm:w-24">
+            <label className="block text-xs text-zinc-500 mb-1">Emoji</label>
+            <input
+              type="text"
+              value={newLayoutEmoji}
+              onChange={(e) => setNewLayoutEmoji(e.target.value)}
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
+              placeholder="🖥️"
+            />
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={!newLayoutName.trim()}
+            className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            Save
+          </button>
+        </div>
+      )}
 
       {loading && layouts.length === 0 && !error ? (
         <div className="text-zinc-500 text-sm">Loading layouts...</div>
@@ -52,53 +82,19 @@ export function Layouts() {
       ) : (() => {
         const layoutScale = computeUniformScale(layouts, 500, 300);
         return (
-          <>
-            {showSaveForm && (
-              <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                <div className="flex-1 w-full">
-                  <label className="block text-xs text-zinc-500 mb-1">Name</label>
-                  <input
-                    type="text"
-                    value={newLayoutName}
-                    onChange={(e) => setNewLayoutName(e.target.value)}
-                    className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
-                    placeholder="My Layout"
-                  />
-                </div>
-                <div className="w-full sm:w-24">
-                  <label className="block text-xs text-zinc-500 mb-1">Emoji</label>
-                  <input
-                    type="text"
-                    value={newLayoutEmoji}
-                    onChange={(e) => setNewLayoutEmoji(e.target.value)}
-                    className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500"
-                    placeholder="🖥️"
-                  />
-                </div>
-                <button
-                  onClick={handleSave}
-                  disabled={!newLayoutName.trim()}
-                  className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Save
-                </button>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3">
-              {layouts.map((l) => (
-                <LayoutCard
-                  key={l.id}
-                  layout={l}
-                  isCurrent={l.id === currentLayout}
-                  disabled={switching}
-                  scale={layoutScale}
-                  onClick={() => switchLayout(l.id)}
-                  onDelete={() => removeLayout(l.id)}
-                />
-              ))}
-            </div>
-          </>
+          <div className="flex flex-wrap gap-3">
+            {layouts.map((l) => (
+              <LayoutCard
+                key={l.id}
+                layout={l}
+                isCurrent={l.id === currentLayout}
+                disabled={switching}
+                scale={layoutScale}
+                onClick={() => switchLayout(l.id)}
+                onDelete={() => removeLayout(l.id)}
+              />
+            ))}
+          </div>
         );
       })()}
     </section>
