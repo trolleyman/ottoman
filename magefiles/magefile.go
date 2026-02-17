@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -71,21 +70,6 @@ var (
 	logMaxSize    = int64(5 * 1024 * 1024) // 5MB per file
 	logMaxBackups = 5
 )
-
-func init() {
-	// Ensure log directory exists and initialize logger
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		log.Printf("warning: could not create log dir %s: %v\n", logDir, err)
-		return
-	}
-	rl, err := NewRotatingLogger(filepath.Join(logDir, "ottoman.log"), logMaxSize, logMaxBackups)
-	if err != nil {
-		log.Printf("warning: could not create rotating logger: %v\n", err)
-		return
-	}
-	log.SetOutput(io.MultiWriter(os.Stderr, rl))
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-}
 
 // getDefaultLogDir returns the preferred log directory depending on OS.
 func getDefaultLogDir() string {
@@ -302,16 +286,25 @@ func formatPathPair(src, dst string) string {
 
 // run runs a command silently (no stdout/stderr forwarding), printing "Running: ..." first.
 func run(cmd string, args ...string) error {
-	log.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
 	if err := sh.Run(cmd, args...); err != nil {
 		return fmt.Errorf("failed to run %q: %w", cmd, err)
 	}
 	return nil
 }
 
+// start starts a comand in the background, with no stdout/stderr forwarding, printing "Starting..." first.
+func start(cmd string, args ...string) error {
+	fmt.Printf("%s%sStarting:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	if err := exec.Command(cmd, args...).Start(); err != nil {
+		return fmt.Errorf("failed to start %q: %w", cmd, err)
+	}
+	return nil
+}
+
 // runV runs a command with stdout/stderr forwarded, printing "Running: ..." first.
 func runV(cmd string, args ...string) error {
-	log.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
 	if err := sh.RunV(cmd, args...); err != nil {
 		return fmt.Errorf("failed to run %q: %w", cmd, err)
 	}
@@ -320,7 +313,7 @@ func runV(cmd string, args ...string) error {
 
 // runWithEnv runs a command with environment variables set, printing "Running: ..." first.
 func runWithEnv(env map[string]string, cmd string, args ...string) error {
-	log.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
 	if err := sh.RunWith(env, cmd, args...); err != nil {
 		return fmt.Errorf("failed to run %q: %w", cmd, err)
 	}
@@ -329,7 +322,7 @@ func runWithEnv(env map[string]string, cmd string, args ...string) error {
 
 // runInDir runs a command in a specific directory, printing "Running: ... (in dir)" first.
 func runInDir(dir string, cmd string, args ...string) error {
-	log.Printf("%s%sRunning:%s %s (in %s)\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...), displayPath(dir))
+	fmt.Printf("%s%sRunning:%s %s (in %s)\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...), displayPath(dir))
 	c := exec.Command(cmd, args...)
 	c.Dir = dir
 	c.Stdout = os.Stdout
@@ -343,7 +336,7 @@ func runInDir(dir string, cmd string, args ...string) error {
 // copyFile copies a file from src to dst, printing "Copying: ..." first.
 // Creates destination directories as needed and removes existing dst on Windows.
 func copyFile(src, dst string) error {
-	log.Printf("%s%sCopying:%s %s\n", colorBold, colorGreen, colorReset, formatPathPair(src, dst))
+	fmt.Printf("%s%sCopying:%s %s\n", colorBold, colorGreen, colorReset, formatPathPair(src, dst))
 
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -371,7 +364,7 @@ func copyFile(src, dst string) error {
 // moveFile moves (renames) a file from src to dst, printing "Moving: ..." first.
 // Creates destination directories as needed.
 func moveFile(src, dst string) error {
-	log.Printf("%s%sMoving:%s %s\n", colorBold, colorYellow, colorReset, formatPathPair(src, dst))
+	fmt.Printf("%s%sMoving:%s %s\n", colorBold, colorYellow, colorReset, formatPathPair(src, dst))
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return err
@@ -440,7 +433,7 @@ func BuildAll() error {
 	buildDeps()
 
 	version := getVersion()
-	log.Printf("Version: %s\n\n", version)
+	fmt.Printf("Version: %s\n\n", version)
 
 	for _, target := range targets {
 		if err := buildTarget(target, version); err != nil {
@@ -448,7 +441,7 @@ func BuildAll() error {
 		}
 	}
 
-	log.Println("\nBuild complete!")
+	fmt.Println("\nBuild complete!")
 	return nil
 }
 
@@ -457,7 +450,7 @@ func BuildPi() error {
 	buildDeps()
 
 	version := getVersion()
-	log.Printf("Version: %s\n\n", version)
+	fmt.Printf("Version: %s\n\n", version)
 
 	return buildTarget(targets["pi"], version)
 }
@@ -467,7 +460,7 @@ func BuildWindows() error {
 	buildDeps()
 
 	version := getVersion()
-	log.Printf("Version: %s\n\n", version)
+	fmt.Printf("Version: %s\n\n", version)
 
 	return buildTarget(targets["windows"], version)
 }
@@ -477,7 +470,7 @@ func BuildLinux() error {
 	buildDeps()
 
 	version := getVersion()
-	log.Printf("Version: %s\n\n", version)
+	fmt.Printf("Version: %s\n\n", version)
 
 	return buildTarget(targets["linux"], version)
 }
@@ -523,7 +516,7 @@ func RunController() error {
 	} else if err != nil {
 		return fmt.Errorf("failed to read %q: %w", controllerConfigFile, err)
 	} else {
-		log.Printf("Loading existing config: %s\n", controllerConfigFile)
+		fmt.Printf("Loading existing config: %s\n", controllerConfigFile)
 	}
 	return runV("go", "run", "./cmd/ottoman", "--config", controllerConfigFile, "controller", "run")
 }
@@ -541,7 +534,7 @@ func RunAgent() error {
 	} else if err != nil {
 		return fmt.Errorf("failed to read %q: %w", agentConfigFile, err)
 	} else {
-		log.Printf("Loading existing config: %s\n", agentConfigFile)
+		fmt.Printf("Loading existing config: %s\n", agentConfigFile)
 	}
 	return runV("go", "run", "./cmd/ottoman", "--config", agentConfigFile, "agent", "run")
 }
@@ -627,9 +620,9 @@ func saveDeployConfig(cfg *DeployConfig) error {
 // prompt asks for user input with a default value
 func prompt(reader *bufio.Reader, question, defaultVal string) string {
 	if defaultVal != "" {
-		log.Printf("%s [%s]: ", question, defaultVal)
+		fmt.Printf("%s [%s]: ", question, defaultVal)
 	} else {
-		log.Printf("%s: ", question)
+		fmt.Printf("%s: ", question)
 	}
 
 	answer, _ := reader.ReadString('\n')
@@ -678,7 +671,7 @@ func defaultClientBinaryPath() string {
 // DeployAgent builds and deploys the agent locally.
 // Interactively asks for settings and saves them to magefiles/deploy.toml.
 func DeployAgent() error {
-	log.Println("=== Ottoman Agent Deployment ===\n")
+	fmt.Println("=== Ottoman Agent Deployment ===\n")
 
 	agentConfigPath := filepath.Join("magefiles", "deploy_agent.toml")
 	reconfigure := hasFlag("--config")
@@ -688,14 +681,14 @@ func DeployAgent() error {
 	// Load existing config
 	cfg, err := loadDeployConfig()
 	if err != nil {
-		log.Printf("Warning: %v\n", err)
+		fmt.Printf("Warning: %v\n", err)
 		cfg = &DeployConfig{}
 	}
 
 	if !reconfigure && deployConfigExists && agentConfigExists {
-		log.Printf("Using existing deployment config: %s\n", deployConfigPath)
+		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
 		if content, err := os.ReadFile(deployConfigPath); err == nil {
-			log.Println(string(content))
+			fmt.Println(string(content))
 		}
 	} else {
 		reader := bufio.NewReader(os.Stdin)
@@ -711,7 +704,7 @@ func DeployAgent() error {
 		if err := saveDeployConfig(cfg); err != nil {
 			return err
 		}
-		log.Printf("\nSaved deploy config to %s\n", deployConfigPath)
+		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
 
 		// Generate agent config via config init
 		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "agent", "--output", agentConfigPath); err != nil {
@@ -721,11 +714,11 @@ func DeployAgent() error {
 
 	// Stop existing service/process to allow binary overwrite
 	if runtime.GOOS == "windows" {
-		exec.Command("schtasks", "/End", "/TN", "OttomanAgent").Run()
+		run("schtasks", "/End", "/TN", "OttomanAgent")
 		// Force kill to ensure file is released
-		exec.Command("taskkill", "/F", "/IM", "ottoman.exe").Run()
+		run("taskkill", "/F", "/IM", "ottoman.exe")
 	} else {
-		exec.Command("systemctl", "--user", "stop", "ottoman-agent").Run()
+		run("systemctl", "--user", "stop", "ottoman-agent")
 	}
 
 	// Build for current platform
@@ -765,21 +758,21 @@ func DeployAgent() error {
 
 	// Start services on Windows
 	if runtime.GOOS == "windows" {
-		log.Println("Starting OttomanAgent task...")
-		if err := exec.Command("schtasks", "/Run", "/TN", "OttomanAgent").Run(); err != nil {
-			log.Printf("Warning: failed to start task: %v\n", err)
+		fmt.Println("Starting OttomanAgent task...")
+		if err := run("schtasks", "/Run", "/TN", "OttomanAgent"); err != nil {
+			fmt.Printf("Warning: failed to start task: %v\n", err)
 		}
 
-		log.Println("Starting AHK script...")
+		fmt.Println("Starting AHK script...")
 		if appData := os.Getenv("APPDATA"); appData != "" {
 			ahkVbsPath := filepath.Join(appData, "ottoman", "ottoman-ahk.vbs")
 			if err := exec.Command("wscript", "//nologo", ahkVbsPath).Start(); err != nil {
-				log.Printf("Warning: failed to start AHK script: %v\n", err)
+				fmt.Printf("Warning: failed to start AHK script: %v\n", err)
 			}
 		}
 	}
 
-	log.Println("\n=== Agent deployment complete! ===")
+	fmt.Println("\n=== Agent deployment complete! ===")
 	return nil
 }
 
@@ -801,7 +794,7 @@ func defaultConfigPath() string {
 // Interactively asks for deployment settings (saved to magefiles/deploy.toml)
 // and delegates controller config creation to `ottoman config init controller`.
 func DeployController() error {
-	log.Println("=== Ottoman Controller Deployment ===\n")
+	fmt.Println("=== Ottoman Controller Deployment ===\n")
 
 	controllerConfigPath := filepath.Join("magefiles", "deploy_controller.toml")
 	reconfigure := hasFlag("--config")
@@ -811,20 +804,20 @@ func DeployController() error {
 	// Load existing deploy config
 	cfg, err := loadDeployConfig()
 	if err != nil {
-		log.Printf("Warning: %v\n", err)
+		fmt.Printf("Warning: %v\n", err)
 		cfg = &DeployConfig{}
 	}
 
 	if !reconfigure && deployConfigExists && controllerConfigExists {
-		log.Printf("Using existing deployment config: %s\n", deployConfigPath)
+		fmt.Printf("Using existing deployment config: %s\n", deployConfigPath)
 		if content, err := os.ReadFile(deployConfigPath); err == nil {
-			log.Println(string(content))
+			fmt.Println(string(content))
 		}
 	} else {
 		reader := bufio.NewReader(os.Stdin)
 
 		// Prompt for deployment settings
-		log.Println("--- Deployment Settings ---")
+		fmt.Println("--- Deployment Settings ---")
 
 		if cfg.Controller.SSHTarget == "" {
 			cfg.Controller.SSHTarget = prompt(reader, "SSH target (user@host)", "")
@@ -849,7 +842,7 @@ func DeployController() error {
 		if err := saveDeployConfig(cfg); err != nil {
 			return err
 		}
-		log.Printf("\nSaved deploy config to %s\n", deployConfigPath)
+		fmt.Printf("\nSaved deploy config to %s\n", deployConfigPath)
 
 		// Generate controller config via config init
 		if err := runV("go", "run", "./cmd/ottoman", "config", "init", "controller", "--output", controllerConfigPath); err != nil {
@@ -907,7 +900,7 @@ func DeployController() error {
 
 	// Enable lingering to ensure service starts on boot
 	if err := run("ssh", cfg.Controller.SSHTarget, "loginctl enable-linger"); err != nil {
-		log.Printf("Warning: failed to enable lingering: %v\n", err)
+		fmt.Printf("Warning: failed to enable lingering: %v\n", err)
 	}
 
 	// Restart service
@@ -916,12 +909,12 @@ func DeployController() error {
 	}
 
 	// Checking status
-	log.Println("\nDeployed - checking status:")
+	fmt.Println("\nDeployed - checking status:")
 	if err := run("ssh", cfg.Controller.SSHTarget, "systemctl --user status ottoman-controller"); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
-	log.Println("\n=== Controller deployment complete! ===")
+	fmt.Println("\n=== Controller deployment complete! ===")
 	return nil
 }
 
@@ -958,7 +951,7 @@ func (Generate) All() {
 
 // Go generates the Go server interface and types
 func (Generate) Go() error {
-	log.Println("🚀 Generating Go API...")
+	fmt.Println("🚀 Generating Go API...")
 
 	// Ensure internal/api exists
 	if err := os.MkdirAll("internal/api", 0755); err != nil {
@@ -973,7 +966,7 @@ func (Generate) Go() error {
 
 // TypeScript generates the React client
 func (Generate) TypeScript() error {
-	log.Println("🚀 Generating TypeScript Client...")
+	fmt.Println("🚀 Generating TypeScript Client...")
 
 	// Ensure web/src/api exists
 	if err := os.MkdirAll("web/src/api", 0755); err != nil {
