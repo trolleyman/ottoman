@@ -231,6 +231,8 @@ MIT
    - when hiding the keyboard on the trackpad on mobile, this should unfocus the trackpad.
    - triple click and drag is needed to drag on mobile
    - local IP pinging and redirect not working
+   - scrolling on macOS/phone -> Windows is not precise
+   - sometimes two finger scroll finishing makes mouse jump up quite far
 - major features
    - add brightness settings first to CLI, then to UI
       - HDMI
