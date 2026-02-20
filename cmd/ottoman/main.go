@@ -600,9 +600,9 @@ Examples:
 // promptInput asks for user input with an optional default value
 func promptInput(reader *bufio.Reader, question, defaultVal string) (string, error) {
 	if defaultVal != "" {
-		log.Printf("%s [%s]: ", question, defaultVal)
+		fmt.Printf("%s [%s]: ", question, defaultVal)
 	} else {
-		log.Printf("%s: ", question)
+		fmt.Printf("%s: ", question)
 	}
 	answer, err := reader.ReadString('\n')
 	if err != nil {
