@@ -171,6 +171,15 @@ func run(cmd string, args ...string) error {
 	return nil
 }
 
+// start starts a comand in the background, with no stdout/stderr forwarding, printing "Starting..." first.
+func start(cmd string, args ...string) error {
+	fmt.Printf("%s%sStarting:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	if err := exec.Command(cmd, args...).Start(); err != nil {
+		return fmt.Errorf("failed to start %q: %w", cmd, err)
+	}
+	return nil
+}
+
 // runV runs a command with stdout/stderr forwarded, printing "Running: ..." first.
 func runV(cmd string, args ...string) error {
 	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
@@ -583,11 +592,11 @@ func DeployAgent() error {
 
 	// Stop existing service/process to allow binary overwrite
 	if runtime.GOOS == "windows" {
-		exec.Command("schtasks", "/End", "/TN", "OttomanAgent").Run()
+		run("schtasks", "/End", "/TN", "OttomanAgent")
 		// Force kill to ensure file is released
-		exec.Command("taskkill", "/F", "/IM", "ottoman.exe").Run()
+		run("taskkill", "/F", "/IM", "ottoman.exe")
 	} else {
-		exec.Command("systemctl", "--user", "stop", "ottoman-agent").Run()
+		run("systemctl", "--user", "stop", "ottoman-agent")
 	}
 
 	// Build for current platform
@@ -628,7 +637,7 @@ func DeployAgent() error {
 	// Start services on Windows
 	if runtime.GOOS == "windows" {
 		fmt.Println("Starting OttomanAgent task...")
-		if err := exec.Command("schtasks", "/Run", "/TN", "OttomanAgent").Run(); err != nil {
+		if err := run("schtasks", "/Run", "/TN", "OttomanAgent"); err != nil {
 			fmt.Printf("Warning: failed to start task: %v\n", err)
 		}
 

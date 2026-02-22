@@ -229,6 +229,10 @@ MIT
 - bugs
    - when clicking and dragging the trackpad, the trackpad doesn't grab input - it should grab as soon as I click on it so that I can click and drag and the cursor will move
    - when hiding the keyboard on the trackpad on mobile, this should unfocus the trackpad.
+   - triple click and drag is needed to drag on mobile
+   - local IP pinging and redirect not working
+   - scrolling on macOS/phone -> Windows is not precise
+   - sometimes two finger scroll finishing makes mouse jump up quite far
 - major features
    - add brightness settings first to CLI, then to UI
       - HDMI
@@ -237,6 +241,8 @@ MIT
    - streaming of monitors!! that'd be awesome
       - potentially turn on and off for each individual montior to save streaming costs
       - RDP?
+   - also UDP rather than TCP for streaming mouse positions and also controlling mouse to make it more performant
+   - volume slider to control volume
 - minor features
    - Add HDR info at least of monitors
    - Add monitor logical size to monitor info (e.g. `XxY (X2xY2 @ Nx)` - `2680x1400 (1920x1080 @ 2x)` - dimensions are wrong here but give impression)
