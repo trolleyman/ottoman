@@ -15,6 +15,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
+	"github.com/trolleyman/ottoman/internal/common"
 )
 
 // monitorCache stores cached xrandr output
@@ -69,16 +70,27 @@ func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
 	return monitors, nil
 }
 
+func runXrandrQuery() (string, error) {
+	logRunning("xrandr", "--query")
+	stdout, stderr, err := common.RunCmdAllOutput("xrandr", "--query")
+	if err != nil {
+		combinedOutput := strings.TrimSpace(fmt.Sprintf("%s\n%s", stdout, stderr))
+		if combinedOutput != "" {
+			combinedOutput = fmt.Sprintf(": %s", combinedOutput)
+		}
+		return "", errors.Wrapf(err, "xrandr query failed%s", combinedOutput)
+	}
+	return stdout, nil
+}
+
 // queryXrandr runs xrandr and parses the output
 func (m *LinuxManager) queryXrandr() ([]api.Monitor, error) {
-	logRunning("xrandr", "--query")
-	cmd := exec.Command("xrandr", "--query")
-	output, err := cmd.Output()
+	output, err := runXrandrQuery()
 	if err != nil {
-		return nil, errors.Wrap(err, "xrandr query failed")
+		return nil, err
 	}
 
-	monitors, err := parseXrandrOutput(string(output))
+	monitors, err := parseXrandrOutput(output)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse xrandr output")
 	}
@@ -276,13 +288,10 @@ func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.
 // GetAvailableModes returns available modes for a monitor
 // Note: This always queries xrandr since it's not used in hot paths
 func (m *LinuxManager) GetAvailableModes(monitorName string) ([]ModeInfo, error) {
-	logRunning("xrandr", "--query")
-	cmd := exec.Command("xrandr", "--query")
-	output, err := cmd.Output()
+	output, err := runXrandrQuery()
 	if err != nil {
-		return nil, errors.Wrap(err, "xrandr query failed")
+		return nil, err
 	}
-
 	return parseMonitorModes(string(output), monitorName)
 }
 

@@ -133,8 +133,6 @@ func (r *RotatingLogger) enforceBackups() error {
 	return nil
 }
 
-// --- exec.Command logging utilities ---
-
 // ShellQuoteForce wraps a string in quotes for display as a shell argument.
 func ShellQuoteForce(s string) string {
 	containsDoubleQuote := strings.Contains(s, `"`)
@@ -218,6 +216,22 @@ func RunCmdOutput(name string, args ...string) (string, error) {
 		return stdout.String(), errors.Wrapf(err, "failed to run %s", name)
 	}
 	return stdout.String(), nil
+}
+
+// RunCmdAllOutput executes a command, logging it, and returns stdout and stderr.
+func RunCmdAllOutput(name string, args ...string) (string, string, error) {
+	log.Printf("Running: %s", FormatCmd(name, args...))
+	cmd := exec.Command(name, args...)
+
+	var stdout, stderr bytes.Buffer
+	err := cmd.Run()
+	logOutput("[stderr]", stderr.String())
+	logOutput("[stdout]", stdout.String())
+
+	if err != nil {
+		return stdout.String(), stderr.String(), errors.Wrapf(err, "failed to run %s", name)
+	}
+	return stdout.String(), stderr.String(), nil
 }
 
 // RunCmdSilent executes a command, logging it but ignoring errors.

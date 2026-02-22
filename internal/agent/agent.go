@@ -258,7 +258,7 @@ func minIntAlias(aliases []string) *int {
 // SwitchLayout implements api.StrictServerInterface
 func (a *Agent) SwitchLayout(ctx context.Context, request api.SwitchLayoutRequestObject) (api.SwitchLayoutResponseObject, error) {
 	if request.Body == nil || request.Body.Layout == "" {
-		return api.SwitchLayout400JSONResponse{Error: "layout name is required"}, nil
+		return api.SwitchLayout400JSONResponse{Code: 400, Error: "layout name is required"}, nil
 	}
 	layoutName := request.Body.Layout
 
@@ -266,17 +266,17 @@ func (a *Agent) SwitchLayout(ctx context.Context, request api.SwitchLayoutReques
 
 	layouts := a.layouts.FindByIDOrAlias(layoutName)
 	if len(layouts) == 0 {
-		return api.SwitchLayout404JSONResponse{Error: fmt.Sprintf("layout %q not found", layoutName)}, nil
+		return api.SwitchLayout404JSONResponse{Code: 404, Error: fmt.Sprintf("layout %q not found", layoutName)}, nil
 	}
 	if len(layouts) > 1 {
-		return api.SwitchLayout400JSONResponse{Error: fmt.Sprintf("layout %q is ambiguous", layoutName)}, nil
+		return api.SwitchLayout400JSONResponse{Code: 400, Error: fmt.Sprintf("layout %q is ambiguous", layoutName)}, nil
 	}
 
 	layout := layouts[0]
 
 	if err := a.displayMgr.ApplyLayoutConfig(layout); err != nil {
 		log.Printf("Failed to apply layout: %v", err)
-		return api.SwitchLayout500JSONResponse{Error: err.Error()}, nil
+		return api.SwitchLayout500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}
 
 	a.currentLayout = layoutName
@@ -315,7 +315,7 @@ func (a *Agent) GetCurrentLayout(ctx context.Context, request api.GetCurrentLayo
 // SaveCurrentLayout implements api.StrictServerInterface
 func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLayoutRequestObject) (api.SaveCurrentLayoutResponseObject, error) {
 	if request.Body == nil || request.Body.Name == "" {
-		return api.SaveCurrentLayout400JSONResponse{Error: "name is required"}, nil
+		return api.SaveCurrentLayout400JSONResponse{Code: 400, Error: "name is required"}, nil
 	}
 	name := request.Body.Name
 	id := ""
@@ -331,7 +331,7 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 	// Get current monitor state to save
 	monitors, err := a.displayMgr.ListMonitors()
 	if err != nil {
-		return api.SaveCurrentLayout500JSONResponse{Error: "failed to get current monitors"}, nil
+		return api.SaveCurrentLayout500JSONResponse{Code: 500, Error: "failed to get current monitors"}, nil
 	}
 
 	// Convert Monitor to LayoutMonitor config
@@ -365,7 +365,7 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 	// Save to config file
 	if err := a.saveLayouts(); err != nil {
 		log.Printf("Failed to save layouts: %v", err)
-		return api.SaveCurrentLayout500JSONResponse{Error: "failed to save layout"}, nil
+		return api.SaveCurrentLayout500JSONResponse{Code: 500, Error: "failed to save layout"}, nil
 	}
 
 	return api.SaveCurrentLayout200JSONResponse{
@@ -377,12 +377,12 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 // RemoveLayout implements api.StrictServerInterface
 func (a *Agent) RemoveLayout(ctx context.Context, request api.RemoveLayoutRequestObject) (api.RemoveLayoutResponseObject, error) {
 	if request.Body == nil || request.Body.Layout == "" {
-		return api.RemoveLayout400JSONResponse{Error: "layout name is required"}, nil
+		return api.RemoveLayout400JSONResponse{Code: 400, Error: "layout name is required"}, nil
 	}
 	layoutName := request.Body.Layout
 
 	if _, ok := a.layouts.Get(layoutName); !ok {
-		return api.RemoveLayout404JSONResponse{Error: fmt.Sprintf("layout %q not found", layoutName)}, nil
+		return api.RemoveLayout404JSONResponse{Code: 404, Error: fmt.Sprintf("layout %q not found", layoutName)}, nil
 	}
 
 	log.Printf("Removing layout: %s", layoutName)
@@ -394,7 +394,7 @@ func (a *Agent) RemoveLayout(ctx context.Context, request api.RemoveLayoutReques
 
 	if err := a.saveLayouts(); err != nil {
 		log.Printf("Failed to save layouts: %v", err)
-		return api.RemoveLayout500JSONResponse{Error: "failed to save config"}, nil
+		return api.RemoveLayout500JSONResponse{Code: 500, Error: "failed to save config"}, nil
 	}
 
 	msg := fmt.Sprintf("Removed layout: %s", layoutName)
@@ -408,7 +408,7 @@ func (a *Agent) RemoveLayout(ctx context.Context, request api.RemoveLayoutReques
 func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
 	monitors, err := a.displayMgr.ListMonitors()
 	if err != nil {
-		return api.GetMonitors502JSONResponse{Error: err.Error()}, nil
+		return api.GetMonitors502JSONResponse{Code: 502, Error: err.Error()}, nil
 	}
 
 	var apiMonitors []api.Monitor
@@ -474,22 +474,22 @@ func (a *Agent) ConnectTrackpad(ctx context.Context, request api.ConnectTrackpad
 
 // Wake implements api.StrictServerInterface (stub)
 func (a *Agent) Wake(ctx context.Context, request api.WakeRequestObject) (api.WakeResponseObject, error) {
-	return api.Wake404JSONResponse{Error: "not supported on agent"}, nil
+	return api.Wake404JSONResponse{Code: 404, Error: "not supported on agent"}, nil
 }
 
 // SimReset implements api.StrictServerInterface (stub)
 func (a *Agent) SimReset(ctx context.Context, request api.SimResetRequestObject) (api.SimResetResponseObject, error) {
-	return api.SimReset404JSONResponse{Error: "not supported on agent"}, nil
+	return api.SimReset404JSONResponse{Code: 404, Error: "not supported on agent"}, nil
 }
 
 // SimSetState implements api.StrictServerInterface (stub)
 func (a *Agent) SimSetState(ctx context.Context, request api.SimSetStateRequestObject) (api.SimSetStateResponseObject, error) {
-	return api.SimSetState404JSONResponse{Error: "not supported on agent"}, nil
+	return api.SimSetState404JSONResponse{Code: 404, Error: "not supported on agent"}, nil
 }
 
 // SimState implements api.StrictServerInterface (stub)
 func (a *Agent) SimState(ctx context.Context, request api.SimStateRequestObject) (api.SimStateResponseObject, error) {
-	return api.SimState404JSONResponse{Error: "not supported on agent"}, nil
+	return api.SimState404JSONResponse{Code: 404, Error: "not supported on agent"}, nil
 }
 
 // handleTrackpad handles WebSocket connections for trackpad input
