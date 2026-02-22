@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/trolleyman/ottoman/internal/common"
 )
 
 // InstallPaths returns the installation paths for the current platform
@@ -98,23 +99,33 @@ func installLinuxService() error {
 	}
 
 	// Reload and enable
-	if err := run("systemctl", "--user", "daemon-reload"); err != nil {
+	if err := common.RunCmd("systemctl", "--user", "daemon-reload"); err != nil {
 		return err
 	}
 
-	if err := run("systemctl", "--user", "enable", "ottoman-agent"); err != nil {
+	if err := common.RunCmd("systemctl", "--user", "enable", "ottoman-agent"); err != nil {
 		return err
 	}
+
+	// Enable lingering so user services start on boot
+	if err := common.RunCmd("loginctl", "enable-linger"); err != nil {
+		log.Printf("Warning: failed to enable linger: %v", err)
+	}
+
+	// Restart the service
+	if err := common.RunCmd("systemctl", "--user", "restart", "ottoman-agent"); err != nil {
+		return err
+	}
+
+	// Print status
+	common.RunCmdSilent("systemctl", "--user", "status", "ottoman-agent")
 
 	log.Println("Service installed successfully!")
 	log.Println()
 	log.Println("Commands:")
-	log.Println("  Start:   systemctl --user start ottoman-agent")
 	log.Println("  Stop:    systemctl --user stop ottoman-agent")
 	log.Println("  Status:  systemctl --user status ottoman-agent")
 	log.Println("  Logs:    journalctl --user -u ottoman-agent -f")
-	log.Println()
-	log.Println("To start on boot, run: loginctl enable-linger")
 
 	return nil
 }
@@ -215,10 +226,10 @@ func installWindowsService() error {
 	}
 
 	// Clean up previous installations (ignore errors)
-	exec.Command("schtasks", "/End", "/TN", "OttomanAgent").Run()
-	exec.Command("schtasks", "/Delete", "/TN", "OttomanAgent", "/F").Run()
-	exec.Command("schtasks", "/End", "/TN", "OttomanHotkeys").Run()
-	exec.Command("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F").Run()
+	common.RunCmdSilent("schtasks", "/End", "/TN", "OttomanAgent")
+	common.RunCmdSilent("schtasks", "/Delete", "/TN", "OttomanAgent", "/F")
+	common.RunCmdSilent("schtasks", "/End", "/TN", "OttomanHotkeys")
+	common.RunCmdSilent("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F")
 
 	// Create VBS launcher for Agent (to hide window)
 	agentVbsPath := filepath.Join(configDir, "ottoman-agent.vbs")
@@ -302,15 +313,15 @@ func uninstallLinuxService() error {
 	home := os.Getenv("HOME")
 
 	// Stop and disable
-	run("systemctl", "--user", "stop", "ottoman-agent")
-	run("systemctl", "--user", "disable", "ottoman-agent")
+	common.RunCmdSilent("systemctl", "--user", "stop", "ottoman-agent")
+	common.RunCmdSilent("systemctl", "--user", "disable", "ottoman-agent")
 
 	// Remove service file
 	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-agent.service")
 	os.Remove(servicePath)
 
 	// Reload
-	run("systemctl", "--user", "daemon-reload")
+	common.RunCmdSilent("systemctl", "--user", "daemon-reload")
 
 	log.Println("Service uninstalled.")
 	return nil
@@ -336,66 +347,14 @@ func uninstallWindowsService() error {
 	return nil
 }
 
-// Quotes a string for display as a shell argument.
-func shellQuoteForce(s string) string {
-	containsDoubleQuote := strings.Contains(s, `"`)
-	containsSingleQuote := strings.Contains(s, `'`)
-	escaped := strings.ReplaceAll(s, "\t", `\t`)
-	escaped = strings.ReplaceAll(s, `\`, `\\`)
-	if !containsDoubleQuote {
-		return `"` + escaped + `"`
-	} else if !containsSingleQuote {
-		return `'` + escaped + `'`
-	} else {
-		return `"` + strings.ReplaceAll(escaped, `"`, `\"`) + `"`
-	}
-}
-
-// Quotes a string for display as a shell argument if necessary.
-func shellQuote(s string) string {
-	if s == "" {
-		return `""`
-	}
-	containsDoubleQuote := strings.Contains(s, `"`)
-	containsSingleQuote := strings.Contains(s, `'`)
-	containsQuote := containsDoubleQuote || containsSingleQuote
-	containsWhitespace := strings.ContainsAny(s, " \t")
-	if containsQuote || containsWhitespace {
-		return shellQuoteForce(s)
-	}
-	return s
-}
-
-// formatCmd formats a command and its arguments for display.
-func formatCmd(cmd string, args ...string) string {
-	parts := make([]string, 0, len(args)+1)
-	parts = append(parts, shellQuote(cmd))
-	for _, a := range args {
-		parts = append(parts, shellQuote(a))
-	}
-	return strings.Join(parts, " ")
-}
-
-// run executes a command and prints it to stdout
-func run(name string, args ...string) error {
-	log.Printf("Running: %s\n", formatCmd(name, args...))
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return errors.Wrapf(err, "failed to run %s", name)
-	}
-	return nil
-}
-
 // runSchtasks runs schtasks and attempts elevation if access is denied
 func runSchtasks(args ...string) error {
 	name := "schtasks"
-	log.Printf("Running: %s\n", formatCmd(name, args...))
+	log.Printf("Running: %s", common.FormatCmd(name, args...))
 
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
@@ -405,8 +364,11 @@ func runSchtasks(args ...string) error {
 			log.Println("Access denied. Attempting to run with elevation...")
 			return runElevated(name, args...)
 		}
-		fmt.Fprint(os.Stderr, errStr)
+		log.Printf("  [stderr] %s", strings.TrimRight(errStr, "\n"))
 		return errors.Wrapf(err, "failed to run %s", name)
+	}
+	if out := strings.TrimRight(stdout.String(), "\n"); out != "" {
+		log.Printf("  [stdout] %s", out)
 	}
 	return nil
 }
@@ -427,8 +389,20 @@ func runElevated(name string, args ...string) error {
 
 	psCmd := fmt.Sprintf("Start-Process -FilePath '%s' -ArgumentList %s -Verb %s -Wait -WindowStyle Hidden", name, argsStr, verb)
 
-	cmd := exec.Command(exe, "-NoProfile", "-NonInteractive", "-Command", psCmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	psArgs := []string{"-NoProfile", "-NonInteractive", "-Command", psCmd}
+	log.Printf("Running (elevated): %s", common.FormatCmd(exe, psArgs...))
+	cmd := exec.Command(exe, psArgs...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if out := strings.TrimRight(stdout.String(), "\n"); out != "" {
+		log.Printf("  [stdout] %s", out)
+	}
+	if out := strings.TrimRight(stderr.String(), "\n"); out != "" {
+		log.Printf("  [stderr] %s", out)
+	}
+	return err
 }

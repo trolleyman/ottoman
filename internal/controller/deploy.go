@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
 	"github.com/pkg/errors"
+	"github.com/trolleyman/ottoman/internal/common"
 )
 
 const systemdControllerTemplate = `[Unit]
@@ -70,10 +70,10 @@ func InstallService() error {
 	}
 
 	// Create ottoman user if it doesn't exist
-	if err := exec.Command("id", "ottoman").Run(); err != nil {
+	if err := common.RunCmd("id", "ottoman"); err != nil {
 		log.Println("Creating ottoman user...")
-		if err := exec.Command("useradd", "-r", "-s", "/bin/false", "ottoman").Run(); err != nil {
-			log.Printf("Warning: failed to create ottoman user: %v\n", err)
+		if err := common.RunCmd("useradd", "-r", "-s", "/bin/false", "ottoman"); err != nil {
+			log.Printf("Warning: failed to create ottoman user: %v", err)
 		}
 	}
 
@@ -86,18 +86,18 @@ func InstallService() error {
 	// Check if config exists
 	configPath := filepath.Join(configDir, "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		log.Printf("Config not found at %s\n", configPath)
+		log.Printf("Config not found at %s", configPath)
 		log.Println("Run 'ottoman config init controller' to create it.")
 	}
 
 	// Reload systemd
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload systemd")
+	if err := common.RunCmd("systemctl", "daemon-reload"); err != nil {
+		return err
 	}
 
 	// Enable service
-	if err := exec.Command("systemctl", "enable", "ottoman-controller").Run(); err != nil {
-		return errors.Wrap(err, "failed to enable service")
+	if err := common.RunCmd("systemctl", "enable", "ottoman-controller"); err != nil {
+		return err
 	}
 
 	log.Println("Service installed successfully!")
@@ -138,18 +138,33 @@ func installUserService() error {
 	}
 
 	// Reload and enable
-	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload systemd")
+	if err := common.RunCmd("systemctl", "--user", "daemon-reload"); err != nil {
+		return err
 	}
 
-	if err := exec.Command("systemctl", "--user", "enable", "ottoman-controller").Run(); err != nil {
-		return errors.Wrap(err, "failed to enable service")
+	if err := common.RunCmd("systemctl", "--user", "enable", "ottoman-controller"); err != nil {
+		return err
 	}
+
+	// Enable lingering so user services start on boot
+	if err := common.RunCmd("loginctl", "enable-linger"); err != nil {
+		log.Printf("Warning: failed to enable linger: %v", err)
+	}
+
+	// Restart the service
+	if err := common.RunCmd("systemctl", "--user", "restart", "ottoman-controller"); err != nil {
+		return err
+	}
+
+	// Print status
+	common.RunCmdSilent("systemctl", "--user", "status", "ottoman-controller")
 
 	log.Println("User service installed successfully!")
-	log.Println("Start with: systemctl --user start ottoman-controller")
-	log.Println("Check status: systemctl --user status ottoman-controller")
-	log.Println("To start on boot, run: loginctl enable-linger")
+	log.Println()
+	log.Println("Commands:")
+	log.Println("  Stop:    systemctl --user stop ottoman-controller")
+	log.Println("  Status:  systemctl --user status ottoman-controller")
+	log.Println("  Logs:    journalctl --user -u ottoman-controller -f")
 
 	return nil
 }
@@ -166,12 +181,10 @@ func UninstallService() error {
 	}
 
 	// Stop service (ignore errors - might not be running)
-	log.Println("Stopping service...")
-	exec.Command("systemctl", "stop", "ottoman-controller").Run()
+	common.RunCmdSilent("systemctl", "stop", "ottoman-controller")
 
 	// Disable service (ignore errors - might not be enabled)
-	log.Println("Disabling service...")
-	exec.Command("systemctl", "disable", "ottoman-controller").Run()
+	common.RunCmdSilent("systemctl", "disable", "ottoman-controller")
 
 	// Remove service file
 	servicePath := "/etc/systemd/system/ottoman-controller.service"
@@ -180,8 +193,8 @@ func UninstallService() error {
 	}
 
 	// Reload systemd
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload systemd")
+	if err := common.RunCmd("systemctl", "daemon-reload"); err != nil {
+		return err
 	}
 
 	log.Println("Service uninstalled successfully!")
@@ -192,8 +205,8 @@ func uninstallUserService() error {
 	home := os.Getenv("HOME")
 
 	// Stop and disable
-	exec.Command("systemctl", "--user", "stop", "ottoman-controller").Run()
-	exec.Command("systemctl", "--user", "disable", "ottoman-controller").Run()
+	common.RunCmdSilent("systemctl", "--user", "stop", "ottoman-controller")
+	common.RunCmdSilent("systemctl", "--user", "disable", "ottoman-controller")
 
 	// Remove service file
 	servicePath := filepath.Join(home, ".config/systemd/user/ottoman-controller.service")
@@ -202,8 +215,8 @@ func uninstallUserService() error {
 	}
 
 	// Reload systemd
-	if err := exec.Command("systemctl", "--user", "daemon-reload").Run(); err != nil {
-		return errors.Wrap(err, "failed to reload systemd")
+	if err := common.RunCmd("systemctl", "--user", "daemon-reload"); err != nil {
+		return err
 	}
 
 	log.Println("User service uninstalled successfully!")

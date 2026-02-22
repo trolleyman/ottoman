@@ -2,16 +2,20 @@ package common
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // LoggingMiddleware logs HTTP requests with method, path, status, and duration
@@ -99,10 +103,7 @@ func (r *RotatingLogger) rotate() error {
 	r.file = f
 
 	// Enforce backups limit
-	if err := r.enforceBackups(); err != nil {
-		return err
-	}
-	return nil
+	return r.enforceBackups()
 }
 
 func (r *RotatingLogger) enforceBackups() error {
@@ -130,4 +131,110 @@ func (r *RotatingLogger) enforceBackups() error {
 		_ = os.Remove(filepath.Join(dir, candidates[i].Name()))
 	}
 	return nil
+}
+
+// --- exec.Command logging utilities ---
+
+// ShellQuoteForce wraps a string in quotes for display as a shell argument.
+func ShellQuoteForce(s string) string {
+	containsDoubleQuote := strings.Contains(s, `"`)
+	containsSingleQuote := strings.Contains(s, `'`)
+	escaped := strings.ReplaceAll(s, "\t", `\t`)
+	escaped = strings.ReplaceAll(s, `\`, `\\`)
+	if !containsDoubleQuote {
+		return `"` + escaped + `"`
+	} else if !containsSingleQuote {
+		return `'` + escaped + `'`
+	}
+	return `"` + strings.ReplaceAll(escaped, `"`, `\"`) + `"`
+}
+
+// ShellQuote wraps a string in quotes for display if it contains whitespace or quotes.
+func ShellQuote(s string) string {
+	if s == "" {
+		return `""`
+	}
+	if strings.ContainsAny(s, `"' `+"\t") {
+		return ShellQuoteForce(s)
+	}
+	return s
+}
+
+// FormatCmd formats a command and its arguments for display.
+func FormatCmd(cmd string, args ...string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, ShellQuote(cmd))
+	for _, a := range args {
+		parts = append(parts, ShellQuote(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+// logOutput logs each line of output with the given prefix.
+func logOutput(prefix, output string) {
+	out := strings.TrimRight(output, "\n")
+	if out == "" {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		log.Printf("  %s %s", prefix, line)
+	}
+}
+
+// RunCmd executes a command, logging it and piping stdout/stderr to the log.
+func RunCmd(name string, args ...string) error {
+	log.Printf("Running: %s", FormatCmd(name, args...))
+	cmd := exec.Command(name, args...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	logOutput("[stdout]", stdout.String())
+	logOutput("[stderr]", stderr.String())
+
+	if err != nil {
+		return errors.Wrapf(err, "failed to run %s", name)
+	}
+	return nil
+}
+
+// RunCmdOutput executes a command, logging it, and returns stdout.
+// Stderr is logged. Returns stdout and any error.
+func RunCmdOutput(name string, args ...string) (string, error) {
+	log.Printf("Running: %s", FormatCmd(name, args...))
+	cmd := exec.Command(name, args...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	logOutput("[stderr]", stderr.String())
+	logOutput("[stdout]", stdout.String())
+
+	if err != nil {
+		return stdout.String(), errors.Wrapf(err, "failed to run %s", name)
+	}
+	return stdout.String(), nil
+}
+
+// RunCmdSilent executes a command, logging it but ignoring errors.
+// Useful for cleanup commands where failure is expected.
+func RunCmdSilent(name string, args ...string) {
+	log.Printf("Running: %s", FormatCmd(name, args...))
+	cmd := exec.Command(name, args...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	logOutput("[stdout]", stdout.String())
+	logOutput("[stderr]", stderr.String())
+
+	if err != nil {
+		log.Printf("  (ignored error: %v)", err)
+	}
 }
