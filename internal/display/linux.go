@@ -10,14 +10,24 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
 )
 
+// monitorCache stores cached xrandr output
+type monitorCache struct {
+	monitors  []api.Monitor
+	timestamp time.Time
+	mu        sync.RWMutex
+}
+
 // LinuxManager implements display management on Linux using xrandr
 type LinuxManager struct {
 	store *Layouts
+	cache *monitorCache
 }
 
 func newPlatformManager(store *Layouts) (Manager, error) {
@@ -25,11 +35,42 @@ func newPlatformManager(store *Layouts) (Manager, error) {
 	if _, err := exec.LookPath("xrandr"); err != nil {
 		return nil, errors.Wrap(err, "xrandr not found")
 	}
-	return &LinuxManager{store: store}, nil
+	return &LinuxManager{
+		store: store,
+		cache: &monitorCache{},
+	}, nil
 }
 
 // ListMonitors returns information about connected monitors
+// Results are cached and only refreshed when stale (>30s old) or after layout changes
 func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
+	// Check cache first
+	m.cache.mu.RLock()
+	if m.cache.monitors != nil && time.Since(m.cache.timestamp) < 30*time.Second {
+		monitors := m.cache.monitors
+		m.cache.mu.RUnlock()
+		log.Printf("Using cached xrandr output (age: %v)", time.Since(m.cache.timestamp).Round(time.Millisecond))
+		return monitors, nil
+	}
+	m.cache.mu.RUnlock()
+
+	// Cache miss or stale - query xrandr
+	monitors, err := m.queryXrandr()
+	if err != nil {
+		return nil, err
+	}
+
+	// Update cache
+	m.cache.mu.Lock()
+	m.cache.monitors = monitors
+	m.cache.timestamp = time.Now()
+	m.cache.mu.Unlock()
+
+	return monitors, nil
+}
+
+// queryXrandr runs xrandr and parses the output
+func (m *LinuxManager) queryXrandr() ([]api.Monitor, error) {
 	logRunning("xrandr", "--query")
 	cmd := exec.Command("xrandr", "--query")
 	output, err := cmd.Output()
@@ -43,6 +84,14 @@ func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
 	}
 	SortMonitors(monitors)
 	return monitors, nil
+}
+
+// invalidateCache clears the monitor cache, forcing next ListMonitors to re-query
+func (m *LinuxManager) invalidateCache() {
+	m.cache.mu.Lock()
+	m.cache.monitors = nil
+	m.cache.mu.Unlock()
+	log.Printf("Monitor cache invalidated")
 }
 
 // parseXrandrOutput parses xrandr --query output
@@ -174,6 +223,9 @@ func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 	if err != nil {
 		return errors.Wrapf(err, "xrandr failed\nOutput: %s", string(output))
 	}
+
+	// Invalidate cache since we changed the display configuration
+	m.invalidateCache()
 	return nil
 }
 
@@ -222,6 +274,7 @@ func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.
 }
 
 // GetAvailableModes returns available modes for a monitor
+// Note: This always queries xrandr since it's not used in hot paths
 func (m *LinuxManager) GetAvailableModes(monitorName string) ([]ModeInfo, error) {
 	logRunning("xrandr", "--query")
 	cmd := exec.Command("xrandr", "--query")
