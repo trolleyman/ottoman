@@ -172,9 +172,10 @@ func FormatCmd(cmd string, args ...string) string {
 func logOutput(prefix, output string) {
 	out := strings.TrimRight(output, "\n")
 	if out == "" {
+		// log.Printf("  %s <no output>", prefix)
 		return
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		log.Printf("  %s %s", prefix, line)
 	}
 }
@@ -224,6 +225,8 @@ func RunCmdAllOutput(name string, args ...string) (string, string, error) {
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	logOutput("[stderr]", stderr.String())
 	logOutput("[stdout]", stdout.String())

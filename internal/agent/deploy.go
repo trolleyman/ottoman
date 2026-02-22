@@ -41,18 +41,17 @@ func Install() error {
 
 const linuxSystemdService = `[Unit]
 Description=Ottoman Display Control Agent
-After=graphical.target
+After=graphical-session.target
+BindsTo=graphical-session.target
 
 [Service]
 Type=simple
 ExecStart=%s agent run
 Restart=always
 RestartSec=5
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=%s/.Xauthority
 
 [Install]
-WantedBy=graphical.target
+WantedBy=graphical-session.target
 `
 
 // InstallService installs the appropriate service for the current platform
@@ -91,7 +90,7 @@ func installLinuxService() error {
 		return errors.Wrap(err, "failed to create systemd user directory")
 	}
 
-	serviceContent := fmt.Sprintf(linuxSystemdService, binPath, home)
+	serviceContent := fmt.Sprintf(linuxSystemdService, binPath)
 	servicePath := filepath.Join(serviceDir, "ottoman-agent.service")
 
 	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {

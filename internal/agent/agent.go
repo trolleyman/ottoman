@@ -335,7 +335,7 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 	}
 
 	// Convert Monitor to LayoutMonitor config
-	var monitorConfigs []api.LayoutMonitor
+	monitorConfigs := make([]api.LayoutMonitor, 0)
 	for _, m := range monitors {
 		if m.Active != nil {
 			monitorConfigs = append(monitorConfigs, api.LayoutMonitor{
@@ -411,7 +411,7 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		return api.GetMonitors502JSONResponse{Code: 502, Error: err.Error()}, nil
 	}
 
-	var apiMonitors []api.Monitor
+	apiMonitors := make([]api.Monitor, 0)
 	for _, m := range monitors {
 		mon := api.Monitor{
 			Edid:         m.Edid,

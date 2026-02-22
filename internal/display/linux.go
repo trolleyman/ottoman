@@ -71,7 +71,6 @@ func (m *LinuxManager) ListMonitors() ([]api.Monitor, error) {
 }
 
 func runXrandrQuery() (string, error) {
-	logRunning("xrandr", "--query")
 	stdout, stderr, err := common.RunCmdAllOutput("xrandr", "--query")
 	if err != nil {
 		combinedOutput := strings.TrimSpace(fmt.Sprintf("%s\n%s", stdout, stderr))
@@ -203,23 +202,6 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 	return monitors, nil
 }
 
-func formatArg(arg string) string {
-	if strings.ContainsAny(arg, " \t\n\"'") {
-		return fmt.Sprintf("%q", arg)
-	}
-	return arg
-}
-
-func logRunning(name string, args ...string) {
-	var result strings.Builder
-	result.WriteString(formatArg(name))
-	for _, arg := range args {
-		result.WriteRune(' ')
-		result.WriteString(formatArg(arg))
-	}
-	log.Printf("Running: %s", result.String())
-}
-
 // ApplyLayoutConfig applies a display configuration using xrandr
 func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 	monitors, err := m.ListMonitors()
@@ -229,9 +211,7 @@ func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 
 	args := m.buildXrandrArgs(layout, monitors)
 
-	logRunning("xrandr", args...)
-	cmd := exec.Command("xrandr", args...)
-	output, err := cmd.CombinedOutput()
+	output, err := common.RunCmdOutput("xrandr", args...)
 	if err != nil {
 		return errors.Wrapf(err, "xrandr failed\nOutput: %s", string(output))
 	}
