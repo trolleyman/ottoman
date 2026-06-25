@@ -86,7 +86,7 @@ ottoman client layout alias add desktop d
 Use the interactive deployment command:
 
 ```bash
-mage deployServer
+mage deployController
 ```
 
 This will:

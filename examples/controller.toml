@@ -1,16 +1,16 @@
-# Ottoman Server Configuration
+# Ottoman Controller Configuration
 # Copy this file to one of these locations:
 #   - ./config.toml (current directory)
 #   - ~/.config/ottoman/config.toml (Linux user)
 #   - /etc/ottoman/config.toml (Linux system)
 #   - %APPDATA%/ottoman/config.toml (Windows)
 
-[server]
+[controller]
 listen_addr = ':17293'
 auth_token = 'your-secret-token-here'
-client_addr = '192.168.1.100:17294'
+agent_addr = '192.168.1.100:17294'
 
-[[server.wake_targets]]
+[[controller.wake_targets]]
 name = 'desktop'
 mac_address = '00:11:22:33:44:55'
 ip_address = '192.168.1.100'

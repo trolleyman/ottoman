@@ -8,62 +8,62 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-func TestExampleServerConfig(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "server.toml"))
+func TestExampleControllerConfig(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "controller.toml"))
 	if err != nil {
-		t.Fatalf("failed to read server.toml: %v", err)
+		t.Fatalf("failed to read controller.toml: %v", err)
 	}
 
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("failed to parse server.toml: %v", err)
+		t.Fatalf("failed to parse controller.toml: %v", err)
 	}
 
-	// Verify server section exists
-	if _, ok := cfg["server"]; !ok {
-		t.Error("server.toml should have [server] section")
+	// Verify controller section exists
+	if _, ok := cfg["controller"]; !ok {
+		t.Error("controller.toml should have [controller] section")
 	}
 
-	// Verify client section does NOT exist
-	if _, ok := cfg["client"]; ok {
-		t.Error("server.toml should NOT have [client] section")
+	// Verify agent section does NOT exist
+	if _, ok := cfg["agent"]; ok {
+		t.Error("controller.toml should NOT have [agent] section")
 	}
 
 	// Check for unknown top-level keys
-	validKeys := map[string]bool{"server": true, "client": true}
+	validKeys := map[string]bool{"controller": true, "agent": true}
 	for key := range cfg {
 		if !validKeys[key] {
-			t.Errorf("server.toml has unknown top-level key: %s", key)
+			t.Errorf("controller.toml has unknown top-level key: %s", key)
 		}
 	}
 }
 
-func TestExampleClientConfig(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "client.toml"))
+func TestExampleAgentConfig(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "agent.toml"))
 	if err != nil {
-		t.Fatalf("failed to read client.toml: %v", err)
+		t.Fatalf("failed to read agent.toml: %v", err)
 	}
 
-	var cfg map[string]interface{}
+	var cfg map[string]any
 	if err := toml.Unmarshal(data, &cfg); err != nil {
-		t.Fatalf("failed to parse client.toml: %v", err)
+		t.Fatalf("failed to parse agent.toml: %v", err)
 	}
 
-	// Verify client section exists
-	if _, ok := cfg["client"]; !ok {
-		t.Error("client.toml should have [client] section")
+	// Verify agent section exists
+	if _, ok := cfg["agent"]; !ok {
+		t.Error("agent.toml should have [agent] section")
 	}
 
-	// Verify server section does NOT exist
-	if _, ok := cfg["server"]; ok {
-		t.Error("client.toml should NOT have [server] section")
+	// Verify controller section does NOT exist
+	if _, ok := cfg["controller"]; ok {
+		t.Error("agent.toml should NOT have [controller] section")
 	}
 
 	// Check for unknown top-level keys
-	validKeys := map[string]bool{"server": true, "client": true}
+	validKeys := map[string]bool{"controller": true, "agent": true}
 	for key := range cfg {
 		if !validKeys[key] {
-			t.Errorf("client.toml has unknown top-level key: %s", key)
+			t.Errorf("agent.toml has unknown top-level key: %s", key)
 		}
 	}
 }
@@ -71,13 +71,13 @@ func TestExampleClientConfig(t *testing.T) {
 func TestExampleConfigsLoadWithViper(t *testing.T) {
 	// Test that example configs can be loaded by the actual config system
 	examples := []struct {
-		name      string
-		file      string
-		hasServer bool
-		hasClient bool
+		name          string
+		file          string
+		hasController bool
+		hasAgent      bool
 	}{
-		{"server.toml", filepath.Join("..", "..", "examples", "server.toml"), true, false},
-		{"client.toml", filepath.Join("..", "..", "examples", "client.toml"), false, true},
+		{"controller.toml", filepath.Join("..", "..", "examples", "controller.toml"), true, false},
+		{"agent.toml", filepath.Join("..", "..", "examples", "agent.toml"), false, true},
 	}
 
 	for _, ex := range examples {
@@ -88,11 +88,11 @@ func TestExampleConfigsLoadWithViper(t *testing.T) {
 				t.Fatalf("failed to load %s: %v", ex.name, err)
 			}
 
-			if ex.hasServer && cfg.Controller.ListenAddress == "" {
-				t.Error("server.listen_addr should be set")
+			if ex.hasController && cfg.Controller.ListenAddress == "" {
+				t.Error("controller.listen_addr should be set")
 			}
-			if ex.hasClient && cfg.Agent.ListenAddress == "" {
-				t.Error("client.listen_addr should be set")
+			if ex.hasAgent && cfg.Agent.ListenAddress == "" {
+				t.Error("agent.listen_addr should be set")
 			}
 		})
 	}

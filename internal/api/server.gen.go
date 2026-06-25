@@ -779,7 +779,7 @@ type ServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(w http.ResponseWriter, r *http.Request)
-	// Shutdown client
+	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(w http.ResponseWriter, r *http.Request)
 	// Reset simulation
@@ -1824,7 +1824,7 @@ type StrictServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(ctx context.Context, request GetMonitorsRequestObject) (GetMonitorsResponseObject, error)
-	// Shutdown client
+	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(ctx context.Context, request ShutdownRequestObject) (ShutdownResponseObject, error)
 	// Reset simulation
