@@ -739,11 +739,11 @@ func DeployController() error {
 	deployDir := path.Dir(expandPath(cfg.Controller.DeployPath))
 	configDir := path.Dir(expandPath(cfg.Controller.ConfigPath))
 
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("mkdir -p '%s'", deployDir)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, deployDir)); err != nil {
 		return fmt.Errorf("failed to create deploy directory: %w", err)
 	}
 
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("mkdir -p '%s'", configDir)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, configDir)); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -751,7 +751,7 @@ func DeployController() error {
 	_ = run("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
 
 	// Remove binary if it exists
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("rm -f '%s'", cfg.Controller.DeployPath)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`rm -f "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to remove existing binary: %w", err)
 	}
 
@@ -761,7 +761,7 @@ func DeployController() error {
 	}
 
 	// Make executable
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf("chmod +x %s", cfg.Controller.DeployPath)); err != nil {
+	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`chmod +x "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
@@ -771,7 +771,7 @@ func DeployController() error {
 	}
 
 	// Install systemd service
-	installCmd := fmt.Sprintf("%s controller install", cfg.Controller.DeployPath)
+	installCmd := fmt.Sprintf(`"%s" controller install`, expandPath(cfg.Controller.DeployPath))
 	if err := run("ssh", cfg.Controller.SSHTarget, installCmd); err != nil {
 		return fmt.Errorf("failed to install service: %w", err)
 	}
@@ -785,9 +785,14 @@ func DeployAll() error {
 	return nil
 }
 
-// expandPath keeps ~ for shell commands (ssh) - the remote shell expands it
+// expandPath converts a leading ~/ to $HOME/ so the path can be safely wrapped
+// in double quotes in remote shell commands. Tilde expansion only happens on an
+// unquoted leading ~, so a quoted "~/..." would be treated literally; $HOME is
+// expanded inside double quotes, giving the correct behaviour.
 func expandPath(path string) string {
-	// Keep ~ as-is - remote shell will expand it
+	if strings.HasPrefix(path, "~/") {
+		return "$HOME/" + path[2:]
+	}
 	return path
 }
 
