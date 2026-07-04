@@ -109,7 +109,13 @@ Replace xdotool with a virtual input device via `/dev/uinput` (e.g. `bendahl/uin
 - One-time host setup (needs sudo): load module + grant access, e.g.
   `/etc/udev/rules.d/99-ottoman-uinput.rules` with
   `KERNEL=="uinput", GROUP="input", MODE="0660"`, add the user to the `input` group, and
-  `uinput` in `/etc/modules-load.d/`. The agent's `deploy` step can print/install this.
+  `uinput` in `/etc/modules-load.d/`.
+  **Host setup is unified across §2b/§3a/§7 and runs from `agent install`:** it detects what's
+  already done (checks `input`/`i2c` group membership, the udev rule, the grub sudoers file), lists
+  what's pending, and — on an interactive terminal — offers to run the (idempotent) setup with
+  sudo right there (`y/N`). Non-interactive/scripted installs just get the script path printed,
+  unchanged. The script is still written to `~/.config/ottoman/ottoman-host-setup.sh` so it can
+  be inspected or re-run by hand.
 - Caveats: `GetPosition()` isn't knowable via uinput — the trackpad protocol is
   relative-move based, so implement absolute `MoveTo` only if actually needed (or via the
   RemoteDesktop portal later). Keyboard input is evdev scancode based, so non-QWERTY layouts
@@ -186,6 +192,18 @@ New agent endpoints (proxied by the controller like everything else):
 Config grows a `[tv]` section (`type = "webos"`, `host`, `mac`, `pairing_key`) and the display
 layer gets a per-monitor "control backend" (ddc | tv | none). Web UI: brightness slider +
 power toggle per monitor card.
+
+**Should the TV be folded into a monitor entry instead of its own `[tv]` section?** No — keep
+both, and *link* them rather than merge them. The registry (§5a) already unifies control: a
+`MonitorEntry` (EDID-keyed) carries `backend = "tv"`, so at the UI/capability layer the TV
+*is* just a monitor and renders alongside the others. But the TV's **network transport**
+(`host`, `mac`, `pairing_key`, `type`) can't live on an EDID-keyed monitor record, because:
+(1) power-on is a Wake-on-LAN packet sent while the TV is **off** — when off it presents no
+EDID and isn't enumerated as a display, so there'd be no record to hang the MAC on; (2) the
+SSAP endpoint + pairing key are a per-device network identity, not a per-connector display
+property. So `[tv]` holds the transport, the registry entry holds the control-surface/visibility,
+and they join by marking that monitor's backend `tv`. (The pairing key is runtime data in the
+data dir, not in `[tv]`, so redeploying config can't clobber it — already implemented.)
 
 **Effort:** DDC/CI backend ~1–2 days. LG webOS (or equivalent) integration ~2–3 days including
 pairing flow. CEC-on-Pi variant ~1–2 days.
@@ -300,6 +318,19 @@ in one file hurts in both directions.
 
 ## 7. Remote OS selection on wake (GRUB dual-boot)
 
+**Addressing the machine across both OSes.** The controller reaches the agent at one
+`controller.agent.ip_address:port`, and both the Linux and Windows agents listen on the same
+port — so the box should present the **same IP whichever OS is booted**. It's a single physical
+NIC (one MAC), so the clean way is a **DHCP reservation on that MAC** at the router: same MAC →
+same lease → same IP under Linux *and* Windows, no per-OS static config to keep in sync. Then a
+single `ip_address` entry works, and the controller doesn't need to know which OS is up — it
+just hits `IP:port` and whichever agent is running answers. **Wake-on-LAN needs none of this:**
+the magic packet is layer-2 and targets the MAC, not an IP, and the controller already
+broadcasts it on every interface (`SendToAllInterfaces`) plus `255.255.255.255` — so one MAC
+wakes the box regardless of which OS it will boot into. (If broadcast is ever dropped by an AP,
+§3b already plans subnet-directed/unicast as a fallback; that path benefits from the stable IP
+too.)
+
 Goal: "Wake into Linux" / "Wake into Windows" buttons, without breaking unattended remote
 wake. Two constraints shape the design:
 
@@ -316,11 +347,20 @@ wake. Two constraints shape the design:
    #   GRUB_DEFAULT=saved
    #   GRUB_TIMEOUT=5          (keep it)
    sudo update-grub
-   sudo grub-set-default "<linux entry name>"   # names: grep menuentry /boot/grub/grub.cfg
+   sudo grub-set-default "Zorin OS"   # exact names: grep menuentry /boot/grub/grub.cfg
    ```
    Rationale: the ottoman agent lives on Linux (for now), so the OS that ottoman can *talk to*
    should be the one a plain wake lands in. Local boots are unaffected — the menu still shows
    for 5 s and you can pick Windows at the keyboard.
+
+   **Current state on this host:** `GRUB_DEFAULT="osprober-efi-283C-3830"` — a fixed os-prober
+   entry ID (the EFI boot entry, almost certainly the Windows Boot Manager). Two problems: the
+   box currently defaults to *Windows* on a plain wake (the OS ottoman can't yet talk to), and a
+   pinned `GRUB_DEFAULT` means GRUB never consults the saved `next_entry`, so **`grub-reboot`
+   silently does nothing**. Fix is exactly the block above: change to `GRUB_DEFAULT=saved`,
+   `sudo update-grub`, then `sudo grub-set-default "Zorin OS"` (verify the exact title/id with
+   `grep menuentry /boot/grub/grub.cfg` first — if Zorin lives under an "Advanced options"
+   submenu, use the top-level title). `agent install` now warns if `GRUB_DEFAULT` isn't `saved`.
 2. **Wake → Linux**: plain WoL, nothing else needed.
 3. **Wake → Windows**: WoL → controller polls the agent's `/health` → once the Linux agent is
    up, controller calls a new agent endpoint `POST /api/boot {"target": "windows"}` → agent
@@ -330,9 +370,10 @@ wake. Two constraints shape the design:
    Windows-side changes and is completely reliable.
    - Same endpoint also serves "switch a running Linux box to Windows" (without WoL), which is
      handy on its own.
-   - `grub-reboot` needs root: ship a narrow sudoers rule
-     (`callum ALL=(root) NOPASSWD: /usr/sbin/grub-reboot *`) installed by the deploy step, or
-     have GRUB read its env file from a path the agent user can write.
+   - `grub-reboot` needs root: a narrow sudoers rule
+     (`callum ALL=(root) NOPASSWD: /usr/sbin/grub-reboot *`) is installed by `agent install`
+     (see the host-setup note under §2b), or have GRUB read its env file from a path the agent
+     user can write.
 4. **Windows → Linux later** (when the Windows agent grows the same endpoint): from Windows the
    GRUB env file isn't reachable (ext4), but the UEFI boot-order route works:
    `bcdedit /set {fwbootmgr} bootsequence <GRUB entry GUID>` + `shutdown /r /t 0` (needs
