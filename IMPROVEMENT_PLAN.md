@@ -148,8 +148,14 @@ DisplayPort" case is covered.
 The TV is an **LG OLED65A16LA** (2021 A1 series, webOS 6.0) — the LG webOS network API is the
 clear choice. One integration gives everything we want:
 
-- **Power on**: Wake-on-LAN magic packet to the TV's MAC (reuses `internal/controller/wol.go`!).
-  Requires enabling Settings → General → *"Turn On Via Wi-Fi"* / "LG Connect Apps" on the TV.
+- **Power on**: Wake-on-LAN magic packet to the TV's MAC — `8C:19:B5:72:FE:62` (reuses
+  `internal/controller/wol.go`!). The TV is on Wi-Fi, which is fine: LG TVs support wake over
+  their own Wi-Fi (WoWLAN), no ethernet run needed. The enabling toggle on webOS 6 lives under
+  **Settings → General → Network → "TV On With Mobile" → "Turn On via Wi-Fi"** (not under
+  Devices, easy to miss). Give the TV a DHCP reservation so its IP is stable for the SSAP
+  connection. If broadcast magic packets prove unreliable through the Wi-Fi AP, send the
+  packet as a subnet-directed/unicast datagram to the TV's IP as well — worth supporting both
+  in the wake code anyway.
 - **Power off**, **volume/mute**, **input switching**: SSAP websocket API
   (`wss://<tv>:3001`, `ssap://audio/setVolume`, `ssap://system/turnOff`, ...). One-time
   on-screen pairing prompt yields a client key stored in `ottoman.toml`.
@@ -292,6 +298,54 @@ in one file hurts in both directions.
 
 ---
 
+## 7. Remote OS selection on wake (GRUB dual-boot)
+
+Goal: "Wake into Linux" / "Wake into Windows" buttons, without breaking unattended remote
+wake. Two constraints shape the design:
+
+- GRUB runs before any network stack, so the magic packet can't carry an OS choice — the
+  machine always boots the *default* entry when woken remotely.
+- **Do not remove the GRUB timeout.** A menu that waits forever means a remotely-woken machine
+  sits at GRUB doing nothing until someone touches a keyboard. Keep the 5 s auto-boot.
+
+### Design
+
+1. **Flip the GRUB default to Linux** (one-time, on the desktop):
+   ```bash
+   # /etc/default/grub:
+   #   GRUB_DEFAULT=saved
+   #   GRUB_TIMEOUT=5          (keep it)
+   sudo update-grub
+   sudo grub-set-default "<linux entry name>"   # names: grep menuentry /boot/grub/grub.cfg
+   ```
+   Rationale: the ottoman agent lives on Linux (for now), so the OS that ottoman can *talk to*
+   should be the one a plain wake lands in. Local boots are unaffected — the menu still shows
+   for 5 s and you can pick Windows at the keyboard.
+2. **Wake → Linux**: plain WoL, nothing else needed.
+3. **Wake → Windows**: WoL → controller polls the agent's `/health` → once the Linux agent is
+   up, controller calls a new agent endpoint `POST /api/boot {"target": "windows"}` → agent
+   runs `grub-reboot "<windows entry>" && systemctl reboot`. `grub-reboot` sets a *one-shot*
+   next-boot (requires `GRUB_DEFAULT=saved`), so the machine reboots into Windows exactly once
+   and the default stays Linux. Costs one extra boot cycle (~30–60 s), but needs zero
+   Windows-side changes and is completely reliable.
+   - Same endpoint also serves "switch a running Linux box to Windows" (without WoL), which is
+     handy on its own.
+   - `grub-reboot` needs root: ship a narrow sudoers rule
+     (`callum ALL=(root) NOPASSWD: /usr/sbin/grub-reboot *`) installed by the deploy step, or
+     have GRUB read its env file from a path the agent user can write.
+4. **Windows → Linux later** (when the Windows agent grows the same endpoint): from Windows the
+   GRUB env file isn't reachable (ext4), but the UEFI boot-order route works:
+   `bcdedit /set {fwbootmgr} bootsequence <GRUB entry GUID>` + `shutdown /r /t 0` (needs
+   admin). Until then, switching Windows→Linux means a manual reboot or the TV-side keyboard.
+
+UI: turn the Wake button into a split-button (Wake → Linux / Windows), driven by a
+`[boot]` config section listing the GRUB entry names.
+
+**Effort:** GRUB config is minutes; `/api/boot` endpoint + controller orchestration + UI
+~1 day. Windows-side BootNext support later, alongside the other Windows parity work.
+
+---
+
 ## Suggested order
 
 0. **Layout store split + non-destructive deploy (6)** — small, and stops active data loss.
@@ -301,10 +355,12 @@ in one file hurts in both directions.
 4. **PipeWire volume (4.1)** — small, high value.
 5. **DDC/CI brightness+power (3a)** + the monitor registry (5a) alongside it.
 6. **TV integration (3b + 4.2)** — pick approach once TV model is known.
-7. **GNOME Quick Settings extension (5b)** — once the endpoints above exist.
-8. Windows parity for brightness/audio later (WMI `WmiMonitorBrightnessMethods` only covers
-   laptop panels; Windows will also want a DDC path via the physical-monitor Win32 API), plus
-   a tray+flyout equivalent of the quick-settings panel.
+7. **Boot-target selection (7)** — GRUB default flip + `/api/boot` endpoint.
+8. **GNOME Quick Settings extension (5b)** — once the endpoints above exist.
+9. Windows parity later: brightness/audio (WMI `WmiMonitorBrightnessMethods` only covers
+   laptop panels; Windows will also want a DDC path via the physical-monitor Win32 API),
+   BootNext via `bcdedit` for Windows→Linux switching, plus a tray+flyout equivalent of the
+   quick-settings panel.
 
 ## Answered questions (host facts, checked 2026-07-04)
 
@@ -316,8 +372,11 @@ in one file hurts in both directions.
 - **Audio**: PipeWire 1.0.5; default sink `alsa_output.pci-0000_01_00.1.hdmi-stereo`
   ("HDA NVidia Digital Stereo (HDMI)" → the TV), plus "Logi Z407 Analogue Stereo".
 
+- **TV MAC**: `8C:19:B5:72:FE:62` (Wi-Fi — fine, LG wakes over WoWLAN; no ethernet run
+  needed).
+
 ## Remaining open questions
 
 - Current BIOS state of `Resume By PCI-E Device` / `ErP Ready` (needs a reboot to check).
-- Whether "Turn On Via Wi-Fi" is enabled on the TV, and the TV's MAC address (Settings →
-  Network, or `ip neigh` after pinging it) — needed for TV power-on.
+- Enable the TV's wake toggle: Settings → General → **Network → "TV On With Mobile" →
+  "Turn On via Wi-Fi"** — then verify with a test magic packet to the TV's MAC.
