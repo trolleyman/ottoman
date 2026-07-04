@@ -679,9 +679,9 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 	// volume, and a power switch). GetTVState reports it paired, so volume shows.
 	tvBackend := "tv"
 	apiMonitors = append(apiMonitors, api.Monitor{
-		Edid:         "LG-OLED-SIM",
-		Name:         "LG OLED TV",
-		Manufacturer: "GSM",
+		Edid:           "LG-OLED-SIM",
+		Name:           "LG OLED TV",
+		Manufacturer:   "GSM",
 		ControlBackend: &tvBackend,
 		Capabilities:   &api.MonitorCapabilities{Brightness: true, Power: true, Volume: true},
 		Active: &api.ActiveMonitor{
