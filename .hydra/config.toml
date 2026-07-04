@@ -261,11 +261,13 @@ go test -json ./... 2>&1 | go run ./scripts/hydra/gotest-markers
 timeout_sec = 600
 type = "stdout"
 
-# Frontend type-check: `tsc -b` across the web project references. Exit-code
-# verdict (green when types are sound, red on a type regression) — no report
-# file. ESLint is deliberately NOT run here: `bun run lint` currently reports
-# thousands of errors on the checked-in tree (it lints the generated api/
-# client), so it would gate every merge red; wire it in once that's cleaned up.
+# Frontend type-check (type = "stdout": streams results into the tests panel via
+# ::hydra:test:*:: markers). scripts/hydra/tsc-markers.ts runs `tsc -b` and turns
+# each diagnostic into a fail marker located at file:line:col, or emits a single
+# passing "typecheck" case when clean — nicer than a bare "command exited 0".
+# ESLint is deliberately NOT run here: `bun run lint` currently reports thousands
+# of errors on the checked-in tree (it lints the generated api/ client), so it
+# would gate every merge red; wire it in once that's cleaned up.
 # Same read-only-~/.bun workaround as the screenshots artifact.
 [[tests]]
 name = "web"
@@ -274,6 +276,7 @@ cd web
 export BUN_INSTALL_CACHE_DIR="$PWD/.bun-cache" BUN_TMPDIR="$PWD/.bun-tmp"
 mkdir -p "$BUN_TMPDIR"
 bun install
-bun x tsc -b
+bun scripts/hydra/tsc-markers.ts
 '''
 timeout_sec = 300
+type = "stdout"
