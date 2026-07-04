@@ -23,67 +23,70 @@ function visible(monitor: Monitor, control: string): boolean {
   return v === undefined ? true : v;
 }
 
-// MonitorControls renders the in-body sliders (brightness, and TV volume). Power
-// lives in the card header (see MonitorCard).
+// MonitorControls renders the in-body brightness slider. Power lives in the card
+// header and TV volume in a vertical rail on the right (see MonitorCard).
 function MonitorControls({ monitor }: { monitor: Monitor }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
-  const tv = useStore((s) => s.tv);
-  const setTVVolume = useStore((s) => s.setTVVolume);
-  const setTVMute = useStore((s) => s.setTVMute);
 
   const caps = monitor.capabilities;
   if (!caps) return null;
 
   const showBrightness = caps.brightness && visible(monitor, "brightness");
-  // A TV-backed monitor (caps.volume) drives the network TV's volume; that state
-  // lives in the shared tv store (there's only ever one TV).
-  const showVolume = caps.volume && visible(monitor, "volume") && !!tv?.paired;
-  if (!showBrightness && !showVolume) return null;
+  if (!showBrightness) return null;
 
   const brightness = monitor.brightness ?? -1;
 
   return (
     <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
-      {showBrightness && (
-        <div className="flex items-center gap-3">
-          <Sun className="h-[18px] w-[18px] shrink-0 text-amber-400/90" aria-label="Brightness" />
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={brightness < 0 ? 50 : brightness}
-            disabled={brightness < 0}
-            onChange={(e) => setMonitorBrightness(monitor.edid, Number(e.target.value))}
-            className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
-          />
-          <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
-            {brightness < 0 ? "—" : `${brightness}%`}
-          </span>
-        </div>
-      )}
-      {showVolume && tv && (
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setTVMute(!tv.muted)}
-            className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-            title={tv.muted ? "Unmute" : "Mute"}
-            aria-label={tv.muted ? "Unmute" : "Mute"}
-          >
-            {tv.muted ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={tv.volume}
-            onChange={(e) => setTVVolume(Number(e.target.value))}
-            className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
-          />
-          <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
-            {tv.volume}
-          </span>
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        <Sun className="h-[18px] w-[18px] shrink-0 text-amber-400/90" aria-label="Brightness" />
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={brightness < 0 ? 50 : brightness}
+          disabled={brightness < 0}
+          onChange={(e) => setMonitorBrightness(monitor.edid, Number(e.target.value))}
+          className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
+        />
+        <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
+          {brightness < 0 ? "—" : `${brightness}%`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// VolumeRail is the vertical TV-volume control down the right side of a
+// TV-backed monitor card: value on top, a vertical slider filling the height,
+// and the mute toggle at the bottom.
+function VolumeRail() {
+  const tv = useStore((s) => s.tv);
+  const setTVVolume = useStore((s) => s.setTVVolume);
+  const setTVMute = useStore((s) => s.setTVMute);
+  if (!tv) return null;
+
+  return (
+    <div className="flex flex-col items-center gap-2 pl-4 border-l border-zinc-700/40">
+      <span className="text-sm text-zinc-400 font-mono tabular-nums">{tv.volume}</span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={tv.volume}
+        onChange={(e) => setTVVolume(Number(e.target.value))}
+        aria-label="Volume"
+        className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
+        style={{ writingMode: "vertical-lr", direction: "rtl" }}
+      />
+      <button
+        onClick={() => setTVMute(!tv.muted)}
+        className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        title={tv.muted ? "Unmute" : "Mute"}
+        aria-label={tv.muted ? "Unmute" : "Mute"}
+      >
+        {tv.muted ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
+      </button>
     </div>
   );
 }
@@ -238,67 +241,77 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
     useMonitorPower(monitor.edid, !!a);
   const showPower = !!monitor.capabilities?.power && visible(monitor, "power");
 
+  // TV volume goes in a vertical rail on the right of the card (only when the TV
+  // is paired and we're not editing settings).
+  const tv = useStore((s) => s.tv);
+  const showVolume =
+    !editing && !!monitor.capabilities?.volume && visible(monitor, "volume") && !!tv?.paired;
+
   return (
-    <div className={`rounded-xl border p-5 flex flex-col gap-3 ${a
+    <div className={`rounded-xl border p-5 flex gap-4 ${a
       ? "border-zinc-700/50 bg-zinc-800/50"
       : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
       }`}>
-      <div className="flex items-center justify-between">
-        <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
-          {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
-        </h3>
-        <div className="flex items-center gap-2">
-          {monitor.control_backend === "tv" && <TVPairPill />}
-          {!a && (
-            <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
-              Inactive
-            </span>
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
+            {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
+          </h3>
+          <div className="flex items-center gap-2">
+            {monitor.control_backend === "tv" && <TVPairPill />}
+            {!a && (
+              <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
+                Inactive
+              </span>
+            )}
+            {a?.primary && (
+              <span className="text-xs font-medium bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                Primary
+              </span>
+            )}
+            <button
+              onClick={() => setEditing((v) => !v)}
+              title="Monitor settings"
+              aria-label="Monitor settings"
+              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${editing
+                ? "bg-zinc-700/70 border-zinc-600 text-zinc-100"
+                : "bg-zinc-800/70 border-zinc-700/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/60 hover:border-zinc-600"
+                }`}
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+            {showPower && (
+              <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+          {a && (
+            <>
+              <Row label="Resolution" value={`${a.width}x${a.height}`} />
+              <Row
+                label="Refresh"
+                value={`${Number.isInteger(a.refresh_rate) ? a.refresh_rate : a.refresh_rate.toFixed(1)} Hz`}
+              />
+              <Row label="Position" value={`${a.position_x}, ${a.position_y}`} />
+            </>
           )}
-          {a?.primary && (
-            <span className="text-xs font-medium bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
-              Primary
-            </span>
-          )}
-          <button
-            onClick={() => setEditing((v) => !v)}
-            title="Monitor settings"
-            aria-label="Monitor settings"
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${editing
-              ? "bg-zinc-700/70 border-zinc-600 text-zinc-100"
-              : "bg-zinc-800/70 border-zinc-700/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/60 hover:border-zinc-600"
-              }`}
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-          {showPower && (
-            <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
+          {monitor.port && <Row label="Port" value={monitor.port} />}
+          {monitor.edid && <Row label="EDID" value={monitor.edid} />}
+          {monitor.manufacturer && (
+            <Row label="Manufacturer" value={monitor.manufacturer} />
           )}
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-        {a && (
-          <>
-            <Row label="Resolution" value={`${a.width}x${a.height}`} />
-            <Row
-              label="Refresh"
-              value={`${Number.isInteger(a.refresh_rate) ? a.refresh_rate : a.refresh_rate.toFixed(1)} Hz`}
-            />
-            <Row label="Position" value={`${a.position_x}, ${a.position_y}`} />
-          </>
-        )}
-        {monitor.port && <Row label="Port" value={monitor.port} />}
-        {monitor.edid && <Row label="EDID" value={monitor.edid} />}
-        {monitor.manufacturer && (
-          <Row label="Manufacturer" value={monitor.manufacturer} />
+        {editing ? (
+          <MonitorSettingsEditor monitor={monitor} onClose={() => setEditing(false)} />
+        ) : (
+          <MonitorControls monitor={monitor} />
         )}
       </div>
 
-      {editing ? (
-        <MonitorSettingsEditor monitor={monitor} onClose={() => setEditing(false)} />
-      ) : (
-        <MonitorControls monitor={monitor} />
-      )}
+      {showVolume && <VolumeRail />}
     </div>
   );
 }
