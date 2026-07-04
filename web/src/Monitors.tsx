@@ -12,6 +12,67 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+// visible reports whether a control should show, honouring the registry's
+// per-monitor visibility overrides (absent = visible).
+function visible(monitor: Monitor, control: string): boolean {
+  const v = monitor.visibility?.[control];
+  return v === undefined ? true : v;
+}
+
+function MonitorControls({ monitor }: { monitor: Monitor }) {
+  const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
+  const setMonitorPower = useStore((s) => s.setMonitorPower);
+
+  const caps = monitor.capabilities;
+  if (!caps) return null;
+
+  const showBrightness = caps.brightness && visible(monitor, "brightness");
+  const showPower = caps.power && visible(monitor, "power");
+  if (!showBrightness && !showPower) return null;
+
+  const brightness = monitor.brightness ?? -1;
+
+  return (
+    <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
+      {showBrightness && (
+        <div className="flex items-center gap-3">
+          <span className="text-lg leading-none select-none" title="Brightness">
+            ☀️
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={brightness < 0 ? 50 : brightness}
+            disabled={brightness < 0}
+            onChange={(e) => setMonitorBrightness(monitor.edid, Number(e.target.value))}
+            className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
+          />
+          <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
+            {brightness < 0 ? "—" : `${brightness}%`}
+          </span>
+        </div>
+      )}
+      {showPower && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMonitorPower(monitor.edid, true)}
+            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            Power on
+          </button>
+          <button
+            onClick={() => setMonitorPower(monitor.edid, false)}
+            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            Power off
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   return (
@@ -21,7 +82,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
       }`}>
       <div className="flex items-center justify-between">
         <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
-          {monitor.name || monitor.port || "Unknown"}
+          {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
         </h3>
         <div className="flex gap-2">
           {!a && (
@@ -54,6 +115,8 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
           <Row label="Manufacturer" value={monitor.manufacturer} />
         )}
       </div>
+
+      <MonitorControls monitor={monitor} />
     </div>
   );
 }

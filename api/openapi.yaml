@@ -443,6 +443,129 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/monitors/brightness:
+    post:
+      summary: Set a monitor's brightness
+      operationId: setMonitorBrightness
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBrightnessRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorControlResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/monitors/power:
+    post:
+      summary: Turn a monitor on or off (standby)
+      operationId: setMonitorPower
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetMonitorPowerRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorControlResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/monitors/settings:
+    post:
+      summary: Update a monitor's registry settings (name, backend, visibility)
+      operationId: setMonitorSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorSettingsRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorControlResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/sim/reset:
     post:
       summary: Reset simulation
@@ -550,6 +673,22 @@ components:
         name: { type: string }
         manufacturer: { type: string }
         active: { $ref: '#/components/schemas/ActiveMonitor' }
+        # Registry-derived control metadata (optional).
+        friendly_name: { type: string }
+        control_backend: { type: string, description: "ddc | tv | none" }
+        brightness: { type: integer, description: "current 0-100, -1 if unknown" }
+        capabilities: { $ref: '#/components/schemas/MonitorCapabilities' }
+        visibility:
+          type: object
+          additionalProperties: { type: boolean }
+
+    MonitorCapabilities:
+      type: object
+      required: [brightness, power, volume]
+      properties:
+        brightness: { type: boolean }
+        power: { type: boolean }
+        volume: { type: boolean }
 
     ActiveMonitor:
       type: object
@@ -705,6 +844,39 @@ components:
         default: { type: boolean }
 
     AudioResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    # --- Monitor Control Types ---
+    SetBrightnessRequest:
+      type: object
+      required: [edid, brightness]
+      properties:
+        edid: { type: string }
+        brightness: { type: integer }
+
+    SetMonitorPowerRequest:
+      type: object
+      required: [edid, on]
+      properties:
+        edid: { type: string }
+        on: { type: boolean }
+
+    MonitorSettingsRequest:
+      type: object
+      required: [edid]
+      properties:
+        edid: { type: string }
+        friendly_name: { type: string }
+        backend: { type: string, description: "ddc | tv | none" }
+        visibility:
+          type: object
+          additionalProperties: { type: boolean }
+
+    MonitorControlResponse:
       type: object
       required: [success]
       properties:

@@ -164,11 +164,42 @@ type Modifier string
 
 // Monitor defines model for Monitor.
 type Monitor struct {
-	Active       *ActiveMonitor `json:"active,omitempty"`
-	Edid         string         `json:"edid"`
-	Manufacturer string         `json:"manufacturer"`
-	Name         string         `json:"name"`
-	Port         string         `json:"port"`
+	Active *ActiveMonitor `json:"active,omitempty"`
+
+	// Brightness current 0-100, -1 if unknown
+	Brightness   *int                 `json:"brightness,omitempty"`
+	Capabilities *MonitorCapabilities `json:"capabilities,omitempty"`
+
+	// ControlBackend ddc | tv | none
+	ControlBackend *string          `json:"control_backend,omitempty"`
+	Edid           string           `json:"edid"`
+	FriendlyName   *string          `json:"friendly_name,omitempty"`
+	Manufacturer   string           `json:"manufacturer"`
+	Name           string           `json:"name"`
+	Port           string           `json:"port"`
+	Visibility     *map[string]bool `json:"visibility,omitempty"`
+}
+
+// MonitorCapabilities defines model for MonitorCapabilities.
+type MonitorCapabilities struct {
+	Brightness bool `json:"brightness"`
+	Power      bool `json:"power"`
+	Volume     bool `json:"volume"`
+}
+
+// MonitorControlResponse defines model for MonitorControlResponse.
+type MonitorControlResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// MonitorSettingsRequest defines model for MonitorSettingsRequest.
+type MonitorSettingsRequest struct {
+	// Backend ddc | tv | none
+	Backend      *string          `json:"backend,omitempty"`
+	Edid         string           `json:"edid"`
+	FriendlyName *string          `json:"friendly_name,omitempty"`
+	Visibility   *map[string]bool `json:"visibility,omitempty"`
 }
 
 // MonitorsResponse defines model for MonitorsResponse.
@@ -208,6 +239,18 @@ type SetAudioRequest struct {
 	Muted   *bool    `json:"muted,omitempty"`
 	Name    string   `json:"name"`
 	Volume  *float64 `json:"volume,omitempty"`
+}
+
+// SetBrightnessRequest defines model for SetBrightnessRequest.
+type SetBrightnessRequest struct {
+	Brightness int    `json:"brightness"`
+	Edid       string `json:"edid"`
+}
+
+// SetMonitorPowerRequest defines model for SetMonitorPowerRequest.
+type SetMonitorPowerRequest struct {
+	Edid string `json:"edid"`
+	On   bool   `json:"on"`
 }
 
 // ShutdownResponse defines model for ShutdownResponse.
@@ -385,6 +428,15 @@ type SaveCurrentLayoutJSONRequestBody = SaveLayoutRequest
 
 // SwitchLayoutJSONRequestBody defines body for SwitchLayout for application/json ContentType.
 type SwitchLayoutJSONRequestBody = SwitchLayoutRequest
+
+// SetMonitorBrightnessJSONRequestBody defines body for SetMonitorBrightness for application/json ContentType.
+type SetMonitorBrightnessJSONRequestBody = SetBrightnessRequest
+
+// SetMonitorPowerJSONRequestBody defines body for SetMonitorPower for application/json ContentType.
+type SetMonitorPowerJSONRequestBody = SetMonitorPowerRequest
+
+// SetMonitorSettingsJSONRequestBody defines body for SetMonitorSettings for application/json ContentType.
+type SetMonitorSettingsJSONRequestBody = MonitorSettingsRequest
 
 // SimSetStateJSONRequestBody defines body for SimSetState for application/json ContentType.
 type SimSetStateJSONRequestBody = SimSetStateRequest
@@ -815,6 +867,15 @@ type ServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(w http.ResponseWriter, r *http.Request)
+	// Set a monitor's brightness
+	// (POST /api/monitors/brightness)
+	SetMonitorBrightness(w http.ResponseWriter, r *http.Request)
+	// Turn a monitor on or off (standby)
+	// (POST /api/monitors/power)
+	SetMonitorPower(w http.ResponseWriter, r *http.Request)
+	// Update a monitor's registry settings (name, backend, visibility)
+	// (POST /api/monitors/settings)
+	SetMonitorSettings(w http.ResponseWriter, r *http.Request)
 	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(w http.ResponseWriter, r *http.Request)
@@ -998,6 +1059,48 @@ func (siw *ServerInterfaceWrapper) GetMonitors(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMonitors(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorBrightness operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorBrightness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorBrightness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorPower operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorPower(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorPower(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1264,6 +1367,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/save-current", wrapper.SaveCurrentLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/switch", wrapper.SwitchLayout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/monitors", wrapper.GetMonitors)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/brightness", wrapper.SetMonitorBrightness)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/power", wrapper.SetMonitorPower)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/settings", wrapper.SetMonitorSettings)
 	m.HandleFunc("POST "+options.BaseURL+"/api/shutdown", wrapper.Shutdown)
 	m.HandleFunc("POST "+options.BaseURL+"/api/sim/reset", wrapper.SimReset)
 	m.HandleFunc("POST "+options.BaseURL+"/api/sim/set-state", wrapper.SimSetState)
@@ -1722,6 +1828,165 @@ func (response GetMonitors502JSONResponse) VisitGetMonitorsResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type SetMonitorBrightnessRequestObject struct {
+	Body *SetMonitorBrightnessJSONRequestBody
+}
+
+type SetMonitorBrightnessResponseObject interface {
+	VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorBrightness200JSONResponse MonitorControlResponse
+
+func (response SetMonitorBrightness200JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness400JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness400JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness401JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness401JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness500JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness500JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness502JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness502JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPowerRequestObject struct {
+	Body *SetMonitorPowerJSONRequestBody
+}
+
+type SetMonitorPowerResponseObject interface {
+	VisitSetMonitorPowerResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorPower200JSONResponse MonitorControlResponse
+
+func (response SetMonitorPower200JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower400JSONResponse ErrorResponse
+
+func (response SetMonitorPower400JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower401JSONResponse ErrorResponse
+
+func (response SetMonitorPower401JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower500JSONResponse ErrorResponse
+
+func (response SetMonitorPower500JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower502JSONResponse ErrorResponse
+
+func (response SetMonitorPower502JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettingsRequestObject struct {
+	Body *SetMonitorSettingsJSONRequestBody
+}
+
+type SetMonitorSettingsResponseObject interface {
+	VisitSetMonitorSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorSettings200JSONResponse MonitorControlResponse
+
+func (response SetMonitorSettings200JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings400JSONResponse ErrorResponse
+
+func (response SetMonitorSettings400JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings401JSONResponse ErrorResponse
+
+func (response SetMonitorSettings401JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings500JSONResponse ErrorResponse
+
+func (response SetMonitorSettings500JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings502JSONResponse ErrorResponse
+
+func (response SetMonitorSettings502JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ShutdownRequestObject struct {
 }
 
@@ -1992,6 +2257,15 @@ type StrictServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(ctx context.Context, request GetMonitorsRequestObject) (GetMonitorsResponseObject, error)
+	// Set a monitor's brightness
+	// (POST /api/monitors/brightness)
+	SetMonitorBrightness(ctx context.Context, request SetMonitorBrightnessRequestObject) (SetMonitorBrightnessResponseObject, error)
+	// Turn a monitor on or off (standby)
+	// (POST /api/monitors/power)
+	SetMonitorPower(ctx context.Context, request SetMonitorPowerRequestObject) (SetMonitorPowerResponseObject, error)
+	// Update a monitor's registry settings (name, backend, visibility)
+	// (POST /api/monitors/settings)
+	SetMonitorSettings(ctx context.Context, request SetMonitorSettingsRequestObject) (SetMonitorSettingsResponseObject, error)
 	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(ctx context.Context, request ShutdownRequestObject) (ShutdownResponseObject, error)
@@ -2342,6 +2616,99 @@ func (sh *strictHandler) GetMonitors(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMonitorsResponseObject); ok {
 		if err := validResponse.VisitGetMonitorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorBrightness operation middleware
+func (sh *strictHandler) SetMonitorBrightness(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorBrightnessRequestObject
+
+	var body SetMonitorBrightnessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorBrightness(ctx, request.(SetMonitorBrightnessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorBrightness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorBrightnessResponseObject); ok {
+		if err := validResponse.VisitSetMonitorBrightnessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorPower operation middleware
+func (sh *strictHandler) SetMonitorPower(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorPowerRequestObject
+
+	var body SetMonitorPowerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorPower(ctx, request.(SetMonitorPowerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorPower")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorPowerResponseObject); ok {
+		if err := validResponse.VisitSetMonitorPowerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorSettings operation middleware
+func (sh *strictHandler) SetMonitorSettings(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorSettingsRequestObject
+
+	var body SetMonitorSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorSettings(ctx, request.(SetMonitorSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorSettingsResponseObject); ok {
+		if err := validResponse.VisitSetMonitorSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

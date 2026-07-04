@@ -7,12 +7,16 @@ import type { AudioSinksResponse } from '../models/AudioSinksResponse';
 import type { AuthRequest } from '../models/AuthRequest';
 import type { AuthResponse } from '../models/AuthResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
+import type { MonitorControlResponse } from '../models/MonitorControlResponse';
+import type { MonitorSettingsRequest } from '../models/MonitorSettingsRequest';
 import type { MonitorsResponse } from '../models/MonitorsResponse';
 import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
 import type { RemoveLayoutResponse } from '../models/RemoveLayoutResponse';
 import type { SaveLayoutRequest } from '../models/SaveLayoutRequest';
 import type { SaveLayoutResponse } from '../models/SaveLayoutResponse';
 import type { SetAudioRequest } from '../models/SetAudioRequest';
+import type { SetBrightnessRequest } from '../models/SetBrightnessRequest';
+import type { SetMonitorPowerRequest } from '../models/SetMonitorPowerRequest';
 import type { ShutdownResponse } from '../models/ShutdownResponse';
 import type { SimSetStateRequest } from '../models/SimSetStateRequest';
 import type { SimStateResponse } from '../models/SimStateResponse';
@@ -282,6 +286,72 @@ export class DefaultService {
         return this.httpRequest.request({
             method: 'POST',
             url: '/api/audio/volume',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Set a monitor's brightness
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorBrightness(
+        requestBody?: SetBrightnessRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/brightness',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Turn a monitor on or off (standby)
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorPower(
+        requestBody?: SetMonitorPowerRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/power',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Update a monitor's registry settings (name, backend, visibility)
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorSettings(
+        requestBody?: MonitorSettingsRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/settings',
             body: requestBody,
             mediaType: 'application/json',
             errors: {

@@ -57,6 +57,10 @@ interface OttomanStore {
   setSinkMute: (name: string, muted: boolean) => Promise<void>;
   setSinkDefault: (name: string) => Promise<void>;
 
+  // ── Monitor Control Actions ───────────────────────────
+  setMonitorBrightness: (edid: string, brightness: number) => Promise<void>;
+  setMonitorPower: (edid: string, on: boolean) => Promise<void>;
+
   // ── Layout Actions ────────────────────────────────────
   switchLayout: (id: string) => Promise<void>;
   removeLayout: (id: string) => Promise<void>;
@@ -420,6 +424,28 @@ export const useStore = create<OttomanStore>((set, get) => ({
       get().fetchAudioSinks(true);
     } catch {
       get().fetchAudioSinks(true);
+    }
+  },
+
+  // ── Monitor Control Actions ───────────────────────────
+
+  setMonitorBrightness: async (edid: string, brightness: number) => {
+    // Optimistic update so the slider stays responsive.
+    set((s) => ({
+      monitors: s.monitors.map((m) => (m.edid === edid ? { ...m, brightness } : m)),
+    }));
+    try {
+      await client.default.setMonitorBrightness({ edid, brightness });
+    } catch {
+      get().fetchMonitors(true);
+    }
+  },
+
+  setMonitorPower: async (edid: string, on: boolean) => {
+    try {
+      await client.default.setMonitorPower({ edid, on });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to set monitor power");
     }
   },
 }));

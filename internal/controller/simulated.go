@@ -398,6 +398,33 @@ func (s *SimulatedController) SetAudioVolume(ctx context.Context, request api.Se
 	return api.SetAudioVolume200JSONResponse{Success: true, Message: &msg}, nil
 }
 
+func (s *SimulatedController) SetMonitorBrightness(ctx context.Context, request api.SetMonitorBrightnessRequestObject) (api.SetMonitorBrightnessResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorBrightness400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Set brightness of %q to %d", request.Body.Edid, request.Body.Brightness)
+	msg := "brightness updated"
+	return api.SetMonitorBrightness200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetMonitorPower(ctx context.Context, request api.SetMonitorPowerRequestObject) (api.SetMonitorPowerResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorPower400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Set power of %q to on=%v", request.Body.Edid, request.Body.On)
+	msg := "power updated"
+	return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetMonitorSettings(ctx context.Context, request api.SetMonitorSettingsRequestObject) (api.SetMonitorSettingsResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorSettings400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Updated registry settings for %q", request.Body.Edid)
+	msg := "settings updated"
+	return api.SetMonitorSettings200JSONResponse{Success: true, Message: &msg}, nil
+}
+
 func (s *SimulatedController) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
 	s.mu.RLock()
 	layouts := s.layouts.List()

@@ -39,6 +39,8 @@ type Agent struct {
 	server        *http.Server
 	layouts       *display.Layouts
 	layoutStore   *store.LayoutStore
+	registry      *store.Registry
+	control       *monitorControl
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
@@ -92,11 +94,20 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		audioCtl = nil
 	}
 
+	// Monitor registry (friendly names, control backends, visibility) lives in
+	// the data dir alongside layouts.
+	registry, err := store.NewRegistry("")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load monitor registry")
+	}
+
 	a := &Agent{
 		config:      cfg,
 		configPath:  config.ConfigPath(),
 		layouts:     layouts,
 		layoutStore: layoutStore,
+		registry:    registry,
+		control:     newMonitorControl(registry),
 		displayMgr:  mgr,
 		mouse:       mouse,
 		keyboard:    keyboard,
@@ -453,6 +464,10 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		}
 		apiMonitors = append(apiMonitors, mon)
 	}
+
+	// Add registry + control metadata (friendly name, backend, capabilities,
+	// current brightness, visibility) so any frontend renders the right controls.
+	apiMonitors = a.control.enrich(apiMonitors)
 
 	return api.GetMonitors200JSONResponse(apiMonitors), nil
 }
