@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -253,14 +254,20 @@ func (c *Controller) Wake(ctx context.Context, request api.WakeRequestObject) (a
 	}
 
 	// Send magic packet
-	if err := SendToAllInterfaces(macAddr); err != nil {
+	targets, err := SendToAllInterfaces(macAddr)
+	if err != nil {
 		return api.Wake500JSONResponse{
 			Code:  http.StatusInternalServerError,
 			Error: err.Error(),
 		}, nil
 	}
 
-	msg := fmt.Sprintf("Wake-on-LAN packet sent to %s", macAddr)
+	labels := make([]string, len(targets))
+	for i, t := range targets {
+		labels[i] = t.String()
+	}
+	msg := fmt.Sprintf("Wake-on-LAN packet sent to %s via %s", macAddr, strings.Join(labels, ", "))
+	log.Printf("%s", msg)
 	return api.Wake200JSONResponse{
 		Success: true,
 		Message: &msg,
@@ -513,6 +520,11 @@ func (c *Controller) Start() error {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
+	}
+
+	// Warn about any Wake-on-LAN misconfiguration up front.
+	for _, w := range ValidateWakeConfig(c.config.Agent.MACAddress) {
+		log.Printf("WARNING: %s", w)
 	}
 
 	// Handle graceful shutdown
