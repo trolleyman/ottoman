@@ -189,21 +189,23 @@ New agent endpoints (proxied by the controller like everything else):
 | `/api/monitors/power` | `POST` | Turn a specific display on/off |
 | `/api/tv/...` | — | TV-specific extras if needed (input, OLED light) |
 
-Config grows a `[tv]` section (`type = "webos"`, `host`, `mac`, `pairing_key`) and the display
-layer gets a per-monitor "control backend" (ddc | tv | none). Web UI: brightness slider +
-power toggle per monitor card.
+Each monitor gets a "control backend" (ddc | tv | none) on its registry entry; a `tv` backend
+also stores the TV transport (`type`/`host`/`mac`) on that same entry (the pairing key stays in
+the data dir). Web UI: brightness slider + power toggle per monitor card, plus a per-monitor
+settings editor (backend, friendly name, TV host/MAC, control visibility).
 
-**Should the TV be folded into a monitor entry instead of its own `[tv]` section?** No — keep
-both, and *link* them rather than merge them. The registry (§5a) already unifies control: a
-`MonitorEntry` (EDID-keyed) carries `backend = "tv"`, so at the UI/capability layer the TV
-*is* just a monitor and renders alongside the others. But the TV's **network transport**
-(`host`, `mac`, `pairing_key`, `type`) can't live on an EDID-keyed monitor record, because:
-(1) power-on is a Wake-on-LAN packet sent while the TV is **off** — when off it presents no
-EDID and isn't enumerated as a display, so there'd be no record to hang the MAC on; (2) the
-SSAP endpoint + pairing key are a per-device network identity, not a per-connector display
-property. So `[tv]` holds the transport, the registry entry holds the control-surface/visibility,
-and they join by marking that monitor's backend `tv`. (The pairing key is runtime data in the
-data dir, not in `[tv]`, so redeploying config can't clobber it — already implemented.)
+**Should the TV be folded into a monitor entry instead of its own `[tv]` section? Yes —
+done.** The TV's network transport (`type`/`host`/`mac`) now lives **on the monitor registry
+entry** (`store.TVConn` on the EDID-keyed `MonitorEntry`), configured from that monitor's
+settings editor in the web UI, not in a separate top-level config block. The TV controller
+resolves its target from the registry entry whose `backend = "tv"` (`Registry.TVEntry()`), so
+the TV *is* just a monitor at the config, control, and UI layers. The earlier worry — that
+power-on is a Wake-on-LAN packet sent while the TV is **off** and presenting no EDID — is moot
+because the registry entry is **persisted**: once the TV has been seen and configured, its
+entry (with the MAC) survives the TV being off, so there's always a record to WoL from. The
+legacy top-level `[agent.tv]` section is kept only as a read-only migration fallback so existing
+installs keep working until the TV is set up on its monitor. (The pairing key stays as runtime
+data in the data dir — never in config — so a redeploy can't clobber it.)
 
 **Effort:** DDC/CI backend ~1–2 days. LG webOS (or equivalent) integration ~2–3 days including
 pairing flow. CEC-on-Pi variant ~1–2 days.
