@@ -26,34 +26,41 @@ Enter BIOS (Del at boot) → press F7 for Advanced mode:
    ErP cuts standby power to the NIC when the machine is off — with it enabled, WoL from
    powered-off (S5) can never work. If present, also leave `Deep Sleep` off.
 
-### 1b. Linux NIC configuration
+### 1b. Linux NIC configuration — ✅ verified OK
 
-`nmcli` reports the active ethernet connection has `802-3-ethernet.wake-on-lan = default`,
-which on Realtek/r8169 usually resolves to *disabled* — NetworkManager re-applies this on every
-boot, so a one-off `ethtool -s ... wol g` doesn't stick. Persistent fix:
+Checked on the host (2026-07-04): `enp6s0` reports `Supports Wake-on: pumbg`, `Wake-on: g` —
+the NIC is already armed for magic packets under Linux. The connection profile still has
+`802-3-ethernet.wake-on-lan = default` (the driver default happens to be `g`); make it explicit
+so a NetworkManager/driver update can't silently turn it off:
 
 ```bash
-# Check current state (run on the host, not in a sandbox):
-sudo ethtool enp6s0 | grep -i wake     # want: "Supports Wake-on: ...g...", "Wake-on: g"
-
-# Make it persistent via NetworkManager:
-nmcli connection show                   # find the wired connection name
+nmcli -f NAME,TYPE,DEVICE connection show --active   # find the wired profile name
 nmcli connection modify "<name>" 802-3-ethernet.wake-on-lan magic
 nmcli connection up "<name>"
 ```
 
-> Note: the interface name/MAC observed inside the dev sandbox is namespaced; verify the real
-> interface name on the host first (`ip -br link`).
+**Since the Linux side is fine, the actual breakage is almost certainly 1a (BIOS) and/or 1c
+(Windows dual-boot state).**
 
-### 1c. Verifying end-to-end
+### 1c. Windows dual-boot (confirmed applicable)
 
-- From the Pi: `tcpdump -i eth0 udp port 9` on another LAN machine while pressing Wake, to
-  confirm the packet leaves the Pi and arrives on the LAN.
-- Test from suspend first (easier), then from full shutdown (needs 1a).
-- If the machine dual-boots Windows: Windows Fast Startup leaves the NIC in a state where WoL
-  often fails — disable Fast Startup and enable "Wake on Magic Packet" in Device Manager.
+The machine dual-boots Windows. The NIC's power-off state is set by whichever OS shut the
+machine down, so WoL must be configured on **both** sides:
 
-### 1d. Code improvements (small)
+- Windows Device Manager → Realtek NIC → Advanced: enable "Wake on Magic Packet";
+  Power Management tab: "Allow this device to wake the computer" + "Only allow a magic packet".
+- Disable **Fast Startup** (Control Panel → Power Options → "Choose what the power buttons do").
+  Fast-Startup shutdown is a hibernate hybrid that frequently leaves the Realtek NIC unable to
+  wake.
+
+### 1d. Verifying end-to-end
+
+- From another LAN machine: `sudo tcpdump -ni <iface> udp port 9` while pressing Wake in the
+  ottoman UI, to confirm the packet leaves the Pi and arrives on the LAN.
+- Test matrix: wake from suspend (easiest) → from Linux shutdown (tests BIOS) → from Windows
+  shutdown (tests Fast Startup/driver).
+
+### 1e. Code improvements (small)
 
 - `/api/wake` currently fire-and-forgets. Add a response detailing which interface(s)/broadcast
   addresses the packet was sent on, and optionally poll the agent's `/health` afterwards so the
@@ -136,24 +143,29 @@ DisplayPort" case is covered.
 - Mapping ddcutil displays (i2c bus / EDID) to ottoman's `Monitor` entries: match on EDID,
   which the mutter backend (2a) gives us — a nice reason to do 2a first.
 
-### 3b. OLED TV → network API (preferred) or CEC via the Pi
+### 3b. OLED TV → LG webOS network API (decided)
 
-Important constraint: **desktop GPUs (NVIDIA/AMD) do not wire up HDMI-CEC**, so the desktop
-cannot send CEC at all. Options:
+The TV is an **LG OLED65A16LA** (2021 A1 series, webOS 6.0) — the LG webOS network API is the
+clear choice. One integration gives everything we want:
 
-1. **TV network API (recommended if it's an LG/Samsung/Sony smart TV).** For LG webOS this
-   gives everything in one integration: power on (Wake-on-LAN to the TV) / off, **OLED
-   backlight** ("OLED Light" — the setting that actually matters for OLED, distinct from the
-   `brightness` picture setting), volume/mute, and input switching. One-time pairing key stored
-   in `ottoman.toml`. Runs happily from either the Pi or the desktop agent.
-2. **CEC via the Pi.** The Pi Zero 2 W's HDMI port does speak CEC — if the Pi is (or can be)
-   plugged into a spare HDMI input on the TV, `cec-client`/`cec-ctl` on the controller gives
-   power on/off, volume up/down/mute. CEC has **no brightness control**, so this covers
-   power+volume only.
-3. Pulse-Eight USB-CEC adapter on the desktop (~£40) — only worth it if 1 and 2 both fail.
+- **Power on**: Wake-on-LAN magic packet to the TV's MAC (reuses `internal/controller/wol.go`!).
+  Requires enabling Settings → General → *"Turn On Via Wi-Fi"* / "LG Connect Apps" on the TV.
+- **Power off**, **volume/mute**, **input switching**: SSAP websocket API
+  (`wss://<tv>:3001`, `ssap://audio/setVolume`, `ssap://system/turnOff`, ...). One-time
+  on-screen pairing prompt yields a client key stored in `ottoman.toml`.
+- **OLED Light** (`backlight` in the picture-settings Luna service) — the setting that actually
+  matters for OLED panel brightness, distinct from the `brightness` picture control. Proven
+  workable on webOS 6 by projects like Home Assistant's `webostv` and `bscpylgtv`.
+- Implementation in Go: the SSAP protocol is plain JSON over websocket, and the repo already
+  uses a websocket library for the trackpad — a small `internal/tv/webos` package rather than
+  a third-party dependency.
+- Can run from either the desktop agent or the Pi; agent is the natural home (same box, same
+  registry as DDC monitors).
 
-**Recommendation:** DDC/CI for the monitors + TV network API for the TV; CEC-via-Pi as the
-fallback for non-smart TVs.
+Important constraint that rules out alternatives: **desktop GPUs (NVIDIA/AMD) do not wire up
+HDMI-CEC**, so the desktop cannot send CEC at all. Fallbacks if webOS misbehaves: the Pi sits
+next to the TV and its HDMI port speaks CEC (`cec-ctl` → power + volume, but no brightness),
+or a Pulse-Eight USB-CEC adapter (~£40) on the desktop.
 
 ### 3c. API surface
 
@@ -181,9 +193,14 @@ pairing flow. CEC-on-Pi variant ~1–2 days.
 1. **PC output volume into the TV** (the PipeWire sink for the HDMI audio device). Easy and
    works today with no new host deps: wrap `wpctl` (`get-volume`, `set-volume`, `set-mute`,
    `set-default`) in an audio backend, expose `/api/audio/sinks` + `/api/audio/volume`.
-   Also handy for switching default output between TV and speakers/headphones. ~1 day.
-2. **The TV's own hardware volume** — rides on whichever TV integration lands in 3b
-   (webOS API or CEC volume keys). No extra effort beyond 3b.
+   Confirmed on the host: the default sink is the NVIDIA HDMI output feeding the TV
+   (`alsa_output.pci-0000_01_00.1.hdmi-stereo`, id 55), with the Logi Z407 speakers as the
+   second sink — so default-sink switching between TV and speakers is a real use case here,
+   not hypothetical. Match sinks by node name (ids are not stable across reboots). ~1 day.
+   Note HDMI sink volume is software attenuation — fine for trim, but the TV's own volume
+   (below) is the better master control.
+2. **The TV's own hardware volume** — rides on the webOS integration in 3b
+   (`ssap://audio/setVolume` / `getVolume` / mute). No extra effort beyond 3b.
 
 Web UI: a volume slider (per sink) + mute on the main page; TV hardware volume grouped with the
 TV card.
@@ -289,11 +306,18 @@ in one file hurts in both directions.
    laptop panels; Windows will also want a DDC path via the physical-monitor Win32 API), plus
    a tray+flyout equivalent of the quick-settings panel.
 
-## Open questions / info needed from you
+## Answered questions (host facts, checked 2026-07-04)
 
-- **TV brand/model?** (EDID wasn't readable from the sandbox.) If it's an LG OLED, option 3b.1
-  is a clear win. Also: is the Pi physically near/connected to the TV?
-- On the host (not the sandbox), the output of:
-  - `sudo ethtool <iface> | grep -i wake` — confirms what the NIC supports/has enabled
-  - `wpctl status` — confirms sink names for the audio backend
-- Does the desktop dual-boot Windows? (Affects WoL via Fast Startup.)
+- **TV**: LG OLED65A16LA (A1 series 2021, webOS 6.0) → webOS network API chosen (3b).
+  The Pi sits near the TV, so CEC-via-Pi remains available as a fallback.
+- **NIC**: `enp6s0` — `Supports Wake-on: pumbg`, `Wake-on: g` → Linux side of WoL already
+  works; remaining suspects are BIOS and Windows Fast Startup.
+- **Dual-boot**: yes, Windows is present → 1c applies.
+- **Audio**: PipeWire 1.0.5; default sink `alsa_output.pci-0000_01_00.1.hdmi-stereo`
+  ("HDA NVidia Digital Stereo (HDMI)" → the TV), plus "Logi Z407 Analogue Stereo".
+
+## Remaining open questions
+
+- Current BIOS state of `Resume By PCI-E Device` / `ErP Ready` (needs a reboot to check).
+- Whether "Turn On Via Wi-Fi" is enabled on the TV, and the TV's MAC address (Settings →
+  Network, or `ip neigh` after pinging it) — needed for TV power-on.
