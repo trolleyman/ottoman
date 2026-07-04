@@ -102,9 +102,11 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to load monitor registry")
 	}
 
-	// TV controller (LG webOS). The pairing key lives in the data dir, not the
-	// config, so a config redeploy can't drop it.
-	tv := newTVController(cfg.TV, store.NewTVStore(""))
+	// TV controller (LG webOS). Its transport is resolved from the monitor
+	// registry (the "tv"-backend entry); cfg.TV is a legacy fallback. The
+	// pairing key lives in the data dir, not the config, so a config redeploy
+	// can't drop it.
+	tv := newTVController(registry, cfg.TV, store.NewTVStore(""))
 	control := newMonitorControl(registry)
 	control.tv = tv
 

@@ -905,6 +905,15 @@ components:
         visibility:
           type: object
           additionalProperties: { type: boolean }
+        tv: { $ref: '#/components/schemas/TVConn' }
+
+    # Network-TV transport for a monitor controlled as a TV (backend "tv").
+    TVConn:
+      type: object
+      properties:
+        type: { type: string, description: "webos (empty = none)" }
+        host: { type: string, description: "TV IP or hostname" }
+        mac: { type: string, description: "TV MAC for Wake-on-LAN power-on" }
 
     MonitorCapabilities:
       type: object
@@ -1117,6 +1126,7 @@ components:
         visibility:
           type: object
           additionalProperties: { type: boolean }
+        tv: { $ref: '#/components/schemas/TVConn' }
 
     MonitorControlResponse:
       type: object

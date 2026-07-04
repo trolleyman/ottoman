@@ -15,25 +15,47 @@ import (
 // tvController manages the connection to a network-controlled TV (LG webOS).
 // The SSAP connection is established lazily and reused; power-on uses
 // Wake-on-LAN and needs no connection.
+//
+// The TV's transport (host/mac/type) is resolved from the monitor registry
+// entry whose backend is "tv" — so a TV's config lives alongside the rest of
+// that monitor's settings. A legacy top-level [agent.tv] config, if present, is
+// used as a fallback so existing installs keep working until the TV is
+// configured on its monitor.
 type tvController struct {
-	cfg   config.TVConfig
-	store *store.TVStore
+	reg    *store.Registry
+	legacy config.TVConfig
+	store  *store.TVStore
 
-	mu      sync.Mutex
-	client  *webos.Client
-	key     string
-	pairing bool
-	pairErr string
+	mu         sync.Mutex
+	client     *webos.Client
+	clientHost string // host the current client is connected to
+	key        string
+	pairing    bool
+	pairErr    string
 }
 
-func newTVController(cfg config.TVConfig, st *store.TVStore) *tvController {
+func newTVController(reg *store.Registry, legacy config.TVConfig, st *store.TVStore) *tvController {
 	key, _ := st.LoadPairingKey()
-	return &tvController{cfg: cfg, store: st, key: key}
+	return &tvController{reg: reg, legacy: legacy, store: st, key: key}
 }
 
-// Configured reports whether a webOS TV is configured.
+// conn resolves the current TV transport: the registry entry first, then the
+// legacy [agent.tv] config as a migration fallback.
+func (t *tvController) conn() (store.TVConn, bool) {
+	if e, ok := t.reg.TVEntry(); ok {
+		return *e.TV, true
+	}
+	if t.legacy.Host != "" {
+		return store.TVConn{Type: t.legacy.Type, Host: t.legacy.Host, Mac: t.legacy.Mac}, true
+	}
+	return store.TVConn{}, false
+}
+
+// Configured reports whether a network TV is configured (on a monitor or via
+// the legacy config).
 func (t *tvController) Configured() bool {
-	return t.cfg.Type == "webos" && t.cfg.Host != ""
+	_, ok := t.conn()
+	return ok
 }
 
 // ensure returns a connected client, dialing (and reusing) as needed. It fails
@@ -42,8 +64,14 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if !t.Configured() {
+	conn, ok := t.conn()
+	if !ok {
 		return nil, errors.New("no TV configured")
+	}
+	// Drop a stale client if the configured host changed.
+	if t.client != nil && t.clientHost != conn.Host {
+		t.client.Close()
+		t.client = nil
 	}
 	if t.client != nil {
 		return t.client, nil
@@ -52,7 +80,7 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 		return nil, errors.New("TV is not paired yet — pair it first (POST /api/tv/pair)")
 	}
 
-	c := webos.New(t.cfg.Host)
+	c := webos.New(conn.Host)
 	// Use a background context so the persistent read loop outlives the request.
 	newKey, err := c.Connect(context.Background(), t.key)
 	if err != nil {
@@ -63,6 +91,7 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 		_ = t.store.SavePairingKey(newKey)
 	}
 	t.client = c
+	t.clientHost = conn.Host
 	return c, nil
 }
 
@@ -96,7 +125,8 @@ func (t *tvController) withClient(ctx context.Context, fn func(*webos.Client) er
 // reported via State().
 func (t *tvController) StartPairing() error {
 	t.mu.Lock()
-	if !t.Configured() {
+	conn, ok := t.conn()
+	if !ok {
 		t.mu.Unlock()
 		return errors.New("no TV configured")
 	}
@@ -106,7 +136,7 @@ func (t *tvController) StartPairing() error {
 	}
 	t.pairing = true
 	t.pairErr = ""
-	host := t.cfg.Host
+	host := conn.Host
 	key := t.key
 	if t.client != nil {
 		t.client.Close()
@@ -128,6 +158,7 @@ func (t *tvController) StartPairing() error {
 		}
 		t.key = newKey
 		t.client = c
+		t.clientHost = host
 		if err := t.store.SavePairingKey(newKey); err != nil {
 			log.Printf("Failed to persist TV pairing key: %v", err)
 		}
@@ -150,12 +181,13 @@ type TVState struct {
 // State returns the current TV integration state, querying live volume if
 // connected.
 func (t *tvController) State(ctx context.Context) TVState {
+	conn, configured := t.conn()
 	t.mu.Lock()
 	st := TVState{
-		Configured: t.Configured(),
+		Configured: configured,
 		Paired:     t.key != "",
 		Pairing:    t.pairing,
-		Host:       t.cfg.Host,
+		Host:       conn.Host,
 		Error:      t.pairErr,
 	}
 	t.mu.Unlock()
@@ -178,10 +210,11 @@ func (t *tvController) State(ctx context.Context) TVState {
 
 // PowerOn wakes the TV via Wake-on-LAN.
 func (t *tvController) PowerOn() error {
-	if t.cfg.Mac == "" {
+	conn, ok := t.conn()
+	if !ok || conn.Mac == "" {
 		return errors.New("no TV MAC configured for Wake-on-LAN")
 	}
-	return webos.PowerOn(t.cfg.Mac, t.cfg.Host)
+	return webos.PowerOn(conn.Mac, conn.Host)
 }
 
 // PowerOff turns the TV off via SSAP.

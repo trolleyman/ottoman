@@ -53,6 +53,19 @@ func (a *Agent) SetMonitorSettings(ctx context.Context, request api.SetMonitorSe
 		if body.Visibility != nil {
 			e.Visibility = *body.Visibility
 		}
+		if body.Tv != nil {
+			conn := &store.TVConn{Type: "webos"}
+			if body.Tv.Type != nil && *body.Tv.Type != "" {
+				conn.Type = *body.Tv.Type
+			}
+			if body.Tv.Host != nil {
+				conn.Host = *body.Tv.Host
+			}
+			if body.Tv.Mac != nil {
+				conn.Mac = *body.Tv.Mac
+			}
+			e.TV = conn
+		}
 	}); err != nil {
 		return api.SetMonitorSettings500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}

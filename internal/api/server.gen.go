@@ -189,6 +189,7 @@ type Monitor struct {
 	Manufacturer   string           `json:"manufacturer"`
 	Name           string           `json:"name"`
 	Port           string           `json:"port"`
+	Tv             *TVConn          `json:"tv,omitempty"`
 	Visibility     *map[string]bool `json:"visibility,omitempty"`
 }
 
@@ -211,6 +212,7 @@ type MonitorSettingsRequest struct {
 	Backend      *string          `json:"backend,omitempty"`
 	Edid         string           `json:"edid"`
 	FriendlyName *string          `json:"friendly_name,omitempty"`
+	Tv           *TVConn          `json:"tv,omitempty"`
 	Visibility   *map[string]bool `json:"visibility,omitempty"`
 }
 
@@ -313,6 +315,18 @@ type SwitchLayoutResponse struct {
 	CurrentLayout string  `json:"current_layout"`
 	Message       *string `json:"message,omitempty"`
 	Success       bool    `json:"success"`
+}
+
+// TVConn defines model for TVConn.
+type TVConn struct {
+	// Host TV IP or hostname
+	Host *string `json:"host,omitempty"`
+
+	// Mac TV MAC for Wake-on-LAN power-on
+	Mac *string `json:"mac,omitempty"`
+
+	// Type webos (empty = none)
+	Type *string `json:"type,omitempty"`
 }
 
 // TVInputRequest defines model for TVInputRequest.

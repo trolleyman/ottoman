@@ -22,6 +22,17 @@ const (
 	ControlVolume     = "volume"
 )
 
+// TVConn holds the network-transport details for a monitor controlled as a
+// network TV (backend "tv"): the protocol, the TV's IP/hostname for the SSAP
+// websocket, and its MAC for Wake-on-LAN power-on. It lives on the monitor
+// entry so a TV's config sits with the rest of that monitor's settings rather
+// than in a separate top-level config section.
+type TVConn struct {
+	Type string `json:"type,omitempty"` // "webos" (empty = none)
+	Host string `json:"host,omitempty"` // TV IP or hostname
+	Mac  string `json:"mac,omitempty"`  // TV MAC for Wake-on-LAN power-on
+}
+
 // MonitorEntry is the persisted registry record for one physical monitor,
 // keyed by its stable EDID identifier.
 type MonitorEntry struct {
@@ -33,6 +44,8 @@ type MonitorEntry struct {
 	// Visibility maps a control name (brightness/power/volume) to whether it
 	// should be shown. A control absent from the map defaults to visible.
 	Visibility map[string]bool `json:"visibility,omitempty"`
+	// TV holds network-TV transport details when Backend is "tv".
+	TV *TVConn `json:"tv,omitempty"`
 }
 
 // Visible reports whether a control should be shown for this monitor.
@@ -144,6 +157,20 @@ func (r *Registry) Update(edid string, fn func(*MonitorEntry)) (MonitorEntry, er
 		return e, err
 	}
 	return e, nil
+}
+
+// TVEntry returns the registry entry configured as a network TV (backend "tv"
+// with a reachable host), if any. Only one TV is expected; the first match
+// wins. This is how the TV controller resolves which monitor is the TV.
+func (r *Registry) TVEntry() (MonitorEntry, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.entries {
+		if e.Backend == BackendTV && e.TV != nil && e.TV.Host != "" {
+			return e, true
+		}
+	}
+	return MonitorEntry{}, false
 }
 
 // List returns all entries.
