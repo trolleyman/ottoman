@@ -126,6 +126,8 @@ func installLinuxService() error {
 	log.Println("  Status:  systemctl --user status ottoman-agent")
 	log.Println("  Logs:    journalctl --user -u ottoman-agent -f")
 
+	printLinuxHostSetupHint()
+
 	return nil
 }
 
