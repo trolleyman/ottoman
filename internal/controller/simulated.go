@@ -425,6 +425,42 @@ func (s *SimulatedController) SetMonitorSettings(ctx context.Context, request ap
 	return api.SetMonitorSettings200JSONResponse{Success: true, Message: &msg}, nil
 }
 
+func (s *SimulatedController) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
+	return api.GetTVState200JSONResponse{
+		Configured: true, Paired: true, Pairing: false,
+		Host: "10.0.0.50", Volume: 12, Muted: false,
+	}, nil
+}
+
+func (s *SimulatedController) PairTV(ctx context.Context, request api.PairTVRequestObject) (api.PairTVResponseObject, error) {
+	msg := "Pairing started — accept the prompt on the TV"
+	return api.PairTV200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVPower(ctx context.Context, request api.SetTVPowerRequestObject) (api.SetTVPowerResponseObject, error) {
+	if request.Body == nil {
+		return api.SetTVPower400JSONResponse{Code: 400, Error: "body required"}, nil
+	}
+	log.Printf("[SIM] TV power on=%v", request.Body.On)
+	msg := "TV power updated"
+	return api.SetTVPower200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVVolume(ctx context.Context, request api.SetTVVolumeRequestObject) (api.SetTVVolumeResponseObject, error) {
+	log.Printf("[SIM] TV volume updated")
+	msg := "TV volume updated"
+	return api.SetTVVolume200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVInput(ctx context.Context, request api.SetTVInputRequestObject) (api.SetTVInputResponseObject, error) {
+	if request.Body == nil || request.Body.Input == "" {
+		return api.SetTVInput400JSONResponse{Code: 400, Error: "input is required"}, nil
+	}
+	log.Printf("[SIM] TV input -> %s", request.Body.Input)
+	msg := "TV input switched"
+	return api.SetTVInput200JSONResponse{Success: true, Message: &msg}, nil
+}
+
 func (s *SimulatedController) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
 	s.mu.RLock()
 	layouts := s.layouts.List()

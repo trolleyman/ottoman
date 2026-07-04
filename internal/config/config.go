@@ -50,6 +50,16 @@ type AgentConfig struct {
 	AuthToken     string         `json:"auth_token"`
 	Layouts       []api.Layout   `json:"layouts"`
 	Trackpad      TrackpadConfig `json:"trackpad"`
+	TV            TVConfig       `json:"tv"`
+}
+
+// TVConfig holds network-controlled TV configuration. The pairing key is NOT
+// stored here (it's runtime data kept in the data dir) so redeploying the
+// config can't clobber it.
+type TVConfig struct {
+	Type string `json:"type"` // "webos" (empty = no TV configured)
+	Host string `json:"host"` // TV IP or hostname
+	Mac  string `json:"mac"`  // TV MAC for Wake-on-LAN power-on
 }
 
 // TrackpadConfig holds trackpad configuration

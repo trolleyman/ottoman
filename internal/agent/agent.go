@@ -41,6 +41,7 @@ type Agent struct {
 	layoutStore   *store.LayoutStore
 	registry      *store.Registry
 	control       *monitorControl
+	tv            *tvController
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
@@ -101,13 +102,20 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to load monitor registry")
 	}
 
+	// TV controller (LG webOS). The pairing key lives in the data dir, not the
+	// config, so a config redeploy can't drop it.
+	tv := newTVController(cfg.TV, store.NewTVStore(""))
+	control := newMonitorControl(registry)
+	control.tv = tv
+
 	a := &Agent{
 		config:      cfg,
 		configPath:  config.ConfigPath(),
 		layouts:     layouts,
 		layoutStore: layoutStore,
 		registry:    registry,
-		control:     newMonitorControl(registry),
+		control:     control,
+		tv:          tv,
 		displayMgr:  mgr,
 		mouse:       mouse,
 		keyboard:    keyboard,

@@ -566,6 +566,183 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/tv/state:
+    get:
+      summary: Get TV integration state
+      operationId: getTVState
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TVStateResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tv/pair:
+    post:
+      summary: Start TV on-screen pairing
+      operationId: pairTV
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TVResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tv/power:
+    post:
+      summary: Turn the TV on (Wake-on-LAN) or off (SSAP)
+      operationId: setTVPower
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TVPowerRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TVResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tv/volume:
+    post:
+      summary: Set the TV volume and/or mute
+      operationId: setTVVolume
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TVVolumeRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TVResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tv/input:
+    post:
+      summary: Switch the TV's external input
+      operationId: setTVInput
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TVInputRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TVResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/sim/reset:
     post:
       summary: Reset simulation
@@ -877,6 +1054,44 @@ components:
           additionalProperties: { type: boolean }
 
     MonitorControlResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    # --- TV Types ---
+    TVStateResponse:
+      type: object
+      required: [configured, paired, pairing, host, volume, muted]
+      properties:
+        configured: { type: boolean }
+        paired: { type: boolean }
+        pairing: { type: boolean }
+        host: { type: string }
+        volume: { type: integer }
+        muted: { type: boolean }
+        error: { type: string }
+
+    TVPowerRequest:
+      type: object
+      required: [on]
+      properties:
+        on: { type: boolean }
+
+    TVVolumeRequest:
+      type: object
+      properties:
+        volume: { type: integer }
+        muted: { type: boolean }
+
+    TVInputRequest:
+      type: object
+      required: [input]
+      properties:
+        input: { type: string }
+
+    TVResponse:
       type: object
       required: [success]
       properties:

@@ -51,6 +51,11 @@ export type { TrackpadMessageMousePositionUpdate } from './models/TrackpadMessag
 export type { TrackpadMessageMouseScroll } from './models/TrackpadMessageMouseScroll';
 export type { TrackpadMessageMouseUp } from './models/TrackpadMessageMouseUp';
 export type { TrackpadMessageText } from './models/TrackpadMessageText';
+export type { TVInputRequest } from './models/TVInputRequest';
+export type { TVPowerRequest } from './models/TVPowerRequest';
+export type { TVResponse } from './models/TVResponse';
+export type { TVStateResponse } from './models/TVStateResponse';
+export type { TVVolumeRequest } from './models/TVVolumeRequest';
 export type { WakeResponse } from './models/WakeResponse';
 
 export { DefaultService } from './services/DefaultService';

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"log"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ const brightnessCacheTTL = 60 * time.Second
 // bus via ddcutil; the TV backend is wired in separately.
 type monitorControl struct {
 	registry *store.Registry
+	tv       *tvController
 
 	mu         sync.Mutex
 	ddcCache   []ddc.Display
@@ -139,7 +141,8 @@ func (c *monitorControl) setBrightnessSample(edid string, v int) {
 	c.mu.Unlock()
 }
 
-// setBrightness sets brightness (0-100) on a monitor.
+// setBrightness sets brightness (0-100) on a monitor. For a TV-backed monitor
+// this drives the OLED backlight.
 func (c *monitorControl) setBrightness(edid string, percent int) error {
 	switch c.backendFor(edid) {
 	case store.BackendDDC:
@@ -152,12 +155,17 @@ func (c *monitorControl) setBrightness(edid string, percent int) error {
 		}
 		c.setBrightnessSample(edid, percent)
 		return nil
+	case store.BackendTV:
+		if c.tv == nil {
+			return errors.New("no TV controller configured")
+		}
+		return c.tv.SetBacklight(context.Background(), percent)
 	default:
 		return errors.Errorf("brightness control not available for monitor %q", edid)
 	}
 }
 
-// setPower turns a monitor on or off (standby).
+// setPower turns a monitor on or off (standby / TV power).
 func (c *monitorControl) setPower(edid string, on bool) error {
 	switch c.backendFor(edid) {
 	case store.BackendDDC:
@@ -166,6 +174,14 @@ func (c *monitorControl) setPower(edid string, on bool) error {
 			return errors.Errorf("no DDC display matches monitor %q", edid)
 		}
 		return ddc.SetPower(bus, on)
+	case store.BackendTV:
+		if c.tv == nil {
+			return errors.New("no TV controller configured")
+		}
+		if on {
+			return c.tv.PowerOn()
+		}
+		return c.tv.PowerOff(context.Background())
 	default:
 		return errors.Errorf("power control not available for monitor %q", edid)
 	}
