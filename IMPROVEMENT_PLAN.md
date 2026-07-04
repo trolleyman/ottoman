@@ -190,16 +190,70 @@ TV card.
 
 ---
 
+## 5. Taskbar quick-controls (tray applet)
+
+A tray icon on the desktop for one-click access to: layout switching, per-monitor brightness,
+monitor power on/off, and volume — without opening the web UI.
+
+### 5a. Prerequisite: a monitor registry + capability model
+
+Right now monitors only exist as whatever `ListMonitors` returns at that moment. Quick controls
+(and per-monitor settings) need persistent identity:
+
+- **Registry** (persisted next to layouts): known monitors keyed by **EDID** (stable across
+  ports/reboots; the mutter backend in 2a provides it), each with a friendly name
+  (e.g. "LG OLED TV", "Dell 27\"") and its control backend (`ddc` | `tv` | `none`).
+- **Capabilities** per monitor, discovered once and cached: `brightness?`, `power?`,
+  `volume?` (TV), `inputs?`. Exposed via `GET /api/monitors` so *any* frontend (web UI, tray)
+  renders the right controls per device.
+- **Visibility config**: per-monitor, per-control `show/hide` overrides in the registry
+  (e.g. hide brightness on a monitor whose DDC is flaky, hide power on the primary), editable
+  from the web UI settings page and stored server-side so the tray and web UI stay consistent.
+
+This registry is worth doing anyway — 3a/3b need the EDID↔backend mapping regardless.
+
+### 5b. GNOME Quick Settings extension (the bottom-right panel)
+
+Target UX: controls living in the native GNOME **Quick Settings** menu (the bottom-right
+panel on Zorin, alongside volume/network/power) — not a legacy tray icon.
+
+- **Implementation:** a GNOME Shell extension (JavaScript/GJS, GNOME 46's
+  `QuickSettings.SystemIndicator` / `QuickSlider` / `QuickMenuToggle` API) that talks to the
+  **local agent's HTTP REST API** (works even if the Pi is down). Ships in-repo under
+  `gnome-extension/`, installed by `mage deployAgent` into
+  `~/.local/share/gnome-shell/extensions/ottoman@trolleyman/`.
+- **Controls**, driven entirely by the registry + capabilities from 5a (the extension has no
+  device knowledge of its own):
+  - a **QuickSlider per monitor** that reports `brightness` (and one for TV volume) — real
+    native sliders, same look as the built-in volume slider;
+  - a **QuickMenuToggle** per monitor for power on/off, and one for layouts with a submenu of
+    saved layouts (radio-style);
+  - hidden controls (per 5a visibility config) simply don't render.
+- Caveats: extension code is GNOME-version-coupled (target 46, small shims on upgrade) and
+  restarts with the shell — it should degrade gracefully (grey out) when the agent is
+  unreachable.
+- **Windows later:** no Quick Settings equivalent — plan a small tray icon + popup flyout
+  window there instead; both frontends drive the same REST API, so it's UI-only work.
+- Since the panel talks to the same REST API as the web UI, every feature above (2–4) lands in
+  it for free once its endpoint exists.
+
+**Effort:** registry + capabilities ~1–2 days (partly shared with 3a/3b); Quick Settings
+extension ~2–3 days including deploy/install wiring.
+
+---
+
 ## Suggested order
 
 1. **WoL config fixes** (BIOS + nmcli) — no code, unblocks the core use case.
 2. **Wayland display backend (2a)** — biggest functional gap on this machine.
 3. **Wayland input via uinput (2b)** — restores the trackpad.
 4. **PipeWire volume (4.1)** — small, high value.
-5. **DDC/CI brightness+power (3a)**.
+5. **DDC/CI brightness+power (3a)** + the monitor registry (5a) alongside it.
 6. **TV integration (3b + 4.2)** — pick approach once TV model is known.
-7. Windows parity for brightness/audio later (WMI `WmiMonitorBrightnessMethods` only covers
-   laptop panels; Windows will also want a DDC path via the physical-monitor Win32 API).
+7. **GNOME Quick Settings extension (5b)** — once the endpoints above exist.
+8. Windows parity for brightness/audio later (WMI `WmiMonitorBrightnessMethods` only covers
+   laptop panels; Windows will also want a DDC path via the physical-monitor Win32 API), plus
+   a tray+flyout equivalent of the quick-settings panel.
 
 ## Open questions / info needed from you
 
