@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type TVStateResponse } from "./api";
+import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type TVStateResponse, type MonitorSettingsRequest } from "./api";
 import { sortedLayouts, sortedMonitors } from "./utils";
 
 export const client = new OttomanClient({
@@ -63,6 +63,7 @@ interface OttomanStore {
   // ── Monitor Control Actions ───────────────────────────
   setMonitorBrightness: (edid: string, brightness: number) => Promise<void>;
   setMonitorPower: (edid: string, on: boolean) => Promise<void>;
+  saveMonitorSettings: (settings: MonitorSettingsRequest) => Promise<boolean>;
 
   // ── TV Actions ────────────────────────────────────────
   fetchTVState: (silent: boolean) => Promise<void>;
@@ -476,6 +477,20 @@ export const useStore = create<OttomanStore>((set, get) => ({
       await client.default.setMonitorPower({ edid, on });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to set monitor power");
+    }
+  },
+
+  saveMonitorSettings: async (settings: MonitorSettingsRequest) => {
+    try {
+      await client.default.setMonitorSettings(settings);
+      // Re-fetch so capabilities/backend/tv reflect the saved change.
+      await get().fetchMonitors(true);
+      // The TV section is driven by a monitor's tv backend; refresh it too.
+      get().fetchTVState(true);
+      return true;
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save monitor settings");
+      return false;
     }
   },
 

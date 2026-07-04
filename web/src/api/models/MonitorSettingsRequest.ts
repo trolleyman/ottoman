@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { TVConn } from './TVConn';
 export type MonitorSettingsRequest = {
     edid: string;
     friendly_name?: string;
@@ -10,5 +11,6 @@ export type MonitorSettingsRequest = {
      */
     backend?: string;
     visibility?: Record<string, boolean>;
+    tv?: TVConn;
 };
 
