@@ -675,6 +675,28 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 		apiMonitors = append(apiMonitors, mon)
 	}
 
+	// Remembered monitors: any in a saved layout but not in the current one show
+	// as inactive cards with no controls (mirrors a disconnected DDC monitor).
+	present := make(map[string]bool, len(apiMonitors))
+	for _, m := range apiMonitors {
+		present[m.Edid] = true
+	}
+	for _, layout := range s.layouts.List() {
+		for _, lm := range layout.Monitors {
+			if lm.Edid == "" || present[lm.Edid] {
+				continue
+			}
+			present[lm.Edid] = true
+			manufacturer := lm.Edid
+			if i := strings.Index(lm.Edid, ":"); i >= 0 {
+				manufacturer = lm.Edid[:i]
+			}
+			apiMonitors = append(apiMonitors, api.Monitor{
+				Edid: lm.Edid, Name: lm.Name, Manufacturer: manufacturer,
+			})
+		}
+	}
+
 	// A network TV, shown in the Monitors grid as a tv-backed card (pairing pill,
 	// brightness, volume, and a power switch). GetTVState reports it paired.
 	tvBackend := "tv"

@@ -235,11 +235,11 @@ name = "Movie"
 emoji = "🎬"
 aliases = ["m", "tv"]
 [[agent.layouts.monitors]]
-name = "LG OLED TV"
-edid = "GSM:C001"
-width = 3840
-height = 2160
-refresh_rate = 120.0
+name = "Samsung Odyssey G9"
+edid = "SAM:0F9C"
+width = 5120
+height = 1440
+refresh_rate = 240.0
 position_x = 0
 position_y = 0
 primary = true

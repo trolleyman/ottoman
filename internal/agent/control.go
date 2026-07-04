@@ -96,6 +96,12 @@ func (c *monitorControl) backendFor(edid string) string {
 func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 	switch c.backendFor(edid) {
 	case store.BackendDDC:
+		// A DDC monitor that isn't currently on an i2c bus is disconnected (e.g.
+		// a remembered layout monitor that's unplugged) — it can't be controlled
+		// over DDC, so advertise no controls rather than switches that error.
+		if _, ok := c.ddcBusFor(edid); !ok {
+			return api.MonitorCapabilities{}
+		}
 		return api.MonitorCapabilities{Brightness: true, Power: true, Volume: false}
 	case store.BackendTV:
 		return api.MonitorCapabilities{Brightness: true, Power: true, Volume: true}

@@ -259,9 +259,6 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
               Primary
             </span>
           )}
-          {showPower && (
-            <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
-          )}
           <button
             onClick={() => setEditing((v) => !v)}
             title="Monitor settings"
@@ -273,6 +270,9 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
           >
             <Settings className="h-4 w-4" />
           </button>
+          {showPower && (
+            <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
+          )}
         </div>
       </div>
 

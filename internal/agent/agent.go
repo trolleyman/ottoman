@@ -475,25 +475,36 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		apiMonitors = append(apiMonitors, mon)
 	}
 
-	// A configured TV drops off HDMI when it's powered off, so it wouldn't be
-	// enumerated above — but we still want its card visible so it can be turned
-	// back on. Inject a synthetic (inactive) entry for the TV registry entry
-	// when it isn't already present; enrich() then tags it with the tv backend
-	// and its capabilities.
-	if tvEntry, ok := a.control.registry.TVEntry(); ok {
-		present := false
-		for _, m := range apiMonitors {
-			if m.Edid == tvEntry.Edid {
-				present = true
-				break
-			}
+	// Some monitors should stay visible even when they aren't currently
+	// enumerated as connected displays — a configured TV drops off HDMI when
+	// powered off, and a monitor that's part of a saved layout is one the user
+	// cares about and may just have turned off. Inject synthetic (inactive)
+	// entries for those so their cards persist; enrich() then tags each with its
+	// backend + capabilities (a disconnected DDC monitor gets no live controls).
+	present := make(map[string]bool, len(apiMonitors))
+	for _, m := range apiMonitors {
+		present[m.Edid] = true
+	}
+	remember := func(edid, name string) {
+		if edid == "" || present[edid] {
+			return
 		}
-		if !present {
-			name := tvEntry.FriendlyName
-			if name == "" {
-				name = "TV"
-			}
-			apiMonitors = append(apiMonitors, api.Monitor{Edid: tvEntry.Edid, Name: name})
+		present[edid] = true
+		apiMonitors = append(apiMonitors, api.Monitor{Edid: edid, Name: name})
+	}
+
+	// The configured TV (still controllable over the network when off).
+	if tvEntry, ok := a.control.registry.TVEntry(); ok {
+		name := tvEntry.FriendlyName
+		if name == "" {
+			name = "TV"
+		}
+		remember(tvEntry.Edid, name)
+	}
+	// Every monitor referenced by a saved layout.
+	for _, layout := range a.layouts.List() {
+		for _, lm := range layout.Monitors {
+			remember(lm.Edid, lm.Name)
 		}
 	}
 
