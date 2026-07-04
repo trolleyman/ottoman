@@ -50,6 +50,25 @@ type AgentConfig struct {
 	AuthToken     string         `json:"auth_token"`
 	Layouts       []api.Layout   `json:"layouts"`
 	Trackpad      TrackpadConfig `json:"trackpad"`
+	TV            TVConfig       `json:"tv"`
+	Boot          BootConfig     `json:"boot"`
+}
+
+// BootConfig holds GRUB dual-boot entry names for remote OS selection. The GRUB
+// default should be the Linux entry (GRUB_DEFAULT=saved); "boot into Windows"
+// uses grub-reboot for a one-shot next boot.
+type BootConfig struct {
+	LinuxEntry   string `json:"linux_entry"`   // GRUB menuentry name for Linux
+	WindowsEntry string `json:"windows_entry"` // GRUB menuentry name for Windows
+}
+
+// TVConfig holds network-controlled TV configuration. The pairing key is NOT
+// stored here (it's runtime data kept in the data dir) so redeploying the
+// config can't clobber it.
+type TVConfig struct {
+	Type string `json:"type"` // "webos" (empty = no TV configured)
+	Host string `json:"host"` // TV IP or hostname
+	Mac  string `json:"mac"`  // TV MAC for Wake-on-LAN power-on
 }
 
 // TrackpadConfig holds trackpad configuration
@@ -202,6 +221,15 @@ func ensureConfigDir(path string) error {
 func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.listen_address", cfg.ListenAddress)
 	w.Set("agent.auth_token", cfg.AuthToken)
+
+	// Preserve trackpad tuning so re-running `config init` over an existing
+	// config doesn't silently drop it.
+	if cfg.Trackpad.Sensitivity != 0 {
+		w.Set("agent.trackpad.sensitivity", cfg.Trackpad.Sensitivity)
+	}
+	if cfg.Trackpad.Friction != 0 {
+		w.Set("agent.trackpad.friction", cfg.Trackpad.Friction)
+	}
 
 	if len(cfg.Layouts) > 0 {
 		layouts := make([]map[string]any, len(cfg.Layouts))

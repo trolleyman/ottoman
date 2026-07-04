@@ -94,6 +94,25 @@ type ActiveMonitor struct {
 	Width       int     `json:"width"`
 }
 
+// AudioResponse defines model for AudioResponse.
+type AudioResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// AudioSink defines model for AudioSink.
+type AudioSink struct {
+	Default     bool    `json:"default"`
+	Description string  `json:"description"`
+	Id          uint32  `json:"id"`
+	Muted       bool    `json:"muted"`
+	Name        string  `json:"name"`
+	Volume      float64 `json:"volume"`
+}
+
+// AudioSinksResponse defines model for AudioSinksResponse.
+type AudioSinksResponse = []AudioSink
+
 // AuthRequest defines model for AuthRequest.
 type AuthRequest struct {
 	Token string `json:"token"`
@@ -101,6 +120,18 @@ type AuthRequest struct {
 
 // AuthResponse defines model for AuthResponse.
 type AuthResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// BootRequest defines model for BootRequest.
+type BootRequest struct {
+	// Target linux | windows
+	Target string `json:"target"`
+}
+
+// BootResponse defines model for BootResponse.
+type BootResponse struct {
 	Message *string `json:"message,omitempty"`
 	Success bool    `json:"success"`
 }
@@ -145,11 +176,42 @@ type Modifier string
 
 // Monitor defines model for Monitor.
 type Monitor struct {
-	Active       *ActiveMonitor `json:"active,omitempty"`
-	Edid         string         `json:"edid"`
-	Manufacturer string         `json:"manufacturer"`
-	Name         string         `json:"name"`
-	Port         string         `json:"port"`
+	Active *ActiveMonitor `json:"active,omitempty"`
+
+	// Brightness current 0-100, -1 if unknown
+	Brightness   *int                 `json:"brightness,omitempty"`
+	Capabilities *MonitorCapabilities `json:"capabilities,omitempty"`
+
+	// ControlBackend ddc | tv | none
+	ControlBackend *string          `json:"control_backend,omitempty"`
+	Edid           string           `json:"edid"`
+	FriendlyName   *string          `json:"friendly_name,omitempty"`
+	Manufacturer   string           `json:"manufacturer"`
+	Name           string           `json:"name"`
+	Port           string           `json:"port"`
+	Visibility     *map[string]bool `json:"visibility,omitempty"`
+}
+
+// MonitorCapabilities defines model for MonitorCapabilities.
+type MonitorCapabilities struct {
+	Brightness bool `json:"brightness"`
+	Power      bool `json:"power"`
+	Volume     bool `json:"volume"`
+}
+
+// MonitorControlResponse defines model for MonitorControlResponse.
+type MonitorControlResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// MonitorSettingsRequest defines model for MonitorSettingsRequest.
+type MonitorSettingsRequest struct {
+	// Backend ddc | tv | none
+	Backend      *string          `json:"backend,omitempty"`
+	Edid         string           `json:"edid"`
+	FriendlyName *string          `json:"friendly_name,omitempty"`
+	Visibility   *map[string]bool `json:"visibility,omitempty"`
 }
 
 // MonitorsResponse defines model for MonitorsResponse.
@@ -181,6 +243,26 @@ type SaveLayoutResponse struct {
 	Layout  Layout  `json:"layout"`
 	Message *string `json:"message,omitempty"`
 	Success bool    `json:"success"`
+}
+
+// SetAudioRequest defines model for SetAudioRequest.
+type SetAudioRequest struct {
+	Default *bool    `json:"default,omitempty"`
+	Muted   *bool    `json:"muted,omitempty"`
+	Name    string   `json:"name"`
+	Volume  *float64 `json:"volume,omitempty"`
+}
+
+// SetBrightnessRequest defines model for SetBrightnessRequest.
+type SetBrightnessRequest struct {
+	Brightness int    `json:"brightness"`
+	Edid       string `json:"edid"`
+}
+
+// SetMonitorPowerRequest defines model for SetMonitorPowerRequest.
+type SetMonitorPowerRequest struct {
+	Edid string `json:"edid"`
+	On   bool   `json:"on"`
 }
 
 // ShutdownResponse defines model for ShutdownResponse.
@@ -231,6 +313,39 @@ type SwitchLayoutResponse struct {
 	CurrentLayout string  `json:"current_layout"`
 	Message       *string `json:"message,omitempty"`
 	Success       bool    `json:"success"`
+}
+
+// TVInputRequest defines model for TVInputRequest.
+type TVInputRequest struct {
+	Input string `json:"input"`
+}
+
+// TVPowerRequest defines model for TVPowerRequest.
+type TVPowerRequest struct {
+	On bool `json:"on"`
+}
+
+// TVResponse defines model for TVResponse.
+type TVResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// TVStateResponse defines model for TVStateResponse.
+type TVStateResponse struct {
+	Configured bool    `json:"configured"`
+	Error      *string `json:"error,omitempty"`
+	Host       string  `json:"host"`
+	Muted      bool    `json:"muted"`
+	Paired     bool    `json:"paired"`
+	Pairing    bool    `json:"pairing"`
+	Volume     int     `json:"volume"`
+}
+
+// TVVolumeRequest defines model for TVVolumeRequest.
+type TVVolumeRequest struct {
+	Muted  *bool `json:"muted,omitempty"`
+	Volume *int  `json:"volume,omitempty"`
 }
 
 // TrackpadMessage defines model for TrackpadMessage.
@@ -338,14 +453,26 @@ type TrackpadMessageText struct {
 // TrackpadMessageTextType defines model for TrackpadMessageText.Type.
 type TrackpadMessageTextType string
 
+// WakeRequest defines model for WakeRequest.
+type WakeRequest struct {
+	// Target linux | windows (optional; default boots the GRUB default)
+	Target *string `json:"target,omitempty"`
+}
+
 // WakeResponse defines model for WakeResponse.
 type WakeResponse struct {
 	Message *string `json:"message,omitempty"`
 	Success bool    `json:"success"`
 }
 
+// SetAudioVolumeJSONRequestBody defines body for SetAudioVolume for application/json ContentType.
+type SetAudioVolumeJSONRequestBody = SetAudioRequest
+
 // AuthJSONRequestBody defines body for Auth for application/json ContentType.
 type AuthJSONRequestBody = AuthRequest
+
+// BootJSONRequestBody defines body for Boot for application/json ContentType.
+type BootJSONRequestBody = BootRequest
 
 // RemoveLayoutJSONRequestBody defines body for RemoveLayout for application/json ContentType.
 type RemoveLayoutJSONRequestBody = RemoveLayoutRequest
@@ -356,8 +483,29 @@ type SaveCurrentLayoutJSONRequestBody = SaveLayoutRequest
 // SwitchLayoutJSONRequestBody defines body for SwitchLayout for application/json ContentType.
 type SwitchLayoutJSONRequestBody = SwitchLayoutRequest
 
+// SetMonitorBrightnessJSONRequestBody defines body for SetMonitorBrightness for application/json ContentType.
+type SetMonitorBrightnessJSONRequestBody = SetBrightnessRequest
+
+// SetMonitorPowerJSONRequestBody defines body for SetMonitorPower for application/json ContentType.
+type SetMonitorPowerJSONRequestBody = SetMonitorPowerRequest
+
+// SetMonitorSettingsJSONRequestBody defines body for SetMonitorSettings for application/json ContentType.
+type SetMonitorSettingsJSONRequestBody = MonitorSettingsRequest
+
 // SimSetStateJSONRequestBody defines body for SimSetState for application/json ContentType.
 type SimSetStateJSONRequestBody = SimSetStateRequest
+
+// SetTVInputJSONRequestBody defines body for SetTVInput for application/json ContentType.
+type SetTVInputJSONRequestBody = TVInputRequest
+
+// SetTVPowerJSONRequestBody defines body for SetTVPower for application/json ContentType.
+type SetTVPowerJSONRequestBody = TVPowerRequest
+
+// SetTVVolumeJSONRequestBody defines body for SetTVVolume for application/json ContentType.
+type SetTVVolumeJSONRequestBody = TVVolumeRequest
+
+// WakeJSONRequestBody defines body for Wake for application/json ContentType.
+type WakeJSONRequestBody = WakeRequest
 
 // AsStatusResponseIpAddress0 returns the union data inside the StatusResponse_IpAddress as a StatusResponseIpAddress0
 func (t StatusResponse_IpAddress) AsStatusResponseIpAddress0() (StatusResponseIpAddress0, error) {
@@ -752,6 +900,12 @@ func (t *TrackpadMessage) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List audio output sinks
+	// (GET /api/audio/sinks)
+	GetAudioSinks(w http.ResponseWriter, r *http.Request)
+	// Set an audio sink's volume, mute, or default state
+	// (POST /api/audio/volume)
+	SetAudioVolume(w http.ResponseWriter, r *http.Request)
 	// Authenticate
 	// (POST /api/auth)
 	Auth(w http.ResponseWriter, r *http.Request)
@@ -761,6 +915,9 @@ type ServerInterface interface {
 	// Logout
 	// (POST /api/auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// Reboot the agent into a specific OS (GRUB dual-boot)
+	// (POST /api/boot)
+	Boot(w http.ResponseWriter, r *http.Request)
 	// Get all layouts
 	// (GET /api/layouts)
 	GetLayouts(w http.ResponseWriter, r *http.Request)
@@ -779,6 +936,15 @@ type ServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(w http.ResponseWriter, r *http.Request)
+	// Set a monitor's brightness
+	// (POST /api/monitors/brightness)
+	SetMonitorBrightness(w http.ResponseWriter, r *http.Request)
+	// Turn a monitor on or off (standby)
+	// (POST /api/monitors/power)
+	SetMonitorPower(w http.ResponseWriter, r *http.Request)
+	// Update a monitor's registry settings (name, backend, visibility)
+	// (POST /api/monitors/settings)
+	SetMonitorSettings(w http.ResponseWriter, r *http.Request)
 	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(w http.ResponseWriter, r *http.Request)
@@ -800,6 +966,21 @@ type ServerInterface interface {
 	// WebSocket Trackpad Connection
 	// (GET /api/trackpad)
 	ConnectTrackpad(w http.ResponseWriter, r *http.Request)
+	// Switch the TV's external input
+	// (POST /api/tv/input)
+	SetTVInput(w http.ResponseWriter, r *http.Request)
+	// Start TV on-screen pairing
+	// (POST /api/tv/pair)
+	PairTV(w http.ResponseWriter, r *http.Request)
+	// Turn the TV on (Wake-on-LAN) or off (SSAP)
+	// (POST /api/tv/power)
+	SetTVPower(w http.ResponseWriter, r *http.Request)
+	// Get TV integration state
+	// (GET /api/tv/state)
+	GetTVState(w http.ResponseWriter, r *http.Request)
+	// Set the TV volume and/or mute
+	// (POST /api/tv/volume)
+	SetTVVolume(w http.ResponseWriter, r *http.Request)
 	// Wake agent on LAN
 	// (POST /api/wake)
 	Wake(w http.ResponseWriter, r *http.Request)
@@ -816,6 +997,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAudioSinks operation middleware
+func (siw *ServerInterfaceWrapper) GetAudioSinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAudioSinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAudioVolume operation middleware
+func (siw *ServerInterfaceWrapper) SetAudioVolume(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAudioVolume(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Auth operation middleware
 func (siw *ServerInterfaceWrapper) Auth(w http.ResponseWriter, r *http.Request) {
@@ -850,6 +1059,20 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Boot operation middleware
+func (siw *ServerInterfaceWrapper) Boot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Boot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -934,6 +1157,48 @@ func (siw *ServerInterfaceWrapper) GetMonitors(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMonitors(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorBrightness operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorBrightness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorBrightness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorPower operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorPower(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorPower(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetMonitorSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetMonitorSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetMonitorSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1032,6 +1297,76 @@ func (siw *ServerInterfaceWrapper) ConnectTrackpad(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConnectTrackpad(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTVInput operation middleware
+func (siw *ServerInterfaceWrapper) SetTVInput(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTVInput(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PairTV operation middleware
+func (siw *ServerInterfaceWrapper) PairTV(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PairTV(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTVPower operation middleware
+func (siw *ServerInterfaceWrapper) SetTVPower(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTVPower(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTVState operation middleware
+func (siw *ServerInterfaceWrapper) GetTVState(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTVState(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTVVolume operation middleware
+func (siw *ServerInterfaceWrapper) SetTVVolume(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTVVolume(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1189,15 +1524,21 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/audio/sinks", wrapper.GetAudioSinks)
+	m.HandleFunc("POST "+options.BaseURL+"/api/audio/volume", wrapper.SetAudioVolume)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth", wrapper.Auth)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/check", wrapper.CheckAuth)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
+	m.HandleFunc("POST "+options.BaseURL+"/api/boot", wrapper.Boot)
 	m.HandleFunc("GET "+options.BaseURL+"/api/layouts", wrapper.GetLayouts)
 	m.HandleFunc("GET "+options.BaseURL+"/api/layouts/current", wrapper.GetCurrentLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/remove", wrapper.RemoveLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/save-current", wrapper.SaveCurrentLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/switch", wrapper.SwitchLayout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/monitors", wrapper.GetMonitors)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/brightness", wrapper.SetMonitorBrightness)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/power", wrapper.SetMonitorPower)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/settings", wrapper.SetMonitorSettings)
 	m.HandleFunc("POST "+options.BaseURL+"/api/shutdown", wrapper.Shutdown)
 	m.HandleFunc("POST "+options.BaseURL+"/api/sim/reset", wrapper.SimReset)
 	m.HandleFunc("POST "+options.BaseURL+"/api/sim/set-state", wrapper.SimSetState)
@@ -1205,10 +1546,111 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/status", wrapper.GetStatus)
 	m.HandleFunc("GET "+options.BaseURL+"/api/status/agent", wrapper.GetAgentStatus)
 	m.HandleFunc("GET "+options.BaseURL+"/api/trackpad", wrapper.ConnectTrackpad)
+	m.HandleFunc("POST "+options.BaseURL+"/api/tv/input", wrapper.SetTVInput)
+	m.HandleFunc("POST "+options.BaseURL+"/api/tv/pair", wrapper.PairTV)
+	m.HandleFunc("POST "+options.BaseURL+"/api/tv/power", wrapper.SetTVPower)
+	m.HandleFunc("GET "+options.BaseURL+"/api/tv/state", wrapper.GetTVState)
+	m.HandleFunc("POST "+options.BaseURL+"/api/tv/volume", wrapper.SetTVVolume)
 	m.HandleFunc("POST "+options.BaseURL+"/api/wake", wrapper.Wake)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.CheckHealth)
 
 	return m
+}
+
+type GetAudioSinksRequestObject struct {
+}
+
+type GetAudioSinksResponseObject interface {
+	VisitGetAudioSinksResponse(w http.ResponseWriter) error
+}
+
+type GetAudioSinks200JSONResponse AudioSinksResponse
+
+func (response GetAudioSinks200JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks401JSONResponse ErrorResponse
+
+func (response GetAudioSinks401JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks500JSONResponse ErrorResponse
+
+func (response GetAudioSinks500JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks502JSONResponse ErrorResponse
+
+func (response GetAudioSinks502JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolumeRequestObject struct {
+	Body *SetAudioVolumeJSONRequestBody
+}
+
+type SetAudioVolumeResponseObject interface {
+	VisitSetAudioVolumeResponse(w http.ResponseWriter) error
+}
+
+type SetAudioVolume200JSONResponse AudioResponse
+
+func (response SetAudioVolume200JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume400JSONResponse ErrorResponse
+
+func (response SetAudioVolume400JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume401JSONResponse ErrorResponse
+
+func (response SetAudioVolume401JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume500JSONResponse ErrorResponse
+
+func (response SetAudioVolume500JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume502JSONResponse ErrorResponse
+
+func (response SetAudioVolume502JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type AuthRequestObject struct {
@@ -1277,6 +1719,59 @@ type Logout200JSONResponse AuthResponse
 func (response Logout200JSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BootRequestObject struct {
+	Body *BootJSONRequestBody
+}
+
+type BootResponseObject interface {
+	VisitBootResponse(w http.ResponseWriter) error
+}
+
+type Boot200JSONResponse BootResponse
+
+func (response Boot200JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot400JSONResponse ErrorResponse
+
+func (response Boot400JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot401JSONResponse ErrorResponse
+
+func (response Boot401JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot500JSONResponse ErrorResponse
+
+func (response Boot500JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot502JSONResponse ErrorResponse
+
+func (response Boot502JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1560,6 +2055,165 @@ func (response GetMonitors502JSONResponse) VisitGetMonitorsResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type SetMonitorBrightnessRequestObject struct {
+	Body *SetMonitorBrightnessJSONRequestBody
+}
+
+type SetMonitorBrightnessResponseObject interface {
+	VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorBrightness200JSONResponse MonitorControlResponse
+
+func (response SetMonitorBrightness200JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness400JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness400JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness401JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness401JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness500JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness500JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorBrightness502JSONResponse ErrorResponse
+
+func (response SetMonitorBrightness502JSONResponse) VisitSetMonitorBrightnessResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPowerRequestObject struct {
+	Body *SetMonitorPowerJSONRequestBody
+}
+
+type SetMonitorPowerResponseObject interface {
+	VisitSetMonitorPowerResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorPower200JSONResponse MonitorControlResponse
+
+func (response SetMonitorPower200JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower400JSONResponse ErrorResponse
+
+func (response SetMonitorPower400JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower401JSONResponse ErrorResponse
+
+func (response SetMonitorPower401JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower500JSONResponse ErrorResponse
+
+func (response SetMonitorPower500JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorPower502JSONResponse ErrorResponse
+
+func (response SetMonitorPower502JSONResponse) VisitSetMonitorPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettingsRequestObject struct {
+	Body *SetMonitorSettingsJSONRequestBody
+}
+
+type SetMonitorSettingsResponseObject interface {
+	VisitSetMonitorSettingsResponse(w http.ResponseWriter) error
+}
+
+type SetMonitorSettings200JSONResponse MonitorControlResponse
+
+func (response SetMonitorSettings200JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings400JSONResponse ErrorResponse
+
+func (response SetMonitorSettings400JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings401JSONResponse ErrorResponse
+
+func (response SetMonitorSettings401JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings500JSONResponse ErrorResponse
+
+func (response SetMonitorSettings500JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetMonitorSettings502JSONResponse ErrorResponse
+
+func (response SetMonitorSettings502JSONResponse) VisitSetMonitorSettingsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ShutdownRequestObject struct {
 }
 
@@ -1735,7 +2389,244 @@ func (response ConnectTrackpad101Response) VisitConnectTrackpadResponse(w http.R
 	return nil
 }
 
+type SetTVInputRequestObject struct {
+	Body *SetTVInputJSONRequestBody
+}
+
+type SetTVInputResponseObject interface {
+	VisitSetTVInputResponse(w http.ResponseWriter) error
+}
+
+type SetTVInput200JSONResponse TVResponse
+
+func (response SetTVInput200JSONResponse) VisitSetTVInputResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVInput400JSONResponse ErrorResponse
+
+func (response SetTVInput400JSONResponse) VisitSetTVInputResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVInput401JSONResponse ErrorResponse
+
+func (response SetTVInput401JSONResponse) VisitSetTVInputResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVInput500JSONResponse ErrorResponse
+
+func (response SetTVInput500JSONResponse) VisitSetTVInputResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVInput502JSONResponse ErrorResponse
+
+func (response SetTVInput502JSONResponse) VisitSetTVInputResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PairTVRequestObject struct {
+}
+
+type PairTVResponseObject interface {
+	VisitPairTVResponse(w http.ResponseWriter) error
+}
+
+type PairTV200JSONResponse TVResponse
+
+func (response PairTV200JSONResponse) VisitPairTVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PairTV401JSONResponse ErrorResponse
+
+func (response PairTV401JSONResponse) VisitPairTVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PairTV500JSONResponse ErrorResponse
+
+func (response PairTV500JSONResponse) VisitPairTVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PairTV502JSONResponse ErrorResponse
+
+func (response PairTV502JSONResponse) VisitPairTVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVPowerRequestObject struct {
+	Body *SetTVPowerJSONRequestBody
+}
+
+type SetTVPowerResponseObject interface {
+	VisitSetTVPowerResponse(w http.ResponseWriter) error
+}
+
+type SetTVPower200JSONResponse TVResponse
+
+func (response SetTVPower200JSONResponse) VisitSetTVPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVPower400JSONResponse ErrorResponse
+
+func (response SetTVPower400JSONResponse) VisitSetTVPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVPower401JSONResponse ErrorResponse
+
+func (response SetTVPower401JSONResponse) VisitSetTVPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVPower500JSONResponse ErrorResponse
+
+func (response SetTVPower500JSONResponse) VisitSetTVPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVPower502JSONResponse ErrorResponse
+
+func (response SetTVPower502JSONResponse) VisitSetTVPowerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTVStateRequestObject struct {
+}
+
+type GetTVStateResponseObject interface {
+	VisitGetTVStateResponse(w http.ResponseWriter) error
+}
+
+type GetTVState200JSONResponse TVStateResponse
+
+func (response GetTVState200JSONResponse) VisitGetTVStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTVState401JSONResponse ErrorResponse
+
+func (response GetTVState401JSONResponse) VisitGetTVStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTVState502JSONResponse ErrorResponse
+
+func (response GetTVState502JSONResponse) VisitGetTVStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVVolumeRequestObject struct {
+	Body *SetTVVolumeJSONRequestBody
+}
+
+type SetTVVolumeResponseObject interface {
+	VisitSetTVVolumeResponse(w http.ResponseWriter) error
+}
+
+type SetTVVolume200JSONResponse TVResponse
+
+func (response SetTVVolume200JSONResponse) VisitSetTVVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVVolume400JSONResponse ErrorResponse
+
+func (response SetTVVolume400JSONResponse) VisitSetTVVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVVolume401JSONResponse ErrorResponse
+
+func (response SetTVVolume401JSONResponse) VisitSetTVVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVVolume500JSONResponse ErrorResponse
+
+func (response SetTVVolume500JSONResponse) VisitSetTVVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetTVVolume502JSONResponse ErrorResponse
+
+func (response SetTVVolume502JSONResponse) VisitSetTVVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type WakeRequestObject struct {
+	Body *WakeJSONRequestBody
 }
 
 type WakeResponseObject interface {
@@ -1797,6 +2688,12 @@ func (response CheckHealth200TextResponse) VisitCheckHealthResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List audio output sinks
+	// (GET /api/audio/sinks)
+	GetAudioSinks(ctx context.Context, request GetAudioSinksRequestObject) (GetAudioSinksResponseObject, error)
+	// Set an audio sink's volume, mute, or default state
+	// (POST /api/audio/volume)
+	SetAudioVolume(ctx context.Context, request SetAudioVolumeRequestObject) (SetAudioVolumeResponseObject, error)
 	// Authenticate
 	// (POST /api/auth)
 	Auth(ctx context.Context, request AuthRequestObject) (AuthResponseObject, error)
@@ -1806,6 +2703,9 @@ type StrictServerInterface interface {
 	// Logout
 	// (POST /api/auth/logout)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// Reboot the agent into a specific OS (GRUB dual-boot)
+	// (POST /api/boot)
+	Boot(ctx context.Context, request BootRequestObject) (BootResponseObject, error)
 	// Get all layouts
 	// (GET /api/layouts)
 	GetLayouts(ctx context.Context, request GetLayoutsRequestObject) (GetLayoutsResponseObject, error)
@@ -1824,6 +2724,15 @@ type StrictServerInterface interface {
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(ctx context.Context, request GetMonitorsRequestObject) (GetMonitorsResponseObject, error)
+	// Set a monitor's brightness
+	// (POST /api/monitors/brightness)
+	SetMonitorBrightness(ctx context.Context, request SetMonitorBrightnessRequestObject) (SetMonitorBrightnessResponseObject, error)
+	// Turn a monitor on or off (standby)
+	// (POST /api/monitors/power)
+	SetMonitorPower(ctx context.Context, request SetMonitorPowerRequestObject) (SetMonitorPowerResponseObject, error)
+	// Update a monitor's registry settings (name, backend, visibility)
+	// (POST /api/monitors/settings)
+	SetMonitorSettings(ctx context.Context, request SetMonitorSettingsRequestObject) (SetMonitorSettingsResponseObject, error)
 	// Shutdown agent
 	// (POST /api/shutdown)
 	Shutdown(ctx context.Context, request ShutdownRequestObject) (ShutdownResponseObject, error)
@@ -1845,6 +2754,21 @@ type StrictServerInterface interface {
 	// WebSocket Trackpad Connection
 	// (GET /api/trackpad)
 	ConnectTrackpad(ctx context.Context, request ConnectTrackpadRequestObject) (ConnectTrackpadResponseObject, error)
+	// Switch the TV's external input
+	// (POST /api/tv/input)
+	SetTVInput(ctx context.Context, request SetTVInputRequestObject) (SetTVInputResponseObject, error)
+	// Start TV on-screen pairing
+	// (POST /api/tv/pair)
+	PairTV(ctx context.Context, request PairTVRequestObject) (PairTVResponseObject, error)
+	// Turn the TV on (Wake-on-LAN) or off (SSAP)
+	// (POST /api/tv/power)
+	SetTVPower(ctx context.Context, request SetTVPowerRequestObject) (SetTVPowerResponseObject, error)
+	// Get TV integration state
+	// (GET /api/tv/state)
+	GetTVState(ctx context.Context, request GetTVStateRequestObject) (GetTVStateResponseObject, error)
+	// Set the TV volume and/or mute
+	// (POST /api/tv/volume)
+	SetTVVolume(ctx context.Context, request SetTVVolumeRequestObject) (SetTVVolumeResponseObject, error)
 	// Wake agent on LAN
 	// (POST /api/wake)
 	Wake(ctx context.Context, request WakeRequestObject) (WakeResponseObject, error)
@@ -1880,6 +2804,61 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetAudioSinks operation middleware
+func (sh *strictHandler) GetAudioSinks(w http.ResponseWriter, r *http.Request) {
+	var request GetAudioSinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAudioSinks(ctx, request.(GetAudioSinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAudioSinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAudioSinksResponseObject); ok {
+		if err := validResponse.VisitGetAudioSinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAudioVolume operation middleware
+func (sh *strictHandler) SetAudioVolume(w http.ResponseWriter, r *http.Request) {
+	var request SetAudioVolumeRequestObject
+
+	var body SetAudioVolumeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAudioVolume(ctx, request.(SetAudioVolumeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAudioVolume")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAudioVolumeResponseObject); ok {
+		if err := validResponse.VisitSetAudioVolumeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // Auth operation middleware
@@ -1954,6 +2933,37 @@ func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogoutResponseObject); ok {
 		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Boot operation middleware
+func (sh *strictHandler) Boot(w http.ResponseWriter, r *http.Request) {
+	var request BootRequestObject
+
+	var body BootJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Boot(ctx, request.(BootRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Boot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BootResponseObject); ok {
+		if err := validResponse.VisitBootResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2119,6 +3129,99 @@ func (sh *strictHandler) GetMonitors(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMonitorsResponseObject); ok {
 		if err := validResponse.VisitGetMonitorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorBrightness operation middleware
+func (sh *strictHandler) SetMonitorBrightness(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorBrightnessRequestObject
+
+	var body SetMonitorBrightnessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorBrightness(ctx, request.(SetMonitorBrightnessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorBrightness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorBrightnessResponseObject); ok {
+		if err := validResponse.VisitSetMonitorBrightnessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorPower operation middleware
+func (sh *strictHandler) SetMonitorPower(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorPowerRequestObject
+
+	var body SetMonitorPowerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorPower(ctx, request.(SetMonitorPowerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorPower")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorPowerResponseObject); ok {
+		if err := validResponse.VisitSetMonitorPowerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetMonitorSettings operation middleware
+func (sh *strictHandler) SetMonitorSettings(w http.ResponseWriter, r *http.Request) {
+	var request SetMonitorSettingsRequestObject
+
+	var body SetMonitorSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetMonitorSettings(ctx, request.(SetMonitorSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetMonitorSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetMonitorSettingsResponseObject); ok {
+		if err := validResponse.VisitSetMonitorSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2301,9 +3404,157 @@ func (sh *strictHandler) ConnectTrackpad(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// SetTVInput operation middleware
+func (sh *strictHandler) SetTVInput(w http.ResponseWriter, r *http.Request) {
+	var request SetTVInputRequestObject
+
+	var body SetTVInputJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTVInput(ctx, request.(SetTVInputRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTVInput")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTVInputResponseObject); ok {
+		if err := validResponse.VisitSetTVInputResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PairTV operation middleware
+func (sh *strictHandler) PairTV(w http.ResponseWriter, r *http.Request) {
+	var request PairTVRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PairTV(ctx, request.(PairTVRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PairTV")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PairTVResponseObject); ok {
+		if err := validResponse.VisitPairTVResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTVPower operation middleware
+func (sh *strictHandler) SetTVPower(w http.ResponseWriter, r *http.Request) {
+	var request SetTVPowerRequestObject
+
+	var body SetTVPowerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTVPower(ctx, request.(SetTVPowerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTVPower")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTVPowerResponseObject); ok {
+		if err := validResponse.VisitSetTVPowerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTVState operation middleware
+func (sh *strictHandler) GetTVState(w http.ResponseWriter, r *http.Request) {
+	var request GetTVStateRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTVState(ctx, request.(GetTVStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTVState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTVStateResponseObject); ok {
+		if err := validResponse.VisitGetTVStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTVVolume operation middleware
+func (sh *strictHandler) SetTVVolume(w http.ResponseWriter, r *http.Request) {
+	var request SetTVVolumeRequestObject
+
+	var body SetTVVolumeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTVVolume(ctx, request.(SetTVVolumeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTVVolume")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTVVolumeResponseObject); ok {
+		if err := validResponse.VisitSetTVVolumeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Wake operation middleware
 func (sh *strictHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	var request WakeRequestObject
+
+	var body WakeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.Wake(ctx, request.(WakeRequestObject))

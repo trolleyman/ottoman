@@ -22,7 +22,21 @@ import (
 	"github.com/trolleyman/ottoman/internal/controller"
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
+	"github.com/trolleyman/ottoman/internal/store"
 )
+
+// loadLayoutStore opens the data-dir layout store, migrating any legacy layouts
+// still present in the config file on first use. Returns the store and a
+// Layouts view over its contents so CLI commands stay consistent with the
+// running agent.
+func loadLayoutStore(cfg *config.Config) (*store.LayoutStore, *display.Layouts, error) {
+	ls := store.NewLayoutStore("")
+	loaded, err := ls.LoadWithMigration(cfg.Agent.Layouts)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to load layouts store")
+	}
+	return ls, display.NewLayoutsFromSlice(loaded), nil
+}
 
 // slugify converts a string into a URL-friendly slug
 func slugify(input string) string {
@@ -245,7 +259,10 @@ var layoutAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
+		layoutStore, layouts, err := loadLayoutStore(fullCfg)
+		if err != nil {
+			return err
+		}
 
 		mgr, err := display.NewManager(layouts)
 		if err != nil {
@@ -289,9 +306,8 @@ var layoutAddCmd = &cobra.Command{
 		}
 
 		layouts.Set(layout)
-		fullCfg.Agent.Layouts = layouts.ToSlice()
-		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
-			return errors.Wrap(err, "failed to save config")
+		if err := layoutStore.Save(layouts.ToSlice()); err != nil {
+			return errors.Wrap(err, "failed to save layouts")
 		}
 
 		log.Printf("Added layout %q (%s)\n", layout.Name, layout.Id)
@@ -316,12 +332,18 @@ var layoutListCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		if len(cfg.Agent.Layouts) == 0 {
+		_, layouts, err := loadLayoutStore(cfg)
+		if err != nil {
+			return err
+		}
+		list := layouts.List()
+
+		if len(list) == 0 {
 			log.Println("No layouts configured")
 			return nil
 		}
 
-		for _, l := range cfg.Agent.Layouts {
+		for _, l := range list {
 			emoji := ""
 			if l.Emoji != nil && *l.Emoji != "" {
 				emoji = *l.Emoji + " "
@@ -389,15 +411,17 @@ var layoutAliasAddCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
+		layoutStore, layouts, err := loadLayoutStore(fullCfg)
+		if err != nil {
+			return err
+		}
 
 		if !layouts.AddAlias(args[0], args[1]) {
 			return fmt.Errorf("layout %q not found", args[0])
 		}
 
-		fullCfg.Agent.Layouts = layouts.ToSlice()
-		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
-			return errors.Wrap(err, "failed to save config")
+		if err := layoutStore.Save(layouts.ToSlice()); err != nil {
+			return errors.Wrap(err, "failed to save layouts")
 		}
 
 		log.Printf("Added alias %q to layout %q\n", args[1], args[0])
@@ -416,15 +440,17 @@ var layoutAliasRemoveCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(fullCfg.Agent.Layouts)
+		layoutStore, layouts, err := loadLayoutStore(fullCfg)
+		if err != nil {
+			return err
+		}
 
 		if !layouts.RemoveAlias(args[0], args[1]) {
 			return fmt.Errorf("layout %q not found or alias %q doesn't exist", args[0], args[1])
 		}
 
-		fullCfg.Agent.Layouts = layouts.ToSlice()
-		if err := config.SaveAgent(&fullCfg.Agent, config.ConfigPath()); err != nil {
-			return errors.Wrap(err, "failed to save config")
+		if err := layoutStore.Save(layouts.ToSlice()); err != nil {
+			return errors.Wrap(err, "failed to save layouts")
 		}
 
 		log.Printf("Removed alias %q from layout %q\n", args[1], args[0])
@@ -443,7 +469,10 @@ var layoutApplyCmd = &cobra.Command{
 			return errors.Wrap(err, "failed to load config")
 		}
 
-		layouts := display.NewLayoutsFromSlice(cfg.Agent.Layouts)
+		_, layouts, err := loadLayoutStore(cfg)
+		if err != nil {
+			return err
+		}
 
 		matches := layouts.FindByIDOrAlias(args[0])
 		if len(matches) == 0 {

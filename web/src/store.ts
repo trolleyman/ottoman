@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { OttomanClient, type StatusResponse, type Layout, type Monitor } from "./api";
+import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type TVStateResponse } from "./api";
 import { sortedLayouts, sortedMonitors } from "./utils";
 
 export const client = new OttomanClient({
@@ -36,6 +36,14 @@ interface OttomanStore {
   monitorsLoading: boolean;
   monitorsError: string | null;
 
+  // ── Audio ─────────────────────────────────────────────
+  audioSinks: AudioSink[];
+  audioLoading: boolean;
+  audioError: string | null;
+
+  // ── TV ────────────────────────────────────────────────
+  tv: TVStateResponse | null;
+
   // ── Refresh key (for WebSocket reconnect) ─────────────
   refreshKey: number;
 
@@ -45,6 +53,23 @@ interface OttomanStore {
   fetchAgentStatus: (silent: boolean) => Promise<void>;
   fetchLayouts: (silent: boolean) => Promise<void>;
   fetchMonitors: (silent: boolean) => Promise<void>;
+  fetchAudioSinks: (silent: boolean) => Promise<void>;
+
+  // ── Audio Actions ─────────────────────────────────────
+  setSinkVolume: (name: string, volume: number) => Promise<void>;
+  setSinkMute: (name: string, muted: boolean) => Promise<void>;
+  setSinkDefault: (name: string) => Promise<void>;
+
+  // ── Monitor Control Actions ───────────────────────────
+  setMonitorBrightness: (edid: string, brightness: number) => Promise<void>;
+  setMonitorPower: (edid: string, on: boolean) => Promise<void>;
+
+  // ── TV Actions ────────────────────────────────────────
+  fetchTVState: (silent: boolean) => Promise<void>;
+  pairTV: () => Promise<void>;
+  setTVPower: (on: boolean) => Promise<void>;
+  setTVVolume: (volume: number) => Promise<void>;
+  setTVMute: (muted: boolean) => Promise<void>;
 
   // ── Layout Actions ────────────────────────────────────
   switchLayout: (id: string) => Promise<void>;
@@ -52,8 +77,9 @@ interface OttomanStore {
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
 
   // ── Power Actions ─────────────────────────────────────
-  wake: () => Promise<void>;
+  wake: (target?: "linux" | "windows") => Promise<void>;
   shutdown: () => Promise<void>;
+  reboot: (target: "linux" | "windows") => Promise<void>;
 
   // ── Polling Control ───────────────────────────────────
   startPolling: () => void;
@@ -65,6 +91,7 @@ interface OttomanStore {
   _inflightAgentStatus: Promise<void> | null;
   _inflightLayouts: Promise<void> | null;
   _inflightMonitors: Promise<void> | null;
+  _inflightAudio: Promise<void> | null;
   _prevAgentOnline: boolean | null;
 }
 
@@ -126,6 +153,14 @@ export const useStore = create<OttomanStore>((set, get) => ({
   monitorsLoading: false,
   monitorsError: null,
 
+  // ── Audio ─────────────────────────────────────────────
+  audioSinks: [],
+  audioLoading: false,
+  audioError: null,
+
+  // ── TV ────────────────────────────────────────────────
+  tv: null,
+
   // ── Refresh key ───────────────────────────────────────
   refreshKey: 0,
 
@@ -135,6 +170,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   _inflightAgentStatus: null,
   _inflightLayouts: null,
   _inflightMonitors: null,
+  _inflightAudio: null,
   _prevAgentOnline: null,
 
   // ── Fetch Actions ─────────────────────────────────────
@@ -242,6 +278,26 @@ export const useStore = create<OttomanStore>((set, get) => ({
     return promise;
   },
 
+  fetchAudioSinks: async (silent: boolean) => {
+    if (get()._inflightAudio) return get()._inflightAudio!;
+
+    if (!silent) set({ audioLoading: true });
+
+    const promise = (async () => {
+      try {
+        const data = await client.default.getAudioSinks();
+        set({ audioSinks: data, audioError: null });
+      } catch {
+        set({ audioError: "Failed to load audio sinks" });
+      } finally {
+        set({ audioLoading: false, _inflightAudio: null });
+      }
+    })();
+
+    set({ _inflightAudio: promise });
+    return promise;
+  },
+
   refreshAll: async (silent: boolean) => {
     set((s) => ({ refreshKey: s.refreshKey + 1 }));
     await Promise.allSettled([
@@ -249,6 +305,8 @@ export const useStore = create<OttomanStore>((set, get) => ({
       get().fetchAgentStatus(silent),
       get().fetchLayouts(silent),
       get().fetchMonitors(silent),
+      get().fetchAudioSinks(silent),
+      get().fetchTVState(silent),
     ]);
   },
 
@@ -319,9 +377,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   // ── Power Actions ─────────────────────────────────────
 
-  wake: async () => {
+  wake: async (target?: "linux" | "windows") => {
     try {
-      const data = await client.default.wake();
+      const data = await client.default.wake(target ? { target } : undefined);
       if (data.success) {
         set({ agentStatus: "waking" });
       } else {
@@ -343,6 +401,134 @@ export const useStore = create<OttomanStore>((set, get) => ({
       }
     } catch {
       alert("Failed to send shutdown command");
+    }
+  },
+
+  reboot: async (target: "linux" | "windows") => {
+    const label = target === "windows" ? "reboot into Windows" : "reboot";
+    if (!confirm(`Are you sure you want to ${label}?`)) return;
+    try {
+      const data = await client.default.boot({ target });
+      if (data.success) {
+        set({ agentStatus: "shutting_down" });
+      } else {
+        alert("Failed: " + data.message);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send reboot command");
+    }
+  },
+
+  // ── Audio Actions ─────────────────────────────────────
+
+  setSinkVolume: async (name: string, volume: number) => {
+    // Optimistic local update so the slider stays responsive; the next poll
+    // reconciles with the true value.
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => (k.name === name ? { ...k, volume } : k)),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, volume });
+    } catch {
+      get().fetchAudioSinks(true);
+    }
+  },
+
+  setSinkMute: async (name: string, muted: boolean) => {
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => (k.name === name ? { ...k, muted } : k)),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, muted });
+    } catch {
+      get().fetchAudioSinks(true);
+    }
+  },
+
+  setSinkDefault: async (name: string) => {
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => ({ ...k, default: k.name === name })),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, default: true });
+      get().fetchAudioSinks(true);
+    } catch {
+      get().fetchAudioSinks(true);
+    }
+  },
+
+  // ── Monitor Control Actions ───────────────────────────
+
+  setMonitorBrightness: async (edid: string, brightness: number) => {
+    // Optimistic update so the slider stays responsive.
+    set((s) => ({
+      monitors: s.monitors.map((m) => (m.edid === edid ? { ...m, brightness } : m)),
+    }));
+    try {
+      await client.default.setMonitorBrightness({ edid, brightness });
+    } catch {
+      get().fetchMonitors(true);
+    }
+  },
+
+  setMonitorPower: async (edid: string, on: boolean) => {
+    try {
+      await client.default.setMonitorPower({ edid, on });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to set monitor power");
+    }
+  },
+
+  // ── TV Actions ────────────────────────────────────────
+
+  fetchTVState: async (silent: boolean) => {
+    void silent;
+    try {
+      const data = await client.default.getTvState();
+      set({ tv: data });
+    } catch {
+      // Ignore — TV endpoints only exist when the agent is reachable.
+    }
+  },
+
+  pairTV: async () => {
+    try {
+      const data = await client.default.pairTv();
+      if (data.success) {
+        alert(data.message || "Pairing started — accept the prompt on the TV.");
+        get().fetchTVState(true);
+      } else {
+        alert(data.message || "Pairing failed");
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to start pairing");
+    }
+  },
+
+  setTVPower: async (on: boolean) => {
+    try {
+      await client.default.setTvPower({ on });
+      get().fetchTVState(true);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to set TV power");
+    }
+  },
+
+  setTVVolume: async (volume: number) => {
+    set((s) => (s.tv ? { tv: { ...s.tv, volume } } : {}));
+    try {
+      await client.default.setTvVolume({ volume });
+    } catch {
+      get().fetchTVState(true);
+    }
+  },
+
+  setTVMute: async (muted: boolean) => {
+    set((s) => (s.tv ? { tv: { ...s.tv, muted } } : {}));
+    try {
+      await client.default.setTvVolume({ muted });
+    } catch {
+      get().fetchTVState(true);
     }
   },
 }));

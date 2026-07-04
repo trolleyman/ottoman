@@ -23,10 +23,12 @@ import (
 	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
+	"github.com/trolleyman/ottoman/internal/audio"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
+	"github.com/trolleyman/ottoman/internal/store"
 )
 
 // Agent is the display control agent running on the desktop
@@ -36,9 +38,14 @@ type Agent struct {
 	router        *http.ServeMux
 	server        *http.Server
 	layouts       *display.Layouts
+	layoutStore   *store.LayoutStore
+	registry      *store.Registry
+	control       *monitorControl
+	tv            *tvController
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
+	audio         audio.Controller
 	startTime     time.Time
 	currentLayout string
 }
@@ -52,11 +59,18 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
-	// Load layouts from config
-	store := display.NewLayoutsFromSlice(cfg.Layouts)
+	// Load layouts from the data-dir store, migrating any legacy layouts that
+	// still live in the config file (agent.layouts) on first run. The config
+	// file is never written back to.
+	layoutStore := store.NewLayoutStore("")
+	loadedLayouts, err := layoutStore.LoadWithMigration(cfg.Layouts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load layouts store")
+	}
+	layouts := display.NewLayoutsFromSlice(loadedLayouts)
 
 	// Create display manager
-	mgr, err := display.NewManager(store)
+	mgr, err := display.NewManager(layouts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create display manager")
 	}
@@ -73,14 +87,40 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to create keyboard controller")
 	}
 
+	// Audio control is optional: if PipeWire/wpctl isn't available the agent
+	// still runs, and the audio endpoints report the feature as unavailable.
+	audioCtl, err := audio.NewController()
+	if err != nil {
+		log.Printf("Audio control unavailable: %v", err)
+		audioCtl = nil
+	}
+
+	// Monitor registry (friendly names, control backends, visibility) lives in
+	// the data dir alongside layouts.
+	registry, err := store.NewRegistry("")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load monitor registry")
+	}
+
+	// TV controller (LG webOS). The pairing key lives in the data dir, not the
+	// config, so a config redeploy can't drop it.
+	tv := newTVController(cfg.TV, store.NewTVStore(""))
+	control := newMonitorControl(registry)
+	control.tv = tv
+
 	a := &Agent{
-		config:     cfg,
-		configPath: config.ConfigPath(),
-		layouts:    store,
-		displayMgr: mgr,
-		mouse:      mouse,
-		keyboard:   keyboard,
-		startTime:  time.Now(),
+		config:      cfg,
+		configPath:  config.ConfigPath(),
+		layouts:     layouts,
+		layoutStore: layoutStore,
+		registry:    registry,
+		control:     control,
+		tv:          tv,
+		displayMgr:  mgr,
+		mouse:       mouse,
+		keyboard:    keyboard,
+		audio:       audioCtl,
+		startTime:   time.Now(),
 	}
 
 	if err := a.setupRoutes(); err != nil {
@@ -433,6 +473,10 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		apiMonitors = append(apiMonitors, mon)
 	}
 
+	// Add registry + control metadata (friendly name, backend, capabilities,
+	// current brightness, visibility) so any frontend renders the right controls.
+	apiMonitors = a.control.enrich(apiMonitors)
+
 	return api.GetMonitors200JSONResponse(apiMonitors), nil
 }
 
@@ -717,11 +761,9 @@ func slugify(input string) string {
 	return strings.Trim(slug, "-")
 }
 
-// saveLayouts saves the current layouts to the config file
+// saveLayouts persists the current layouts to the data-dir store. The config
+// file is deliberately left untouched so that redeploying the config template
+// can never clobber saved layouts.
 func (a *Agent) saveLayouts() error {
-	// Update config with current layouts
-	a.config.Layouts = a.layouts.ToSlice()
-
-	// Save agent config only
-	return config.SaveAgent(a.config, a.configPath)
+	return a.layoutStore.Save(a.layouts.ToSlice())
 }

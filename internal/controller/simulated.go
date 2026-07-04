@@ -382,6 +382,94 @@ func (s *SimulatedController) Shutdown(ctx context.Context, request api.Shutdown
 	}, nil
 }
 
+func (s *SimulatedController) GetAudioSinks(ctx context.Context, request api.GetAudioSinksRequestObject) (api.GetAudioSinksResponseObject, error) {
+	return api.GetAudioSinks200JSONResponse{
+		{Id: 55, Name: "alsa_output.pci-0000_01_00.1.hdmi-stereo", Description: "HDA NVidia Digital Stereo (HDMI)", Volume: 0.65, Muted: false, Default: true},
+		{Id: 61, Name: "alsa_output.usb-Logitech_Z407.analog-stereo", Description: "Logi Z407 Analogue Stereo", Volume: 1.0, Muted: false, Default: false},
+	}, nil
+}
+
+func (s *SimulatedController) SetAudioVolume(ctx context.Context, request api.SetAudioVolumeRequestObject) (api.SetAudioVolumeResponseObject, error) {
+	if request.Body == nil || request.Body.Name == "" {
+		return api.SetAudioVolume400JSONResponse{Code: 400, Error: "sink name is required"}, nil
+	}
+	log.Printf("[SIM] Audio set on sink %q", request.Body.Name)
+	msg := "audio updated"
+	return api.SetAudioVolume200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetMonitorBrightness(ctx context.Context, request api.SetMonitorBrightnessRequestObject) (api.SetMonitorBrightnessResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorBrightness400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Set brightness of %q to %d", request.Body.Edid, request.Body.Brightness)
+	msg := "brightness updated"
+	return api.SetMonitorBrightness200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetMonitorPower(ctx context.Context, request api.SetMonitorPowerRequestObject) (api.SetMonitorPowerResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorPower400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Set power of %q to on=%v", request.Body.Edid, request.Body.On)
+	msg := "power updated"
+	return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetMonitorSettings(ctx context.Context, request api.SetMonitorSettingsRequestObject) (api.SetMonitorSettingsResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorSettings400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] Updated registry settings for %q", request.Body.Edid)
+	msg := "settings updated"
+	return api.SetMonitorSettings200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) Boot(ctx context.Context, request api.BootRequestObject) (api.BootResponseObject, error) {
+	if request.Body == nil || request.Body.Target == "" {
+		return api.Boot400JSONResponse{Code: 400, Error: "target is required"}, nil
+	}
+	log.Printf("[SIM] Boot into %q requested", request.Body.Target)
+	msg := "Rebooting into " + request.Body.Target
+	return api.Boot200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
+	return api.GetTVState200JSONResponse{
+		Configured: true, Paired: true, Pairing: false,
+		Host: "10.0.0.50", Volume: 12, Muted: false,
+	}, nil
+}
+
+func (s *SimulatedController) PairTV(ctx context.Context, request api.PairTVRequestObject) (api.PairTVResponseObject, error) {
+	msg := "Pairing started — accept the prompt on the TV"
+	return api.PairTV200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVPower(ctx context.Context, request api.SetTVPowerRequestObject) (api.SetTVPowerResponseObject, error) {
+	if request.Body == nil {
+		return api.SetTVPower400JSONResponse{Code: 400, Error: "body required"}, nil
+	}
+	log.Printf("[SIM] TV power on=%v", request.Body.On)
+	msg := "TV power updated"
+	return api.SetTVPower200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVVolume(ctx context.Context, request api.SetTVVolumeRequestObject) (api.SetTVVolumeResponseObject, error) {
+	log.Printf("[SIM] TV volume updated")
+	msg := "TV volume updated"
+	return api.SetTVVolume200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+func (s *SimulatedController) SetTVInput(ctx context.Context, request api.SetTVInputRequestObject) (api.SetTVInputResponseObject, error) {
+	if request.Body == nil || request.Body.Input == "" {
+		return api.SetTVInput400JSONResponse{Code: 400, Error: "input is required"}, nil
+	}
+	log.Printf("[SIM] TV input -> %s", request.Body.Input)
+	msg := "TV input switched"
+	return api.SetTVInput200JSONResponse{Success: true, Message: &msg}, nil
+}
+
 func (s *SimulatedController) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
 	s.mu.RLock()
 	layouts := s.layouts.List()

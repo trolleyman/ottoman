@@ -2,20 +2,35 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AudioResponse } from '../models/AudioResponse';
+import type { AudioSinksResponse } from '../models/AudioSinksResponse';
 import type { AuthRequest } from '../models/AuthRequest';
 import type { AuthResponse } from '../models/AuthResponse';
+import type { BootRequest } from '../models/BootRequest';
+import type { BootResponse } from '../models/BootResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
+import type { MonitorControlResponse } from '../models/MonitorControlResponse';
+import type { MonitorSettingsRequest } from '../models/MonitorSettingsRequest';
 import type { MonitorsResponse } from '../models/MonitorsResponse';
 import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
 import type { RemoveLayoutResponse } from '../models/RemoveLayoutResponse';
 import type { SaveLayoutRequest } from '../models/SaveLayoutRequest';
 import type { SaveLayoutResponse } from '../models/SaveLayoutResponse';
+import type { SetAudioRequest } from '../models/SetAudioRequest';
+import type { SetBrightnessRequest } from '../models/SetBrightnessRequest';
+import type { SetMonitorPowerRequest } from '../models/SetMonitorPowerRequest';
 import type { ShutdownResponse } from '../models/ShutdownResponse';
 import type { SimSetStateRequest } from '../models/SimSetStateRequest';
 import type { SimStateResponse } from '../models/SimStateResponse';
 import type { StatusResponse } from '../models/StatusResponse';
 import type { SwitchLayoutRequest } from '../models/SwitchLayoutRequest';
 import type { SwitchLayoutResponse } from '../models/SwitchLayoutResponse';
+import type { TVInputRequest } from '../models/TVInputRequest';
+import type { TVPowerRequest } from '../models/TVPowerRequest';
+import type { TVResponse } from '../models/TVResponse';
+import type { TVStateResponse } from '../models/TVStateResponse';
+import type { TVVolumeRequest } from '../models/TVVolumeRequest';
+import type { WakeRequest } from '../models/WakeRequest';
 import type { WakeResponse } from '../models/WakeResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
@@ -54,7 +69,7 @@ export class DefaultService {
             url: '/api/status/agent',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -109,13 +124,18 @@ export class DefaultService {
     }
     /**
      * Wake agent on LAN
+     * @param requestBody
      * @returns WakeResponse Success
      * @throws ApiError
      */
-    public wake(): CancelablePromise<WakeResponse> {
+    public wake(
+        requestBody?: WakeRequest,
+    ): CancelablePromise<WakeResponse> {
         return this.httpRequest.request({
             method: 'POST',
             url: '/api/wake',
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 401: `Unauthorized`,
                 404: `No wake target configured`,
@@ -134,7 +154,7 @@ export class DefaultService {
             url: '/api/monitors',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -149,7 +169,7 @@ export class DefaultService {
             url: '/api/layouts',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -172,7 +192,7 @@ export class DefaultService {
                 401: `Unauthorized`,
                 404: `Layout not found`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -187,7 +207,7 @@ export class DefaultService {
             url: '/api/layouts/current',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -209,7 +229,7 @@ export class DefaultService {
                 400: `Bad Request (Invalid body or missing name)`,
                 401: `Unauthorized`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -232,12 +252,12 @@ export class DefaultService {
                 401: `Unauthorized`,
                 404: `Layout not found`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
     /**
-     * Shutdown client
+     * Shutdown agent
      * @returns ShutdownResponse Success
      * @throws ApiError
      */
@@ -247,7 +267,230 @@ export class DefaultService {
             url: '/api/shutdown',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * List audio output sinks
+     * @returns AudioSinksResponse Success
+     * @throws ApiError
+     */
+    public getAudioSinks(): CancelablePromise<AudioSinksResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/audio/sinks',
+            errors: {
+                401: `Unauthorized`,
+                500: `Internal Server Error (audio unavailable)`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Set an audio sink's volume, mute, or default state
+     * @param requestBody
+     * @returns AudioResponse Success
+     * @throws ApiError
+     */
+    public setAudioVolume(
+        requestBody?: SetAudioRequest,
+    ): CancelablePromise<AudioResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/audio/volume',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Set a monitor's brightness
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorBrightness(
+        requestBody?: SetBrightnessRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/brightness',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Turn a monitor on or off (standby)
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorPower(
+        requestBody?: SetMonitorPowerRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/power',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Update a monitor's registry settings (name, backend, visibility)
+     * @param requestBody
+     * @returns MonitorControlResponse Success
+     * @throws ApiError
+     */
+    public setMonitorSettings(
+        requestBody?: MonitorSettingsRequest,
+    ): CancelablePromise<MonitorControlResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/settings',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Get TV integration state
+     * @returns TVStateResponse Success
+     * @throws ApiError
+     */
+    public getTvState(): CancelablePromise<TVStateResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/tv/state',
+            errors: {
+                401: `Unauthorized`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Start TV on-screen pairing
+     * @returns TVResponse Success
+     * @throws ApiError
+     */
+    public pairTv(): CancelablePromise<TVResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/tv/pair',
+            errors: {
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Turn the TV on (Wake-on-LAN) or off (SSAP)
+     * @param requestBody
+     * @returns TVResponse Success
+     * @throws ApiError
+     */
+    public setTvPower(
+        requestBody?: TVPowerRequest,
+    ): CancelablePromise<TVResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/tv/power',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Set the TV volume and/or mute
+     * @param requestBody
+     * @returns TVResponse Success
+     * @throws ApiError
+     */
+    public setTvVolume(
+        requestBody?: TVVolumeRequest,
+    ): CancelablePromise<TVResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/tv/volume',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Switch the TV's external input
+     * @param requestBody
+     * @returns TVResponse Success
+     * @throws ApiError
+     */
+    public setTvInput(
+        requestBody?: TVInputRequest,
+    ): CancelablePromise<TVResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/tv/input',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Reboot the agent into a specific OS (GRUB dual-boot)
+     * @param requestBody
+     * @returns BootResponse Success
+     * @throws ApiError
+     */
+    public boot(
+        requestBody?: BootRequest,
+    ): CancelablePromise<BootResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/boot',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -261,7 +504,7 @@ export class DefaultService {
             method: 'POST',
             url: '/api/sim/reset',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }
@@ -275,7 +518,7 @@ export class DefaultService {
             method: 'GET',
             url: '/api/sim/state',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }
@@ -294,7 +537,7 @@ export class DefaultService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }

@@ -4,6 +4,7 @@ package input
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -21,11 +22,20 @@ type LinuxMouse struct {
 	scrollFracY  float64
 }
 
-// NewMouseController creates a platform-specific mouse controller.
+// NewMouseController creates a platform-specific mouse controller. It prefers
+// the uinput backend (works on Wayland, X11 and the console) and falls back to
+// xdotool (X11 only) if /dev/uinput isn't usable.
 func NewMouseController() (MouseController, error) {
-	if _, err := exec.LookPath("xdotool"); err != nil {
-		return nil, errors.Wrap(err, "xdotool not found")
+	if mouse, err := newUinputMouse(); err == nil {
+		log.Printf("Input backend (mouse): uinput")
+		return mouse, nil
+	} else {
+		log.Printf("uinput mouse unavailable, falling back to xdotool: %v", err)
 	}
+	if _, err := exec.LookPath("xdotool"); err != nil {
+		return nil, errors.Wrap(err, "no usable mouse backend: uinput unavailable and xdotool not found")
+	}
+	log.Printf("Input backend (mouse): xdotool")
 	return &LinuxMouse{}, nil
 }
 
@@ -179,11 +189,19 @@ func (m *LinuxMouse) Scroll(dx, dy int, precise bool) error {
 // LinuxKeyboard controls keyboard input via xdotool.
 type LinuxKeyboard struct{}
 
-// NewKeyboardController creates a platform-specific keyboard controller.
+// NewKeyboardController creates a platform-specific keyboard controller. It
+// prefers the uinput backend and falls back to xdotool (X11 only).
 func NewKeyboardController() (KeyboardController, error) {
-	if _, err := exec.LookPath("xdotool"); err != nil {
-		return nil, errors.Wrap(err, "xdotool not found")
+	if kb, err := newUinputKeyboard(); err == nil {
+		log.Printf("Input backend (keyboard): uinput")
+		return kb, nil
+	} else {
+		log.Printf("uinput keyboard unavailable, falling back to xdotool: %v", err)
 	}
+	if _, err := exec.LookPath("xdotool"); err != nil {
+		return nil, errors.Wrap(err, "no usable keyboard backend: uinput unavailable and xdotool not found")
+	}
+	log.Printf("Input backend (keyboard): xdotool")
 	return &LinuxKeyboard{}, nil
 }
 

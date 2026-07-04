@@ -126,6 +126,14 @@ func installLinuxService() error {
 	log.Println("  Status:  systemctl --user status ottoman-agent")
 	log.Println("  Logs:    journalctl --user -u ottoman-agent -f")
 
+	// Install the GNOME Quick Settings extension (embedded in the binary, so
+	// this works even when installing without the repo checkout present).
+	if err := installGnomeExtension(); err != nil {
+		log.Printf("Warning: failed to install GNOME extension: %v", err)
+	}
+
+	printLinuxHostSetupHint()
+
 	return nil
 }
 

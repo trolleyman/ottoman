@@ -4,6 +4,8 @@ import { LoginForm } from "./LoginForm";
 import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
 
 import { Monitors } from "./Monitors";
+import { Audio } from "./Audio";
+import { TV } from "./TV";
 import { ClientStatus } from "./ClientStatus";
 import { Layouts } from "./Layouts";
 import { useStore } from "./store";
@@ -75,6 +77,10 @@ export default function App() {
         <Layouts />
 
         <Monitors />
+
+        <Audio />
+
+        <TV />
 
         <Trackpad
           connected={connected}
