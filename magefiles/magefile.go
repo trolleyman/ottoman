@@ -623,9 +623,15 @@ func DeployAgent() error {
 		}
 	}
 
-	// Copy config to actual config location
+	// Copy config to actual config location, but only if none exists yet:
+	// the live config may contain edits (rotated auth token, trackpad tuning,
+	// etc.) that a redeploy must not clobber. Runtime data (layouts, monitor
+	// registry) lives separately in the data dir and is never touched here.
 	configDst := defaultConfigPath()
-	if err := copyFile(agentConfigPath, configDst); err != nil {
+	if fileExists(configDst) {
+		fmt.Printf("Config already exists at %s - leaving it untouched.\n", configDst)
+		fmt.Printf("  (template is at %s if you want to diff for new keys)\n", agentConfigPath)
+	} else if err := copyFile(agentConfigPath, configDst); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
@@ -765,8 +771,13 @@ func DeployController() error {
 		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
-	// Write config file
-	if err := run("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
+	// Write config file, but only if the remote has none yet: a redeploy must
+	// not clobber a config edited on the Pi (e.g. a rotated auth token).
+	remoteConfig := expandPath(cfg.Controller.ConfigPath)
+	configExists := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`test -f "%s"`, remoteConfig)) == nil
+	if configExists {
+		fmt.Printf("Remote config already exists at %s - leaving it untouched.\n", cfg.Controller.ConfigPath)
+	} else if err := run("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 

@@ -203,6 +203,15 @@ func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.listen_address", cfg.ListenAddress)
 	w.Set("agent.auth_token", cfg.AuthToken)
 
+	// Preserve trackpad tuning so re-running `config init` over an existing
+	// config doesn't silently drop it.
+	if cfg.Trackpad.Sensitivity != 0 {
+		w.Set("agent.trackpad.sensitivity", cfg.Trackpad.Sensitivity)
+	}
+	if cfg.Trackpad.Friction != 0 {
+		w.Set("agent.trackpad.friction", cfg.Trackpad.Friction)
+	}
+
 	if len(cfg.Layouts) > 0 {
 		layouts := make([]map[string]any, len(cfg.Layouts))
 		for i, l := range cfg.Layouts {

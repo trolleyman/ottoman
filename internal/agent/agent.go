@@ -27,6 +27,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
+	"github.com/trolleyman/ottoman/internal/store"
 )
 
 // Agent is the display control agent running on the desktop
@@ -36,6 +37,7 @@ type Agent struct {
 	router        *http.ServeMux
 	server        *http.Server
 	layouts       *display.Layouts
+	layoutStore   *store.LayoutStore
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
@@ -52,11 +54,18 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
-	// Load layouts from config
-	store := display.NewLayoutsFromSlice(cfg.Layouts)
+	// Load layouts from the data-dir store, migrating any legacy layouts that
+	// still live in the config file (agent.layouts) on first run. The config
+	// file is never written back to.
+	layoutStore := store.NewLayoutStore("")
+	loadedLayouts, err := layoutStore.LoadWithMigration(cfg.Layouts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load layouts store")
+	}
+	layouts := display.NewLayoutsFromSlice(loadedLayouts)
 
 	// Create display manager
-	mgr, err := display.NewManager(store)
+	mgr, err := display.NewManager(layouts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create display manager")
 	}
@@ -74,13 +83,14 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 	}
 
 	a := &Agent{
-		config:     cfg,
-		configPath: config.ConfigPath(),
-		layouts:    store,
-		displayMgr: mgr,
-		mouse:      mouse,
-		keyboard:   keyboard,
-		startTime:  time.Now(),
+		config:      cfg,
+		configPath:  config.ConfigPath(),
+		layouts:     layouts,
+		layoutStore: layoutStore,
+		displayMgr:  mgr,
+		mouse:       mouse,
+		keyboard:    keyboard,
+		startTime:   time.Now(),
 	}
 
 	if err := a.setupRoutes(); err != nil {
@@ -717,11 +727,9 @@ func slugify(input string) string {
 	return strings.Trim(slug, "-")
 }
 
-// saveLayouts saves the current layouts to the config file
+// saveLayouts persists the current layouts to the data-dir store. The config
+// file is deliberately left untouched so that redeploying the config template
+// can never clobber saved layouts.
 func (a *Agent) saveLayouts() error {
-	// Update config with current layouts
-	a.config.Layouts = a.layouts.ToSlice()
-
-	// Save agent config only
-	return config.SaveAgent(a.config, a.configPath)
+	return a.layoutStore.Save(a.layouts.ToSlice())
 }
