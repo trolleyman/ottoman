@@ -425,6 +425,15 @@ func (s *SimulatedController) SetMonitorSettings(ctx context.Context, request ap
 	return api.SetMonitorSettings200JSONResponse{Success: true, Message: &msg}, nil
 }
 
+func (s *SimulatedController) Boot(ctx context.Context, request api.BootRequestObject) (api.BootResponseObject, error) {
+	if request.Body == nil || request.Body.Target == "" {
+		return api.Boot400JSONResponse{Code: 400, Error: "target is required"}, nil
+	}
+	log.Printf("[SIM] Boot into %q requested", request.Body.Target)
+	msg := "Rebooting into " + request.Body.Target
+	return api.Boot200JSONResponse{Success: true, Message: &msg}, nil
+}
+
 func (s *SimulatedController) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
 	return api.GetTVState200JSONResponse{
 		Configured: true, Paired: true, Pairing: false,

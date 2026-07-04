@@ -16,6 +16,8 @@ export type { AudioSink } from './models/AudioSink';
 export type { AudioSinksResponse } from './models/AudioSinksResponse';
 export type { AuthRequest } from './models/AuthRequest';
 export type { AuthResponse } from './models/AuthResponse';
+export type { BootRequest } from './models/BootRequest';
+export type { BootResponse } from './models/BootResponse';
 export type { ErrorResponse } from './models/ErrorResponse';
 export type { Layout } from './models/Layout';
 export type { LayoutMonitor } from './models/LayoutMonitor';
@@ -56,6 +58,7 @@ export type { TVPowerRequest } from './models/TVPowerRequest';
 export type { TVResponse } from './models/TVResponse';
 export type { TVStateResponse } from './models/TVStateResponse';
 export type { TVVolumeRequest } from './models/TVVolumeRequest';
+export type { WakeRequest } from './models/WakeRequest';
 export type { WakeResponse } from './models/WakeResponse';
 
 export { DefaultService } from './services/DefaultService';

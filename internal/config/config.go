@@ -51,6 +51,15 @@ type AgentConfig struct {
 	Layouts       []api.Layout   `json:"layouts"`
 	Trackpad      TrackpadConfig `json:"trackpad"`
 	TV            TVConfig       `json:"tv"`
+	Boot          BootConfig     `json:"boot"`
+}
+
+// BootConfig holds GRUB dual-boot entry names for remote OS selection. The GRUB
+// default should be the Linux entry (GRUB_DEFAULT=saved); "boot into Windows"
+// uses grub-reboot for a one-shot next boot.
+type BootConfig struct {
+	LinuxEntry   string `json:"linux_entry"`   // GRUB menuentry name for Linux
+	WindowsEntry string `json:"windows_entry"` // GRUB menuentry name for Windows
 }
 
 // TVConfig holds network-controlled TV configuration. The pairing key is NOT

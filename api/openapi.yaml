@@ -115,6 +115,12 @@ paths:
     post:
       summary: Wake agent on LAN
       operationId: wake
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WakeRequest'
       responses:
         '200':
           description: Success
@@ -743,6 +749,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/boot:
+    post:
+      summary: Reboot the agent into a specific OS (GRUB dual-boot)
+      operationId: boot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BootResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/sim/reset:
     post:
       summary: Reset simulation
@@ -951,7 +998,25 @@ components:
         success: { type: boolean }
         message: { type: string }
 
+    WakeRequest:
+      type: object
+      properties:
+        target: { type: string, description: "linux | windows (optional; default boots the GRUB default)" }
+
     WakeResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+
+    BootRequest:
+      type: object
+      required: [target]
+      properties:
+        target: { type: string, description: "linux | windows" }
+
+    BootResponse:
       type: object
       required: [success]
       properties:

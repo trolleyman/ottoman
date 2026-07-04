@@ -6,6 +6,8 @@ import type { AudioResponse } from '../models/AudioResponse';
 import type { AudioSinksResponse } from '../models/AudioSinksResponse';
 import type { AuthRequest } from '../models/AuthRequest';
 import type { AuthResponse } from '../models/AuthResponse';
+import type { BootRequest } from '../models/BootRequest';
+import type { BootResponse } from '../models/BootResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
 import type { MonitorControlResponse } from '../models/MonitorControlResponse';
 import type { MonitorSettingsRequest } from '../models/MonitorSettingsRequest';
@@ -28,6 +30,7 @@ import type { TVPowerRequest } from '../models/TVPowerRequest';
 import type { TVResponse } from '../models/TVResponse';
 import type { TVStateResponse } from '../models/TVStateResponse';
 import type { TVVolumeRequest } from '../models/TVVolumeRequest';
+import type { WakeRequest } from '../models/WakeRequest';
 import type { WakeResponse } from '../models/WakeResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import type { BaseHttpRequest } from '../core/BaseHttpRequest';
@@ -121,13 +124,18 @@ export class DefaultService {
     }
     /**
      * Wake agent on LAN
+     * @param requestBody
      * @returns WakeResponse Success
      * @throws ApiError
      */
-    public wake(): CancelablePromise<WakeResponse> {
+    public wake(
+        requestBody?: WakeRequest,
+    ): CancelablePromise<WakeResponse> {
         return this.httpRequest.request({
             method: 'POST',
             url: '/api/wake',
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 401: `Unauthorized`,
                 404: `No wake target configured`,
@@ -454,6 +462,28 @@ export class DefaultService {
         return this.httpRequest.request({
             method: 'POST',
             url: '/api/tv/input',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Reboot the agent into a specific OS (GRUB dual-boot)
+     * @param requestBody
+     * @returns BootResponse Success
+     * @throws ApiError
+     */
+    public boot(
+        requestBody?: BootRequest,
+    ): CancelablePromise<BootResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/boot',
             body: requestBody,
             mediaType: 'application/json',
             errors: {

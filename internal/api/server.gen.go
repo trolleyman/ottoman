@@ -124,6 +124,18 @@ type AuthResponse struct {
 	Success bool    `json:"success"`
 }
 
+// BootRequest defines model for BootRequest.
+type BootRequest struct {
+	// Target linux | windows
+	Target string `json:"target"`
+}
+
+// BootResponse defines model for BootResponse.
+type BootResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Code    int     `json:"code"`
@@ -441,6 +453,12 @@ type TrackpadMessageText struct {
 // TrackpadMessageTextType defines model for TrackpadMessageText.Type.
 type TrackpadMessageTextType string
 
+// WakeRequest defines model for WakeRequest.
+type WakeRequest struct {
+	// Target linux | windows (optional; default boots the GRUB default)
+	Target *string `json:"target,omitempty"`
+}
+
 // WakeResponse defines model for WakeResponse.
 type WakeResponse struct {
 	Message *string `json:"message,omitempty"`
@@ -452,6 +470,9 @@ type SetAudioVolumeJSONRequestBody = SetAudioRequest
 
 // AuthJSONRequestBody defines body for Auth for application/json ContentType.
 type AuthJSONRequestBody = AuthRequest
+
+// BootJSONRequestBody defines body for Boot for application/json ContentType.
+type BootJSONRequestBody = BootRequest
 
 // RemoveLayoutJSONRequestBody defines body for RemoveLayout for application/json ContentType.
 type RemoveLayoutJSONRequestBody = RemoveLayoutRequest
@@ -482,6 +503,9 @@ type SetTVPowerJSONRequestBody = TVPowerRequest
 
 // SetTVVolumeJSONRequestBody defines body for SetTVVolume for application/json ContentType.
 type SetTVVolumeJSONRequestBody = TVVolumeRequest
+
+// WakeJSONRequestBody defines body for Wake for application/json ContentType.
+type WakeJSONRequestBody = WakeRequest
 
 // AsStatusResponseIpAddress0 returns the union data inside the StatusResponse_IpAddress as a StatusResponseIpAddress0
 func (t StatusResponse_IpAddress) AsStatusResponseIpAddress0() (StatusResponseIpAddress0, error) {
@@ -891,6 +915,9 @@ type ServerInterface interface {
 	// Logout
 	// (POST /api/auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// Reboot the agent into a specific OS (GRUB dual-boot)
+	// (POST /api/boot)
+	Boot(w http.ResponseWriter, r *http.Request)
 	// Get all layouts
 	// (GET /api/layouts)
 	GetLayouts(w http.ResponseWriter, r *http.Request)
@@ -1032,6 +1059,20 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Boot operation middleware
+func (siw *ServerInterfaceWrapper) Boot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Boot(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1488,6 +1529,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth", wrapper.Auth)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/check", wrapper.CheckAuth)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
+	m.HandleFunc("POST "+options.BaseURL+"/api/boot", wrapper.Boot)
 	m.HandleFunc("GET "+options.BaseURL+"/api/layouts", wrapper.GetLayouts)
 	m.HandleFunc("GET "+options.BaseURL+"/api/layouts/current", wrapper.GetCurrentLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/remove", wrapper.RemoveLayout)
@@ -1677,6 +1719,59 @@ type Logout200JSONResponse AuthResponse
 func (response Logout200JSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BootRequestObject struct {
+	Body *BootJSONRequestBody
+}
+
+type BootResponseObject interface {
+	VisitBootResponse(w http.ResponseWriter) error
+}
+
+type Boot200JSONResponse BootResponse
+
+func (response Boot200JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot400JSONResponse ErrorResponse
+
+func (response Boot400JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot401JSONResponse ErrorResponse
+
+func (response Boot401JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot500JSONResponse ErrorResponse
+
+func (response Boot500JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Boot502JSONResponse ErrorResponse
+
+func (response Boot502JSONResponse) VisitBootResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2531,6 +2626,7 @@ func (response SetTVVolume502JSONResponse) VisitSetTVVolumeResponse(w http.Respo
 }
 
 type WakeRequestObject struct {
+	Body *WakeJSONRequestBody
 }
 
 type WakeResponseObject interface {
@@ -2607,6 +2703,9 @@ type StrictServerInterface interface {
 	// Logout
 	// (POST /api/auth/logout)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// Reboot the agent into a specific OS (GRUB dual-boot)
+	// (POST /api/boot)
+	Boot(ctx context.Context, request BootRequestObject) (BootResponseObject, error)
 	// Get all layouts
 	// (GET /api/layouts)
 	GetLayouts(ctx context.Context, request GetLayoutsRequestObject) (GetLayoutsResponseObject, error)
@@ -2834,6 +2933,37 @@ func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogoutResponseObject); ok {
 		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Boot operation middleware
+func (sh *strictHandler) Boot(w http.ResponseWriter, r *http.Request) {
+	var request BootRequestObject
+
+	var body BootJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Boot(ctx, request.(BootRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Boot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BootResponseObject); ok {
+		if err := validResponse.VisitBootResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3418,6 +3548,13 @@ func (sh *strictHandler) SetTVVolume(w http.ResponseWriter, r *http.Request) {
 // Wake operation middleware
 func (sh *strictHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	var request WakeRequestObject
+
+	var body WakeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.Wake(ctx, request.(WakeRequestObject))

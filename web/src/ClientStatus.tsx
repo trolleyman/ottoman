@@ -7,13 +7,14 @@ export function ClientStatus() {
   const loading = useStore((s) => s.agentLoading);
   const storeWake = useStore((s) => s.wake);
   const storeShutdown = useStore((s) => s.shutdown);
+  const storeReboot = useStore((s) => s.reboot);
 
   const [busy, setBusy] = useState(false);
 
-  const wake = async () => {
+  const wake = async (target?: "linux" | "windows") => {
     setBusy(true);
     try {
-      await storeWake();
+      await storeWake(target);
     } finally {
       setBusy(false);
     }
@@ -23,6 +24,15 @@ export function ClientStatus() {
     setBusy(true);
     try {
       await storeShutdown();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reboot = async (target: "linux" | "windows") => {
+    setBusy(true);
+    try {
+      await storeReboot(target);
     } finally {
       setBusy(false);
     }
@@ -63,24 +73,44 @@ export function ClientStatus() {
           )}
         </div>
 
-        <div>
+        <div className="flex items-center gap-2">
           {isOffline && (
-            <button
-              onClick={wake}
-              disabled={isBusy}
-              className="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              Wake
-            </button>
+            <>
+              <button
+                onClick={() => wake("linux")}
+                disabled={isBusy}
+                className="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Wake → Linux
+              </button>
+              <button
+                onClick={() => wake("windows")}
+                disabled={isBusy}
+                className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                title="Wake, then reboot into Windows once the agent is up"
+              >
+                → Windows
+              </button>
+            </>
           )}
           {isOnline && (
-            <button
-              onClick={shutdown}
-              disabled={isBusy}
-              className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              Shutdown
-            </button>
+            <>
+              <button
+                onClick={() => reboot("windows")}
+                disabled={isBusy}
+                className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                title="Reboot into Windows once"
+              >
+                Reboot → Windows
+              </button>
+              <button
+                onClick={shutdown}
+                disabled={isBusy}
+                className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Shutdown
+              </button>
+            </>
           )}
         </div>
       </div>

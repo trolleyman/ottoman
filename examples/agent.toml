@@ -19,6 +19,13 @@ auth_token = 'your-secret-token-here'
 # host = '10.0.0.50'            # give the TV a DHCP reservation for a stable IP
 # mac  = '8C:19:B5:72:FE:62'    # for Wake-on-LAN power-on (needs "TV On With Mobile")
 
+# Dual-boot OS selection (plan §7). Set GRUB_DEFAULT=saved (keep GRUB_TIMEOUT=5),
+# then run `ottoman agent install` to get the grub-reboot sudoers rule. The
+# entry names come from: grep menuentry /boot/grub/grub.cfg
+# [agent.boot]
+# linux_entry   = 'Zorin OS'
+# windows_entry = 'Windows Boot Manager (on /dev/nvme0n1p1)'
+
 # Example layout (add more with `ottoman agent layout add`)
 # [[agent.layouts]]
 # id = 'desktop'

@@ -77,8 +77,9 @@ interface OttomanStore {
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
 
   // ── Power Actions ─────────────────────────────────────
-  wake: () => Promise<void>;
+  wake: (target?: "linux" | "windows") => Promise<void>;
   shutdown: () => Promise<void>;
+  reboot: (target: "linux" | "windows") => Promise<void>;
 
   // ── Polling Control ───────────────────────────────────
   startPolling: () => void;
@@ -376,9 +377,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   // ── Power Actions ─────────────────────────────────────
 
-  wake: async () => {
+  wake: async (target?: "linux" | "windows") => {
     try {
-      const data = await client.default.wake();
+      const data = await client.default.wake(target ? { target } : undefined);
       if (data.success) {
         set({ agentStatus: "waking" });
       } else {
@@ -400,6 +401,21 @@ export const useStore = create<OttomanStore>((set, get) => ({
       }
     } catch {
       alert("Failed to send shutdown command");
+    }
+  },
+
+  reboot: async (target: "linux" | "windows") => {
+    const label = target === "windows" ? "reboot into Windows" : "reboot";
+    if (!confirm(`Are you sure you want to ${label}?`)) return;
+    try {
+      const data = await client.default.boot({ target });
+      if (data.success) {
+        set({ agentStatus: "shutting_down" });
+      } else {
+        alert("Failed: " + data.message);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to send reboot command");
     }
   },
 

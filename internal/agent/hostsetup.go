@@ -54,6 +54,18 @@ usermod -aG i2c "$USER_NAME"
 
 `)
 
+	// grub-reboot sudoers for remote OS selection (plan §7).
+	b.WriteString(`# --- GRUB one-shot reboot (remote OS selection) ---
+echo "[grub] installing NOPASSWD sudoers rule for grub-reboot"
+cat > /etc/sudoers.d/ottoman-grub <<RULE
+$USER_NAME ALL=(root) NOPASSWD: /usr/sbin/grub-reboot *, /usr/bin/grub-reboot *, /usr/sbin/grub2-reboot *, /usr/bin/grub2-reboot *
+RULE
+chmod 440 /etc/sudoers.d/ottoman-grub
+echo "[grub] NOTE: also set GRUB_DEFAULT=saved and keep GRUB_TIMEOUT=5 in"
+echo "       /etc/default/grub, then: sudo update-grub && sudo grub-set-default '<linux entry>'"
+
+`)
+
 	b.WriteString(`echo
 echo "== Done. Reloading udev rules... =="
 udevadm control --reload-rules && udevadm trigger || true
@@ -99,8 +111,9 @@ func printLinuxHostSetupHint() {
 	fmt.Println()
 	fmt.Println("== One-time host setup required (needs root) ==")
 	fmt.Println("Some features need kernel access that must be granted once with sudo:")
-	fmt.Println("  - uinput  -> mouse/keyboard control on Wayland")
-	fmt.Println("  - i2c-dev -> monitor brightness/power over DDC/CI")
+	fmt.Println("  - uinput      -> mouse/keyboard control on Wayland")
+	fmt.Println("  - i2c-dev     -> monitor brightness/power over DDC/CI")
+	fmt.Println("  - grub-reboot -> remote 'boot into Windows' (sudoers rule)")
 	fmt.Printf("\n  Run:  sudo bash %q\n\n", path)
 	fmt.Println("Then log out and back in (group changes) and restart the agent.")
 }
