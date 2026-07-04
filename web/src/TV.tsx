@@ -1,60 +1,62 @@
+import { useState } from "react";
 import { useStore } from "./store";
+import { PowerToggle } from "./PowerToggle";
+import { Row } from "./Monitors";
 
-export function TV() {
+// TVCard renders the configured TV as a card that lives inside the Monitors
+// grid, styled to match MonitorCard. Returns null when no TV is configured.
+export function TVCard() {
   const tv = useStore((s) => s.tv);
   const pairTV = useStore((s) => s.pairTV);
   const setTVPower = useStore((s) => s.setTVPower);
   const setTVVolume = useStore((s) => s.setTVVolume);
   const setTVMute = useStore((s) => s.setTVMute);
 
-  // Hide the section unless a TV is configured on the agent.
+  // Optimistic power state — like monitors, TV power has no read-back. A
+  // configured+paired TV is reachable, so start "on".
+  const [powerOn, setPowerOn] = useState(true);
+
   if (!tv || !tv.configured) return null;
 
   return (
-    <section>
-      <h2 className="text-lg font-semibold text-zinc-200 mb-4">TV</h2>
-      <div className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-5 flex flex-col gap-4 max-w-md">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-zinc-100">LG webOS TV</h3>
-            <p className="text-xs text-zinc-500 font-mono">{tv.host}</p>
-          </div>
-          {tv.pairing ? (
-            <span className="text-xs font-medium bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
-              Pairing…
-            </span>
-          ) : tv.paired ? (
-            <span className="text-xs font-medium bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-              Paired
-            </span>
-          ) : (
-            <button
-              onClick={pairTV}
-              className="text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-            >
-              Pair
-            </button>
-          )}
-        </div>
-
-        {tv.error && !tv.paired && (
-          <p className="text-xs text-red-400">{tv.error}</p>
+    <div className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-zinc-100 truncate">LG webOS TV</h3>
+        {tv.pairing ? (
+          <span className="text-xs font-medium bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+            Pairing…
+          </span>
+        ) : tv.paired ? (
+          <span className="text-xs font-medium bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
+            Paired
+          </span>
+        ) : (
+          <button
+            onClick={pairTV}
+            className="text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+          >
+            Pair
+          </button>
         )}
+      </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTVPower(true)}
-            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            Power on
-          </button>
-          <button
-            onClick={() => setTVPower(false)}
-            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            Power off
-          </button>
-        </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+        <Row label="Type" value="webOS" />
+        {tv.host && <Row label="Host" value={tv.host} />}
+      </div>
+
+      {tv.error && !tv.paired && (
+        <p className="text-xs text-red-400">{tv.error}</p>
+      )}
+
+      <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
+        <PowerToggle
+          on={powerOn}
+          onChange={(on) => {
+            setPowerOn(on);
+            setTVPower(on);
+          }}
+        />
 
         {tv.paired && (
           <div className="flex items-center gap-3">
@@ -79,6 +81,6 @@ export function TV() {
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }

@@ -1,7 +1,10 @@
+import { useState } from "react";
 import type { Monitor } from "./api";
 import { useStore } from "./store";
+import { PowerToggle } from "./PowerToggle";
+import { TVCard } from "./TV";
 
-function Row({ label, value }: { label: string; value: string }) {
+export function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
       <span className="text-zinc-500">{label}</span>
@@ -22,6 +25,12 @@ function visible(monitor: Monitor, control: string): boolean {
 function MonitorControls({ monitor }: { monitor: Monitor }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
   const setMonitorPower = useStore((s) => s.setMonitorPower);
+
+  // Optimistic power state: there's no DDC standby read-back, and a power-off
+  // doesn't clear `active`, so we seed from `active` once and never re-sync
+  // (else a poll would snap the switch back). Keyed by edid via MonitorCard, so
+  // this survives polls but resets if the monitor list changes.
+  const [powerOn, setPowerOn] = useState(() => !!monitor.active);
 
   const caps = monitor.capabilities;
   if (!caps) return null;
@@ -54,20 +63,13 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
         </div>
       )}
       {showPower && (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setMonitorPower(monitor.edid, true)}
-            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            Power on
-          </button>
-          <button
-            onClick={() => setMonitorPower(monitor.edid, false)}
-            className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            Power off
-          </button>
-        </div>
+        <PowerToggle
+          on={powerOn}
+          onChange={(on) => {
+            setPowerOn(on);
+            setMonitorPower(monitor.edid, on);
+          }}
+        />
       )}
     </div>
   );
@@ -125,6 +127,12 @@ export function Monitors() {
   const monitors = useStore((s) => s.monitors);
   const loading = useStore((s) => s.monitorsLoading);
   const error = useStore((s) => s.monitorsError);
+  const tv = useStore((s) => s.tv);
+
+  // The TV sits in this section as another display; show the grid whenever
+  // there are monitors OR a configured TV.
+  const hasTV = !!tv?.configured;
+  const isEmpty = monitors.length === 0 && !hasTV;
 
   return (
     <section>
@@ -139,17 +147,18 @@ export function Monitors() {
           {monitors.filter((m) => m.active).length} active / {monitors.length} total
         </span>
       </div>
-      {loading && monitors.length === 0 ? (
+      {loading && monitors.length === 0 && !hasTV ? (
         <div className="text-zinc-500 text-sm">Loading monitors...</div>
       ) : error ? (
         <div className="text-red-400 text-sm">{error}</div>
-      ) : monitors.length === 0 ? (
+      ) : isEmpty ? (
         <p className="text-zinc-500 text-sm">No monitors detected.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {monitors.map((m, i) => (
             <MonitorCard key={m.port || m.edid || i} monitor={m} />
           ))}
+          <TVCard />
         </div>
       )}
     </section>
