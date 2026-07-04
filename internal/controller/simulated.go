@@ -647,7 +647,7 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 	s.mu.RUnlock()
 
 	// Ensure we return an empty array instead of nil
-	apiMonitors := make([]api.Monitor, 0, len(monitors))
+	apiMonitors := make([]api.Monitor, 0, len(monitors)+1)
 	for _, m := range monitors {
 		mon := api.Monitor{
 			Edid:         m.Edid,
@@ -666,8 +666,28 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 				Width:       m.Active.Width,
 			}
 		}
+		// Mock DDC control metadata so the UI renders brightness + a power switch.
+		ddc := "ddc"
+		bright := 65
+		mon.ControlBackend = &ddc
+		mon.Brightness = &bright
+		mon.Capabilities = &api.MonitorCapabilities{Brightness: true, Power: true, Volume: false}
 		apiMonitors = append(apiMonitors, mon)
 	}
+
+	// A network TV, shown in the Monitors grid as a tv-backed card (pairing pill,
+	// volume, and a power switch). GetTVState reports it paired, so volume shows.
+	tvBackend := "tv"
+	apiMonitors = append(apiMonitors, api.Monitor{
+		Edid:         "LG-OLED-SIM",
+		Name:         "LG OLED TV",
+		Manufacturer: "GSM",
+		ControlBackend: &tvBackend,
+		Capabilities:   &api.MonitorCapabilities{Brightness: true, Power: true, Volume: true},
+		Active: &api.ActiveMonitor{
+			Width: 3840, Height: 2160, RefreshRate: 120, Primary: false, Model: "OLED65C1",
+		},
+	})
 
 	return api.GetMonitors200JSONResponse(apiMonitors), nil
 }

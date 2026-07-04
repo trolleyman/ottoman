@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Monitor, MonitorSettingsRequest } from "./api";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
+import { useMonitorPower } from "./useMonitorPower";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -23,20 +24,24 @@ function visible(monitor: Monitor, control: string): boolean {
 
 function MonitorControls({ monitor }: { monitor: Monitor }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
-  const setMonitorPower = useStore((s) => s.setMonitorPower);
+  const tv = useStore((s) => s.tv);
+  const setTVVolume = useStore((s) => s.setTVVolume);
+  const setTVMute = useStore((s) => s.setTVMute);
 
-  // Optimistic power state: there's no DDC standby read-back, and a power-off
-  // doesn't clear `active`, so we seed from `active` once and never re-sync
-  // (else a poll would snap the switch back). Keyed by edid via MonitorCard, so
-  // this survives polls but resets if the monitor list changes.
-  const [powerOn, setPowerOn] = useState(() => !!monitor.active);
+  // Power switch with a confirmation poll (seeded optimistically from `active`).
+  // Hooks run unconditionally, so call before any early return below.
+  const { on: powerOn, loading: powerLoading, toggle: togglePower } =
+    useMonitorPower(monitor.edid, !!monitor.active);
 
   const caps = monitor.capabilities;
   if (!caps) return null;
 
   const showBrightness = caps.brightness && visible(monitor, "brightness");
   const showPower = caps.power && visible(monitor, "power");
-  if (!showBrightness && !showPower) return null;
+  // A TV-backed monitor (caps.volume) drives the network TV's volume; that state
+  // lives in the shared tv store (there's only ever one TV).
+  const showVolume = caps.volume && visible(monitor, "volume") && !!tv?.paired;
+  if (!showBrightness && !showPower && !showVolume) return null;
 
   const brightness = monitor.brightness ?? -1;
 
@@ -61,14 +66,30 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
           </span>
         </div>
       )}
+      {showVolume && tv && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setTVMute(!tv.muted)}
+            className="text-xl leading-none cursor-pointer select-none"
+            title={tv.muted ? "Unmute" : "Mute"}
+          >
+            {tv.muted ? "🔇" : "🔊"}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={tv.volume}
+            onChange={(e) => setTVVolume(Number(e.target.value))}
+            className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
+          />
+          <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
+            {tv.volume}
+          </span>
+        </div>
+      )}
       {showPower && (
-        <PowerToggle
-          on={powerOn}
-          onChange={(on) => {
-            setPowerOn(on);
-            setMonitorPower(monitor.edid, on);
-          }}
-        />
+        <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
       )}
     </div>
   );
@@ -185,6 +206,35 @@ function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose
   );
 }
 
+// TVPairPill shows the network TV's pairing status (or a Pair button) in a
+// TV-backed monitor card's header. Pairing state lives in the shared tv store.
+function TVPairPill() {
+  const tv = useStore((s) => s.tv);
+  const pairTV = useStore((s) => s.pairTV);
+  if (tv?.pairing) {
+    return (
+      <span className="text-xs font-medium bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+        Pairing…
+      </span>
+    );
+  }
+  if (tv?.paired) {
+    return (
+      <span className="text-xs font-medium bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
+        Paired
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={pairTV}
+      className="text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
+    >
+      Pair
+    </button>
+  );
+}
+
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   const [editing, setEditing] = useState(false);
@@ -198,6 +248,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
           {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
         </h3>
         <div className="flex items-center gap-2">
+          {monitor.control_backend === "tv" && <TVPairPill />}
           {!a && (
             <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
               Inactive

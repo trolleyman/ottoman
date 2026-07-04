@@ -63,6 +63,7 @@ interface OttomanStore {
   // ── Monitor Control Actions ───────────────────────────
   setMonitorBrightness: (edid: string, brightness: number) => Promise<void>;
   setMonitorPower: (edid: string, on: boolean) => Promise<void>;
+  probeMonitorPower: (edid: string) => Promise<boolean>;
   saveMonitorSettings: (settings: MonitorSettingsRequest) => Promise<boolean>;
 
   // ── TV Actions ────────────────────────────────────────
@@ -477,6 +478,17 @@ export const useStore = create<OttomanStore>((set, get) => ({
       await client.default.setMonitorPower({ edid, on });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to set monitor power");
+    }
+  },
+
+  // probeMonitorPower reports whether a monitor currently answers its control
+  // backend (true ≈ powered on). Used to confirm a power toggle by polling.
+  probeMonitorPower: async (edid: string) => {
+    try {
+      const res = await client.default.getMonitorPowerState({ edid });
+      return res.responding ?? false;
+    } catch {
+      return false;
     }
   },
 
