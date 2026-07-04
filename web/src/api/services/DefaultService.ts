@@ -2,6 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AudioResponse } from '../models/AudioResponse';
+import type { AudioSinksResponse } from '../models/AudioSinksResponse';
 import type { AuthRequest } from '../models/AuthRequest';
 import type { AuthResponse } from '../models/AuthResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
@@ -10,6 +12,7 @@ import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
 import type { RemoveLayoutResponse } from '../models/RemoveLayoutResponse';
 import type { SaveLayoutRequest } from '../models/SaveLayoutRequest';
 import type { SaveLayoutResponse } from '../models/SaveLayoutResponse';
+import type { SetAudioRequest } from '../models/SetAudioRequest';
 import type { ShutdownResponse } from '../models/ShutdownResponse';
 import type { SimSetStateRequest } from '../models/SimSetStateRequest';
 import type { SimStateResponse } from '../models/SimStateResponse';
@@ -54,7 +57,7 @@ export class DefaultService {
             url: '/api/status/agent',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -134,7 +137,7 @@ export class DefaultService {
             url: '/api/monitors',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -149,7 +152,7 @@ export class DefaultService {
             url: '/api/layouts',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -172,7 +175,7 @@ export class DefaultService {
                 401: `Unauthorized`,
                 404: `Layout not found`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -187,7 +190,7 @@ export class DefaultService {
             url: '/api/layouts/current',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -209,7 +212,7 @@ export class DefaultService {
                 400: `Bad Request (Invalid body or missing name)`,
                 401: `Unauthorized`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -232,12 +235,12 @@ export class DefaultService {
                 401: `Unauthorized`,
                 404: `Layout not found`,
                 500: `Internal Server Error`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
     /**
-     * Shutdown client
+     * Shutdown agent
      * @returns ShutdownResponse Success
      * @throws ApiError
      */
@@ -247,7 +250,45 @@ export class DefaultService {
             url: '/api/shutdown',
             errors: {
                 401: `Unauthorized`,
-                502: `Bad Gateway (Client unreachable)`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * List audio output sinks
+     * @returns AudioSinksResponse Success
+     * @throws ApiError
+     */
+    public getAudioSinks(): CancelablePromise<AudioSinksResponse> {
+        return this.httpRequest.request({
+            method: 'GET',
+            url: '/api/audio/sinks',
+            errors: {
+                401: `Unauthorized`,
+                500: `Internal Server Error (audio unavailable)`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Set an audio sink's volume, mute, or default state
+     * @param requestBody
+     * @returns AudioResponse Success
+     * @throws ApiError
+     */
+    public setAudioVolume(
+        requestBody?: SetAudioRequest,
+    ): CancelablePromise<AudioResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/audio/volume',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
             },
         });
     }
@@ -261,7 +302,7 @@ export class DefaultService {
             method: 'POST',
             url: '/api/sim/reset',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }
@@ -275,7 +316,7 @@ export class DefaultService {
             method: 'GET',
             url: '/api/sim/state',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }
@@ -294,7 +335,7 @@ export class DefaultService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
-                404: `Not Found (Server not in simulation mode)`,
+                404: `Not Found (Controller not in simulation mode)`,
             },
         });
     }

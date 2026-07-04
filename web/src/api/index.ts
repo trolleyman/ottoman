@@ -11,6 +11,9 @@ export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
 export type { ActiveMonitor } from './models/ActiveMonitor';
+export type { AudioResponse } from './models/AudioResponse';
+export type { AudioSink } from './models/AudioSink';
+export type { AudioSinksResponse } from './models/AudioSinksResponse';
 export type { AuthRequest } from './models/AuthRequest';
 export type { AuthResponse } from './models/AuthResponse';
 export type { ErrorResponse } from './models/ErrorResponse';
@@ -25,6 +28,7 @@ export type { RemoveLayoutRequest } from './models/RemoveLayoutRequest';
 export type { RemoveLayoutResponse } from './models/RemoveLayoutResponse';
 export type { SaveLayoutRequest } from './models/SaveLayoutRequest';
 export type { SaveLayoutResponse } from './models/SaveLayoutResponse';
+export type { SetAudioRequest } from './models/SetAudioRequest';
 export type { ShutdownResponse } from './models/ShutdownResponse';
 export type { SimSetStateRequest } from './models/SimSetStateRequest';
 export type { SimStateResponse } from './models/SimStateResponse';

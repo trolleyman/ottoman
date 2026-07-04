@@ -382,6 +382,22 @@ func (s *SimulatedController) Shutdown(ctx context.Context, request api.Shutdown
 	}, nil
 }
 
+func (s *SimulatedController) GetAudioSinks(ctx context.Context, request api.GetAudioSinksRequestObject) (api.GetAudioSinksResponseObject, error) {
+	return api.GetAudioSinks200JSONResponse{
+		{Id: 55, Name: "alsa_output.pci-0000_01_00.1.hdmi-stereo", Description: "HDA NVidia Digital Stereo (HDMI)", Volume: 0.65, Muted: false, Default: true},
+		{Id: 61, Name: "alsa_output.usb-Logitech_Z407.analog-stereo", Description: "Logi Z407 Analogue Stereo", Volume: 1.0, Muted: false, Default: false},
+	}, nil
+}
+
+func (s *SimulatedController) SetAudioVolume(ctx context.Context, request api.SetAudioVolumeRequestObject) (api.SetAudioVolumeResponseObject, error) {
+	if request.Body == nil || request.Body.Name == "" {
+		return api.SetAudioVolume400JSONResponse{Code: 400, Error: "sink name is required"}, nil
+	}
+	log.Printf("[SIM] Audio set on sink %q", request.Body.Name)
+	msg := "audio updated"
+	return api.SetAudioVolume200JSONResponse{Success: true, Message: &msg}, nil
+}
+
 func (s *SimulatedController) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
 	s.mu.RLock()
 	layouts := s.layouts.List()

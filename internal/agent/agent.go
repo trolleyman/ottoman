@@ -23,6 +23,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
+	"github.com/trolleyman/ottoman/internal/audio"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
@@ -41,6 +42,7 @@ type Agent struct {
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
+	audio         audio.Controller
 	startTime     time.Time
 	currentLayout string
 }
@@ -82,6 +84,14 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to create keyboard controller")
 	}
 
+	// Audio control is optional: if PipeWire/wpctl isn't available the agent
+	// still runs, and the audio endpoints report the feature as unavailable.
+	audioCtl, err := audio.NewController()
+	if err != nil {
+		log.Printf("Audio control unavailable: %v", err)
+		audioCtl = nil
+	}
+
 	a := &Agent{
 		config:      cfg,
 		configPath:  config.ConfigPath(),
@@ -90,6 +100,7 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		displayMgr:  mgr,
 		mouse:       mouse,
 		keyboard:    keyboard,
+		audio:       audioCtl,
 		startTime:   time.Now(),
 	}
 

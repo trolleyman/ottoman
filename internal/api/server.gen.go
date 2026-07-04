@@ -94,6 +94,25 @@ type ActiveMonitor struct {
 	Width       int     `json:"width"`
 }
 
+// AudioResponse defines model for AudioResponse.
+type AudioResponse struct {
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
+// AudioSink defines model for AudioSink.
+type AudioSink struct {
+	Default     bool    `json:"default"`
+	Description string  `json:"description"`
+	Id          uint32  `json:"id"`
+	Muted       bool    `json:"muted"`
+	Name        string  `json:"name"`
+	Volume      float64 `json:"volume"`
+}
+
+// AudioSinksResponse defines model for AudioSinksResponse.
+type AudioSinksResponse = []AudioSink
+
 // AuthRequest defines model for AuthRequest.
 type AuthRequest struct {
 	Token string `json:"token"`
@@ -181,6 +200,14 @@ type SaveLayoutResponse struct {
 	Layout  Layout  `json:"layout"`
 	Message *string `json:"message,omitempty"`
 	Success bool    `json:"success"`
+}
+
+// SetAudioRequest defines model for SetAudioRequest.
+type SetAudioRequest struct {
+	Default *bool    `json:"default,omitempty"`
+	Muted   *bool    `json:"muted,omitempty"`
+	Name    string   `json:"name"`
+	Volume  *float64 `json:"volume,omitempty"`
 }
 
 // ShutdownResponse defines model for ShutdownResponse.
@@ -343,6 +370,9 @@ type WakeResponse struct {
 	Message *string `json:"message,omitempty"`
 	Success bool    `json:"success"`
 }
+
+// SetAudioVolumeJSONRequestBody defines body for SetAudioVolume for application/json ContentType.
+type SetAudioVolumeJSONRequestBody = SetAudioRequest
 
 // AuthJSONRequestBody defines body for Auth for application/json ContentType.
 type AuthJSONRequestBody = AuthRequest
@@ -752,6 +782,12 @@ func (t *TrackpadMessage) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List audio output sinks
+	// (GET /api/audio/sinks)
+	GetAudioSinks(w http.ResponseWriter, r *http.Request)
+	// Set an audio sink's volume, mute, or default state
+	// (POST /api/audio/volume)
+	SetAudioVolume(w http.ResponseWriter, r *http.Request)
 	// Authenticate
 	// (POST /api/auth)
 	Auth(w http.ResponseWriter, r *http.Request)
@@ -816,6 +852,34 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAudioSinks operation middleware
+func (siw *ServerInterfaceWrapper) GetAudioSinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAudioSinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAudioVolume operation middleware
+func (siw *ServerInterfaceWrapper) SetAudioVolume(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAudioVolume(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Auth operation middleware
 func (siw *ServerInterfaceWrapper) Auth(w http.ResponseWriter, r *http.Request) {
@@ -1189,6 +1253,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/audio/sinks", wrapper.GetAudioSinks)
+	m.HandleFunc("POST "+options.BaseURL+"/api/audio/volume", wrapper.SetAudioVolume)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth", wrapper.Auth)
 	m.HandleFunc("GET "+options.BaseURL+"/api/auth/check", wrapper.CheckAuth)
 	m.HandleFunc("POST "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
@@ -1209,6 +1275,102 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.CheckHealth)
 
 	return m
+}
+
+type GetAudioSinksRequestObject struct {
+}
+
+type GetAudioSinksResponseObject interface {
+	VisitGetAudioSinksResponse(w http.ResponseWriter) error
+}
+
+type GetAudioSinks200JSONResponse AudioSinksResponse
+
+func (response GetAudioSinks200JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks401JSONResponse ErrorResponse
+
+func (response GetAudioSinks401JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks500JSONResponse ErrorResponse
+
+func (response GetAudioSinks500JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAudioSinks502JSONResponse ErrorResponse
+
+func (response GetAudioSinks502JSONResponse) VisitGetAudioSinksResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolumeRequestObject struct {
+	Body *SetAudioVolumeJSONRequestBody
+}
+
+type SetAudioVolumeResponseObject interface {
+	VisitSetAudioVolumeResponse(w http.ResponseWriter) error
+}
+
+type SetAudioVolume200JSONResponse AudioResponse
+
+func (response SetAudioVolume200JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume400JSONResponse ErrorResponse
+
+func (response SetAudioVolume400JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume401JSONResponse ErrorResponse
+
+func (response SetAudioVolume401JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume500JSONResponse ErrorResponse
+
+func (response SetAudioVolume500JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetAudioVolume502JSONResponse ErrorResponse
+
+func (response SetAudioVolume502JSONResponse) VisitSetAudioVolumeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type AuthRequestObject struct {
@@ -1797,6 +1959,12 @@ func (response CheckHealth200TextResponse) VisitCheckHealthResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List audio output sinks
+	// (GET /api/audio/sinks)
+	GetAudioSinks(ctx context.Context, request GetAudioSinksRequestObject) (GetAudioSinksResponseObject, error)
+	// Set an audio sink's volume, mute, or default state
+	// (POST /api/audio/volume)
+	SetAudioVolume(ctx context.Context, request SetAudioVolumeRequestObject) (SetAudioVolumeResponseObject, error)
 	// Authenticate
 	// (POST /api/auth)
 	Auth(ctx context.Context, request AuthRequestObject) (AuthResponseObject, error)
@@ -1880,6 +2048,61 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetAudioSinks operation middleware
+func (sh *strictHandler) GetAudioSinks(w http.ResponseWriter, r *http.Request) {
+	var request GetAudioSinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAudioSinks(ctx, request.(GetAudioSinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAudioSinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAudioSinksResponseObject); ok {
+		if err := validResponse.VisitGetAudioSinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAudioVolume operation middleware
+func (sh *strictHandler) SetAudioVolume(w http.ResponseWriter, r *http.Request) {
+	var request SetAudioVolumeRequestObject
+
+	var body SetAudioVolumeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAudioVolume(ctx, request.(SetAudioVolumeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAudioVolume")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAudioVolumeResponseObject); ok {
+		if err := validResponse.VisitSetAudioVolumeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // Auth operation middleware

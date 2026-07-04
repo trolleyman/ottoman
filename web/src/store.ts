@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { OttomanClient, type StatusResponse, type Layout, type Monitor } from "./api";
+import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink } from "./api";
 import { sortedLayouts, sortedMonitors } from "./utils";
 
 export const client = new OttomanClient({
@@ -36,6 +36,11 @@ interface OttomanStore {
   monitorsLoading: boolean;
   monitorsError: string | null;
 
+  // ── Audio ─────────────────────────────────────────────
+  audioSinks: AudioSink[];
+  audioLoading: boolean;
+  audioError: string | null;
+
   // ── Refresh key (for WebSocket reconnect) ─────────────
   refreshKey: number;
 
@@ -45,6 +50,12 @@ interface OttomanStore {
   fetchAgentStatus: (silent: boolean) => Promise<void>;
   fetchLayouts: (silent: boolean) => Promise<void>;
   fetchMonitors: (silent: boolean) => Promise<void>;
+  fetchAudioSinks: (silent: boolean) => Promise<void>;
+
+  // ── Audio Actions ─────────────────────────────────────
+  setSinkVolume: (name: string, volume: number) => Promise<void>;
+  setSinkMute: (name: string, muted: boolean) => Promise<void>;
+  setSinkDefault: (name: string) => Promise<void>;
 
   // ── Layout Actions ────────────────────────────────────
   switchLayout: (id: string) => Promise<void>;
@@ -65,6 +76,7 @@ interface OttomanStore {
   _inflightAgentStatus: Promise<void> | null;
   _inflightLayouts: Promise<void> | null;
   _inflightMonitors: Promise<void> | null;
+  _inflightAudio: Promise<void> | null;
   _prevAgentOnline: boolean | null;
 }
 
@@ -126,6 +138,11 @@ export const useStore = create<OttomanStore>((set, get) => ({
   monitorsLoading: false,
   monitorsError: null,
 
+  // ── Audio ─────────────────────────────────────────────
+  audioSinks: [],
+  audioLoading: false,
+  audioError: null,
+
   // ── Refresh key ───────────────────────────────────────
   refreshKey: 0,
 
@@ -135,6 +152,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   _inflightAgentStatus: null,
   _inflightLayouts: null,
   _inflightMonitors: null,
+  _inflightAudio: null,
   _prevAgentOnline: null,
 
   // ── Fetch Actions ─────────────────────────────────────
@@ -242,6 +260,26 @@ export const useStore = create<OttomanStore>((set, get) => ({
     return promise;
   },
 
+  fetchAudioSinks: async (silent: boolean) => {
+    if (get()._inflightAudio) return get()._inflightAudio!;
+
+    if (!silent) set({ audioLoading: true });
+
+    const promise = (async () => {
+      try {
+        const data = await client.default.getAudioSinks();
+        set({ audioSinks: data, audioError: null });
+      } catch {
+        set({ audioError: "Failed to load audio sinks" });
+      } finally {
+        set({ audioLoading: false, _inflightAudio: null });
+      }
+    })();
+
+    set({ _inflightAudio: promise });
+    return promise;
+  },
+
   refreshAll: async (silent: boolean) => {
     set((s) => ({ refreshKey: s.refreshKey + 1 }));
     await Promise.allSettled([
@@ -249,6 +287,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       get().fetchAgentStatus(silent),
       get().fetchLayouts(silent),
       get().fetchMonitors(silent),
+      get().fetchAudioSinks(silent),
     ]);
   },
 
@@ -343,6 +382,44 @@ export const useStore = create<OttomanStore>((set, get) => ({
       }
     } catch {
       alert("Failed to send shutdown command");
+    }
+  },
+
+  // ── Audio Actions ─────────────────────────────────────
+
+  setSinkVolume: async (name: string, volume: number) => {
+    // Optimistic local update so the slider stays responsive; the next poll
+    // reconciles with the true value.
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => (k.name === name ? { ...k, volume } : k)),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, volume });
+    } catch {
+      get().fetchAudioSinks(true);
+    }
+  },
+
+  setSinkMute: async (name: string, muted: boolean) => {
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => (k.name === name ? { ...k, muted } : k)),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, muted });
+    } catch {
+      get().fetchAudioSinks(true);
+    }
+  },
+
+  setSinkDefault: async (name: string) => {
+    set((s) => ({
+      audioSinks: s.audioSinks.map((k) => ({ ...k, default: k.name === name })),
+    }));
+    try {
+      await client.default.setAudioVolume({ name, default: true });
+      get().fetchAudioSinks(true);
+    } catch {
+      get().fetchAudioSinks(true);
     }
   },
 }));
