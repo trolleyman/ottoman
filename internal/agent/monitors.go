@@ -34,6 +34,17 @@ func (a *Agent) SetMonitorPower(ctx context.Context, request api.SetMonitorPower
 	return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
 }
 
+// GetMonitorPowerState probes whether a monitor is currently responding to its
+// control backend (a proxy for "powered on"), so the UI can confirm a power
+// toggle by polling until the state flips.
+func (a *Agent) GetMonitorPowerState(ctx context.Context, request api.GetMonitorPowerStateRequestObject) (api.GetMonitorPowerStateResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.GetMonitorPowerState400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	responding := a.control.responding(request.Body.Edid)
+	return api.GetMonitorPowerState200JSONResponse{Edid: request.Body.Edid, Responding: responding}, nil
+}
+
 // SetMonitorSettings implements api.StrictServerInterface. It updates the
 // monitor's persisted registry entry (friendly name, control backend, control
 // visibility).

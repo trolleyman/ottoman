@@ -187,6 +187,34 @@ func (c *monitorControl) setPower(edid string, on bool) error {
 	}
 }
 
+// responding probes whether a monitor currently answers its control backend,
+// which the UI treats as a proxy for "powered on": a DDC monitor in standby
+// stops ACKing over i2c, and a TV that's off drops its network connection. Used
+// to confirm a power toggle by polling until the state flips (there's no direct
+// power-state read). The probe can block for the backend's own timeout.
+func (c *monitorControl) responding(edid string) bool {
+	switch c.backendFor(edid) {
+	case store.BackendDDC:
+		bus, ok := c.ddcBusFor(edid)
+		if !ok {
+			return false
+		}
+		v, err := ddc.GetBrightness(bus)
+		if err != nil {
+			return false
+		}
+		c.setBrightnessSample(edid, v) // a successful read doubles as a refresh
+		return true
+	case store.BackendTV:
+		if c.tv == nil {
+			return false
+		}
+		return c.tv.Reachable(context.Background())
+	default:
+		return false
+	}
+}
+
 // enrich augments monitor entries with registry + control metadata for the UI.
 func (c *monitorControl) enrich(monitors []api.Monitor) []api.Monitor {
 	for i := range monitors {

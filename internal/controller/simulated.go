@@ -63,6 +63,9 @@ type SimulatedController struct {
 	currentLayout   string
 	monitors        []api.Monitor
 	trackpadCancels []context.CancelFunc
+	// monitorPower tracks simulated per-monitor power so the UI's power toggle
+	// and its confirmation poll behave in the simulator (absent = on).
+	monitorPower map[string]bool
 }
 
 // RunSimulatedController creates and starts a simulated controller.
@@ -411,9 +414,28 @@ func (s *SimulatedController) SetMonitorPower(ctx context.Context, request api.S
 	if request.Body == nil || request.Body.Edid == "" {
 		return api.SetMonitorPower400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
+	s.mu.Lock()
+	if s.monitorPower == nil {
+		s.monitorPower = map[string]bool{}
+	}
+	s.monitorPower[request.Body.Edid] = request.Body.On
+	s.mu.Unlock()
 	log.Printf("[SIM] Set power of %q to on=%v", request.Body.Edid, request.Body.On)
 	msg := "power updated"
 	return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
+}
+
+// GetMonitorPowerState reports the simulated power state (absent = on) so the
+// UI's confirmation poll resolves in the simulator.
+func (s *SimulatedController) GetMonitorPowerState(ctx context.Context, request api.GetMonitorPowerStateRequestObject) (api.GetMonitorPowerStateResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.GetMonitorPowerState400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	s.mu.RLock()
+	on, ok := s.monitorPower[request.Body.Edid]
+	s.mu.RUnlock()
+	responding := !ok || on
+	return api.GetMonitorPowerState200JSONResponse{Edid: request.Body.Edid, Responding: responding}, nil
 }
 
 func (s *SimulatedController) SetMonitorSettings(ctx context.Context, request api.SetMonitorSettingsRequestObject) (api.SetMonitorSettingsResponseObject, error) {

@@ -10,6 +10,8 @@ import type { BootRequest } from '../models/BootRequest';
 import type { BootResponse } from '../models/BootResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
 import type { MonitorControlResponse } from '../models/MonitorControlResponse';
+import type { MonitorPowerStateRequest } from '../models/MonitorPowerStateRequest';
+import type { MonitorPowerStateResponse } from '../models/MonitorPowerStateResponse';
 import type { MonitorSettingsRequest } from '../models/MonitorSettingsRequest';
 import type { MonitorsResponse } from '../models/MonitorsResponse';
 import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
@@ -343,6 +345,28 @@ export class DefaultService {
         return this.httpRequest.request({
             method: 'POST',
             url: '/api/monitors/power',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request`,
+                401: `Unauthorized`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Probe whether a monitor is currently responding (i.e. powered on)
+     * @param requestBody
+     * @returns MonitorPowerStateResponse Success
+     * @throws ApiError
+     */
+    public getMonitorPowerState(
+        requestBody?: MonitorPowerStateRequest,
+    ): CancelablePromise<MonitorPowerStateResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/monitors/power-state',
             body: requestBody,
             mediaType: 'application/json',
             errors: {

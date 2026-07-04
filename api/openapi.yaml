@@ -531,6 +531,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/monitors/power-state:
+    post:
+      summary: Probe whether a monitor is currently responding (i.e. powered on)
+      operationId: getMonitorPowerState
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorPowerStateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorPowerStateResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/monitors/settings:
     post:
       summary: Update a monitor's registry settings (name, backend, visibility)
@@ -1134,6 +1175,21 @@ components:
       properties:
         success: { type: boolean }
         message: { type: string }
+
+    MonitorPowerStateRequest:
+      type: object
+      required: [edid]
+      properties:
+        edid: { type: string }
+
+    MonitorPowerStateResponse:
+      type: object
+      required: [edid, responding]
+      properties:
+        edid: { type: string }
+        responding:
+          type: boolean
+          description: "true if the monitor answered the probe (i.e. powered on)"
 
     # --- TV Types ---
     TVStateResponse:

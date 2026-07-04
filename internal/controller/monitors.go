@@ -54,6 +54,29 @@ func (c *Controller) SetMonitorPower(ctx context.Context, request api.SetMonitor
 	})
 }
 
+// GetMonitorPowerState implements api.StrictServerInterface by proxying to the agent.
+func (c *Controller) GetMonitorPowerState(ctx context.Context, request api.GetMonitorPowerStateRequestObject) (api.GetMonitorPowerStateResponseObject, error) {
+	body, _ := json.Marshal(request.Body)
+	return proxyRequest(ctx, c, "POST", "/api/monitors/power-state", body, func(resp *http.Response) (api.GetMonitorPowerStateResponseObject, error) {
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var result api.MonitorPowerStateResponse
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return nil, err
+			}
+			return api.GetMonitorPowerState200JSONResponse(result), nil
+		case http.StatusBadRequest:
+			return api.GetMonitorPowerState400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+		case http.StatusUnauthorized:
+			return api.GetMonitorPowerState401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
+		case http.StatusInternalServerError:
+			return api.GetMonitorPowerState500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+		default:
+			return api.GetMonitorPowerState502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
+		}
+	})
+}
+
 // SetMonitorSettings implements api.StrictServerInterface by proxying to the agent.
 func (c *Controller) SetMonitorSettings(ctx context.Context, request api.SetMonitorSettingsRequestObject) (api.SetMonitorSettingsResponseObject, error) {
 	body, _ := json.Marshal(request.Body)

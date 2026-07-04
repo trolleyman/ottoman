@@ -26,6 +26,8 @@ export { Modifier } from './models/Modifier';
 export type { Monitor } from './models/Monitor';
 export type { MonitorCapabilities } from './models/MonitorCapabilities';
 export type { MonitorControlResponse } from './models/MonitorControlResponse';
+export type { MonitorPowerStateRequest } from './models/MonitorPowerStateRequest';
+export type { MonitorPowerStateResponse } from './models/MonitorPowerStateResponse';
 export type { MonitorSettingsRequest } from './models/MonitorSettingsRequest';
 export type { MonitorsResponse } from './models/MonitorsResponse';
 export { MouseButton } from './models/MouseButton';

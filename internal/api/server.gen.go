@@ -206,6 +206,19 @@ type MonitorControlResponse struct {
 	Success bool    `json:"success"`
 }
 
+// MonitorPowerStateRequest defines model for MonitorPowerStateRequest.
+type MonitorPowerStateRequest struct {
+	Edid string `json:"edid"`
+}
+
+// MonitorPowerStateResponse defines model for MonitorPowerStateResponse.
+type MonitorPowerStateResponse struct {
+	Edid string `json:"edid"`
+
+	// Responding true if the monitor answered the probe (i.e. powered on)
+	Responding bool `json:"responding"`
+}
+
 // MonitorSettingsRequest defines model for MonitorSettingsRequest.
 type MonitorSettingsRequest struct {
 	// Backend ddc | tv | none
@@ -502,6 +515,9 @@ type SetMonitorBrightnessJSONRequestBody = SetBrightnessRequest
 
 // SetMonitorPowerJSONRequestBody defines body for SetMonitorPower for application/json ContentType.
 type SetMonitorPowerJSONRequestBody = SetMonitorPowerRequest
+
+// GetMonitorPowerStateJSONRequestBody defines body for GetMonitorPowerState for application/json ContentType.
+type GetMonitorPowerStateJSONRequestBody = MonitorPowerStateRequest
 
 // SetMonitorSettingsJSONRequestBody defines body for SetMonitorSettings for application/json ContentType.
 type SetMonitorSettingsJSONRequestBody = MonitorSettingsRequest
@@ -956,6 +972,9 @@ type ServerInterface interface {
 	// Turn a monitor on or off (standby)
 	// (POST /api/monitors/power)
 	SetMonitorPower(w http.ResponseWriter, r *http.Request)
+	// Probe whether a monitor is currently responding (i.e. powered on)
+	// (POST /api/monitors/power-state)
+	GetMonitorPowerState(w http.ResponseWriter, r *http.Request)
 	// Update a monitor's registry settings (name, backend, visibility)
 	// (POST /api/monitors/settings)
 	SetMonitorSettings(w http.ResponseWriter, r *http.Request)
@@ -1199,6 +1218,20 @@ func (siw *ServerInterfaceWrapper) SetMonitorPower(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorPower(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMonitorPowerState operation middleware
+func (siw *ServerInterfaceWrapper) GetMonitorPowerState(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMonitorPowerState(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1552,6 +1585,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/monitors", wrapper.GetMonitors)
 	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/brightness", wrapper.SetMonitorBrightness)
 	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/power", wrapper.SetMonitorPower)
+	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/power-state", wrapper.GetMonitorPowerState)
 	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/settings", wrapper.SetMonitorSettings)
 	m.HandleFunc("POST "+options.BaseURL+"/api/shutdown", wrapper.Shutdown)
 	m.HandleFunc("POST "+options.BaseURL+"/api/sim/reset", wrapper.SimReset)
@@ -2175,6 +2209,59 @@ func (response SetMonitorPower502JSONResponse) VisitSetMonitorPowerResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetMonitorPowerStateRequestObject struct {
+	Body *GetMonitorPowerStateJSONRequestBody
+}
+
+type GetMonitorPowerStateResponseObject interface {
+	VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error
+}
+
+type GetMonitorPowerState200JSONResponse MonitorPowerStateResponse
+
+func (response GetMonitorPowerState200JSONResponse) VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetMonitorPowerState400JSONResponse ErrorResponse
+
+func (response GetMonitorPowerState400JSONResponse) VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetMonitorPowerState401JSONResponse ErrorResponse
+
+func (response GetMonitorPowerState401JSONResponse) VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetMonitorPowerState500JSONResponse ErrorResponse
+
+func (response GetMonitorPowerState500JSONResponse) VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetMonitorPowerState502JSONResponse ErrorResponse
+
+func (response GetMonitorPowerState502JSONResponse) VisitGetMonitorPowerStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type SetMonitorSettingsRequestObject struct {
 	Body *SetMonitorSettingsJSONRequestBody
 }
@@ -2744,6 +2831,9 @@ type StrictServerInterface interface {
 	// Turn a monitor on or off (standby)
 	// (POST /api/monitors/power)
 	SetMonitorPower(ctx context.Context, request SetMonitorPowerRequestObject) (SetMonitorPowerResponseObject, error)
+	// Probe whether a monitor is currently responding (i.e. powered on)
+	// (POST /api/monitors/power-state)
+	GetMonitorPowerState(ctx context.Context, request GetMonitorPowerStateRequestObject) (GetMonitorPowerStateResponseObject, error)
 	// Update a monitor's registry settings (name, backend, visibility)
 	// (POST /api/monitors/settings)
 	SetMonitorSettings(ctx context.Context, request SetMonitorSettingsRequestObject) (SetMonitorSettingsResponseObject, error)
@@ -3205,6 +3295,37 @@ func (sh *strictHandler) SetMonitorPower(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetMonitorPowerResponseObject); ok {
 		if err := validResponse.VisitSetMonitorPowerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMonitorPowerState operation middleware
+func (sh *strictHandler) GetMonitorPowerState(w http.ResponseWriter, r *http.Request) {
+	var request GetMonitorPowerStateRequestObject
+
+	var body GetMonitorPowerStateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMonitorPowerState(ctx, request.(GetMonitorPowerStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMonitorPowerState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMonitorPowerStateResponseObject); ok {
+		if err := validResponse.VisitGetMonitorPowerStateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

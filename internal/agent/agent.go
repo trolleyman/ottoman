@@ -475,6 +475,28 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		apiMonitors = append(apiMonitors, mon)
 	}
 
+	// A configured TV drops off HDMI when it's powered off, so it wouldn't be
+	// enumerated above — but we still want its card visible so it can be turned
+	// back on. Inject a synthetic (inactive) entry for the TV registry entry
+	// when it isn't already present; enrich() then tags it with the tv backend
+	// and its capabilities.
+	if tvEntry, ok := a.control.registry.TVEntry(); ok {
+		present := false
+		for _, m := range apiMonitors {
+			if m.Edid == tvEntry.Edid {
+				present = true
+				break
+			}
+		}
+		if !present {
+			name := tvEntry.FriendlyName
+			if name == "" {
+				name = "TV"
+			}
+			apiMonitors = append(apiMonitors, api.Monitor{Edid: tvEntry.Edid, Name: name})
+		}
+	}
+
 	// Add registry + control metadata (friendly name, backend, capabilities,
 	// current brightness, visibility) so any frontend renders the right controls.
 	apiMonitors = a.control.enrich(apiMonitors)

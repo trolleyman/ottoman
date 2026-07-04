@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
@@ -220,6 +221,17 @@ func (t *tvController) PowerOn() error {
 // PowerOff turns the TV off via SSAP.
 func (t *tvController) PowerOff(ctx context.Context) error {
 	return t.withClient(ctx, func(c *webos.Client) error { return c.TurnOff(ctx) })
+}
+
+// Reachable reports whether the TV currently answers a lightweight request — a
+// proxy for "powered on", since a TV that's off drops its network connection.
+func (t *tvController) Reachable(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	return t.withClient(ctx, func(c *webos.Client) error {
+		_, err := c.GetVolume(ctx)
+		return err
+	}) == nil
 }
 
 // SetVolume sets the TV's absolute volume (0-100).
