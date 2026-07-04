@@ -635,16 +635,10 @@ func DeployAgent() error {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
-	// Run install command to register service
+	// Run install command to register service. On Linux this also installs the
+	// embedded GNOME Quick Settings extension (see agent.installGnomeExtension).
 	if err := runV(cfg.Agent.BinaryPath, "agent", "install"); err != nil {
 		return fmt.Errorf("failed to register service: %w", err)
-	}
-
-	// Install the GNOME Quick Settings extension (Linux desktop).
-	if runtime.GOOS == "linux" {
-		if err := installGnomeExtension(); err != nil {
-			fmt.Printf("Warning: failed to install GNOME extension: %v\n", err)
-		}
 	}
 
 	// Start services on Windows
