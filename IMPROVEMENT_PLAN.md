@@ -242,8 +242,42 @@ extension ~2–3 days including deploy/install wiring.
 
 ---
 
+## 6. Deploy overwrites the layout DB
+
+Confirmed bug. Layouts aren't a separate database — they live inside the live config file as
+`agent.layouts` (`~/.config/ottoman/config.toml`):
+
+- Saving/removing a layout at runtime (`/api/layouts/save-current` etc.) rewrites the whole
+  config file via `config.SaveAgent` (`internal/agent/agent.go:726`).
+- `mage deployAgent` (`magefiles/magefile.go:626-630`) then unconditionally copies the
+  `magefiles/deploy_agent.toml` template over that same file on **every** deploy — clobbering
+  every layout saved since the template was generated (and any other config edited on the
+  machine, e.g. a rotated auth token).
+
+A second, related bug: `config.SaveAgent` only writes `listen_address`, `auth_token`, and
+`layouts` (`internal/config/config.go:202-240`) — so a runtime layout save *also* silently
+drops any other keys you had in the config (trackpad settings, etc.). Data and settings being
+in one file hurts in both directions.
+
+### Fix
+
+1. **Split runtime data out of the config.** Move layouts to their own store, e.g.
+   `~/.local/share/ottoman/layouts.json` (XDG data dir; `%LOCALAPPDATA%` on Windows), written
+   atomically (temp file + rename). Config file becomes read-only from the agent's point of
+   view; `SaveAgent`'s lossy rewrite path disappears. Migration: on first run, if the config
+   contains `agent.layouts`, import them into the new store (leave config untouched).
+   The monitor registry (5a) should live in the same data dir.
+2. **Make deploy non-destructive about config too**: copy the template only if no config
+   exists on the target; otherwise leave it alone (print a diff/hint if the template has new
+   keys). Same for the controller deploy (`scp` at `magefiles/magefile.go:768-771`).
+
+**Effort:** ~1 day including migration + doing the same for the controller path.
+
+---
+
 ## Suggested order
 
+0. **Layout store split + non-destructive deploy (6)** — small, and stops active data loss.
 1. **WoL config fixes** (BIOS + nmcli) — no code, unblocks the core use case.
 2. **Wayland display backend (2a)** — biggest functional gap on this machine.
 3. **Wayland input via uinput (2b)** — restores the trackpad.
