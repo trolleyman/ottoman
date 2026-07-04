@@ -254,11 +254,13 @@ func moveFile(src, dst string) error {
 func buildWebFiles() error {
 	webDir := "web"
 
-	// Run bun install if node_modules doesn't exist
-	if _, err := os.Stat(filepath.Join(webDir, "node_modules")); os.IsNotExist(err) {
-		if err := runInDir(webDir, "bun", "install"); err != nil {
-			return fmt.Errorf("bun install failed: %w", err)
-		}
+	// Always sync dependencies before building. `bun install` is fast and a
+	// no-op when node_modules already matches the lockfile; running it every
+	// time (rather than only when node_modules is missing) means a newly added
+	// dependency is installed instead of the build failing against a stale
+	// node_modules from a previous checkout.
+	if err := runInDir(webDir, "bun", "install"); err != nil {
+		return fmt.Errorf("bun install failed: %w", err)
 	}
 
 	if err := runInDir(webDir, "bun", "run", "build"); err != nil {
