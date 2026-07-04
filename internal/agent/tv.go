@@ -249,6 +249,21 @@ func (t *tvController) SetBacklight(ctx context.Context, v int) error {
 	return t.withClient(ctx, func(c *webos.Client) error { return c.SetBacklight(ctx, v) })
 }
 
+// Backlight reads the TV's current panel backlight (0-100). ok is false if the
+// TV is unreachable or the firmware doesn't support the read, so the caller can
+// fall back to the last value it set.
+func (t *tvController) Backlight(ctx context.Context) (int, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	var v int
+	err := t.withClient(ctx, func(c *webos.Client) error {
+		got, e := c.GetBacklight(ctx)
+		v = got
+		return e
+	})
+	return v, err == nil
+}
+
 // SwitchInput switches the TV's external input.
 func (t *tvController) SwitchInput(ctx context.Context, input string) error {
 	return t.withClient(ctx, func(c *webos.Client) error { return c.SwitchInput(ctx, input) })

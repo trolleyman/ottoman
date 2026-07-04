@@ -105,34 +105,56 @@ func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 }
 
 // currentBrightness returns a monitor's brightness (0-100), using a throttled
-// cache to avoid hammering ddcutil during polling.
+// cache to avoid hammering the backend during polling. It live-reads DDC
+// (getvcp) or the TV (getSystemSettings) once per TTL and, if that read fails
+// or the firmware doesn't support it, falls back to the last value we set.
 func (c *monitorControl) currentBrightness(edid string) (int, bool) {
-	if c.backendFor(edid) != store.BackendDDC {
+	backend := c.backendFor(edid)
+	if backend != store.BackendDDC && backend != store.BackendTV {
 		return 0, false
 	}
 
 	c.mu.Lock()
-	sample, ok := c.brightness[edid]
-	fresh := ok && time.Since(sample.at) < brightnessCacheTTL
+	sample, cached := c.brightness[edid]
+	fresh := cached && time.Since(sample.at) < brightnessCacheTTL
 	c.mu.Unlock()
 	if fresh {
 		return sample.value, true
 	}
 
-	bus, ok := c.ddcBusFor(edid)
-	if !ok {
-		return 0, false
-	}
-	v, err := ddc.GetBrightness(bus)
-	if err != nil {
-		log.Printf("ddc GetBrightness(%s) failed: %v", edid, err)
-		if ok {
-			return sample.value, true // fall back to last-known
+	switch backend {
+	case store.BackendDDC:
+		bus, ok := c.ddcBusFor(edid)
+		if !ok {
+			return 0, false
 		}
-		return 0, false
+		v, err := ddc.GetBrightness(bus)
+		if err != nil {
+			log.Printf("ddc GetBrightness(%s) failed: %v", edid, err)
+			if cached {
+				return sample.value, true // fall back to last-known
+			}
+			return 0, false
+		}
+		c.setBrightnessSample(edid, v)
+		return v, true
+	case store.BackendTV:
+		if c.tv == nil {
+			return 0, false
+		}
+		v, live := c.tv.Backlight(context.Background())
+		if !live {
+			// TV off/unreachable or firmware doesn't support the read — fall
+			// back to the last value we set (if any).
+			if cached {
+				return sample.value, true
+			}
+			return 0, false
+		}
+		c.setBrightnessSample(edid, v)
+		return v, true
 	}
-	c.setBrightnessSample(edid, v)
-	return v, true
+	return 0, false
 }
 
 func (c *monitorControl) setBrightnessSample(edid string, v int) {
@@ -159,7 +181,11 @@ func (c *monitorControl) setBrightness(edid string, percent int) error {
 		if c.tv == nil {
 			return errors.New("no TV controller configured")
 		}
-		return c.tv.SetBacklight(context.Background(), percent)
+		if err := c.tv.SetBacklight(context.Background(), percent); err != nil {
+			return err
+		}
+		c.setBrightnessSample(edid, percent) // remember it — the read may not be supported
+		return nil
 	default:
 		return errors.Errorf("brightness control not available for monitor %q", edid)
 	}

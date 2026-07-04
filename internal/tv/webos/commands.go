@@ -3,6 +3,10 @@ package webos
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // VolumeState is the TV's current audio state.
@@ -119,4 +123,50 @@ func (c *Client) SetBacklight(ctx context.Context, value int) error {
 	}
 	_, err := c.request(ctx, "luna://com.webos.settingsservice/setSystemSettings", payload)
 	return err
+}
+
+// GetBacklight reads the OLED panel backlight (0-100) — the read mirror of
+// SetBacklight, via getSystemSettings (the pairing manifest requests
+// READ_SETTINGS). Same portability caveat as SetBacklight: proven on webOS 6,
+// but some firmwares don't expose the picture category, so callers should treat
+// an error as "unknown" and fall back to the last value they set.
+func (c *Client) GetBacklight(ctx context.Context) (int, error) {
+	payload := map[string]any{
+		"category": "picture",
+		"keys":     []string{"backlight"},
+	}
+	raw, err := c.request(ctx, "luna://com.webos.settingsservice/getSystemSettings", payload)
+	if err != nil {
+		return 0, err
+	}
+	var p struct {
+		Settings struct {
+			Backlight json.RawMessage `json:"backlight"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return 0, err
+	}
+	return parseBacklight(p.Settings.Backlight)
+}
+
+// parseBacklight handles webOS returning the value as either a JSON number (80)
+// or a string ("80").
+func parseBacklight(raw json.RawMessage) (int, error) {
+	if len(raw) == 0 {
+		return 0, errors.New("no backlight in picture settings")
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		v, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil {
+			return 0, errors.Wrapf(err, "backlight %q not an integer", s)
+		}
+		return v, nil
+	}
+	return 0, errors.Errorf("unrecognized backlight value %s", raw)
 }

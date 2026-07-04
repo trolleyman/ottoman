@@ -676,13 +676,15 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 	}
 
 	// A network TV, shown in the Monitors grid as a tv-backed card (pairing pill,
-	// volume, and a power switch). GetTVState reports it paired, so volume shows.
+	// brightness, volume, and a power switch). GetTVState reports it paired.
 	tvBackend := "tv"
+	tvBright := 80
 	apiMonitors = append(apiMonitors, api.Monitor{
 		Edid:           "LG-OLED-SIM",
 		Name:           "LG OLED TV",
 		Manufacturer:   "GSM",
 		ControlBackend: &tvBackend,
+		Brightness:     &tvBright,
 		Capabilities:   &api.MonitorCapabilities{Brightness: true, Power: true, Volume: true},
 		Active: &api.ActiveMonitor{
 			Width: 3840, Height: 2160, RefreshRate: 120, Primary: false, Model: "OLED65C1",
