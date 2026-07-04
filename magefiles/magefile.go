@@ -171,6 +171,24 @@ func run(cmd string, args ...string) error {
 	return nil
 }
 
+// runRemote runs a command WITHOUT mage/sh's local $VAR expansion. mage's sh
+// package calls os.Expand on every argument against the LOCAL environment
+// (sh/cmd.go), so a literal "$HOME" in an ssh/scp remote path would be rewritten
+// to the local user's home before the command is even sent — hardcoding the
+// wrong user on the remote. exec.Command passes arguments through untouched, so
+// "$HOME" reaches the remote shell and is expanded there instead. stderr/stdout
+// are forwarded so remote errors surface.
+func runRemote(cmd string, args ...string) error {
+	fmt.Printf("%s%sRunning:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
+	c := exec.Command(cmd, args...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("failed to run %q: %w", cmd, err)
+	}
+	return nil
+}
+
 // start starts a comand in the background, with no stdout/stderr forwarding, printing "Starting..." first.
 func start(cmd string, args ...string) error {
 	fmt.Printf("%s%sStarting:%s %s\n", colorBold, colorCyan, colorReset, formatCmd(cmd, args...))
@@ -784,45 +802,45 @@ func DeployController() error {
 	deployDir := path.Dir(expandPath(cfg.Controller.DeployPath))
 	configDir := path.Dir(expandPath(cfg.Controller.ConfigPath))
 
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, deployDir)); err != nil {
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, deployDir)); err != nil {
 		return fmt.Errorf("failed to create deploy directory: %w", err)
 	}
 
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, configDir)); err != nil {
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`mkdir -p "%s"`, configDir)); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	// Stop service if running (ignore errors as it might not exist yet)
-	_ = run("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
+	_ = runRemote("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
 
 	// Remove binary if it exists
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`rm -f "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`rm -f "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to remove existing binary: %w", err)
 	}
 
 	// Copy binary (use scpPath to handle ~ properly)
-	if err := run("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.DeployPath))); err != nil {
+	if err := runRemote("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
 	// Make executable
-	if err := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`chmod +x "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`chmod +x "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
 	// Write config file, but only if the remote has none yet: a redeploy must
 	// not clobber a config edited on the Pi (e.g. a rotated auth token).
 	remoteConfig := expandPath(cfg.Controller.ConfigPath)
-	configExists := run("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`test -f "%s"`, remoteConfig)) == nil
+	configExists := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`test -f "%s"`, remoteConfig)) == nil
 	if configExists {
 		fmt.Printf("Remote config already exists at %s - leaving it untouched.\n", cfg.Controller.ConfigPath)
-	} else if err := run("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
+	} else if err := runRemote("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
 	// Install systemd service
 	installCmd := fmt.Sprintf(`"%s" controller install`, expandPath(cfg.Controller.DeployPath))
-	if err := run("ssh", cfg.Controller.SSHTarget, installCmd); err != nil {
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, installCmd); err != nil {
 		return fmt.Errorf("failed to install service: %w", err)
 	}
 
