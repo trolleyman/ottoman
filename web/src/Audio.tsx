@@ -1,11 +1,11 @@
+import { Volume1, Volume2, VolumeX } from "lucide-react";
 import type { AudioSink } from "./api";
 import { useStore } from "./store";
 
-function volumeIcon(muted: boolean, volume: number) {
-  if (muted || volume === 0) return "🔇";
-  if (volume < 0.5) return "🔈";
-  if (volume < 1.0) return "🔉";
-  return "🔊";
+function VolumeIcon({ muted, volume, className }: { muted: boolean; volume: number; className?: string }) {
+  if (muted || volume === 0) return <VolumeX className={className} />;
+  if (volume < 0.5) return <Volume1 className={className} />;
+  return <Volume2 className={className} />;
 }
 
 function SinkCard({ sink }: { sink: AudioSink }) {
@@ -38,10 +38,11 @@ function SinkCard({ sink }: { sink: AudioSink }) {
       <div className="flex items-center gap-3">
         <button
           onClick={() => setSinkMute(sink.name, !sink.muted)}
-          className="text-xl leading-none cursor-pointer select-none"
+          className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
           title={sink.muted ? "Unmute" : "Mute"}
+          aria-label={sink.muted ? "Unmute" : "Mute"}
         >
-          {volumeIcon(sink.muted, sink.volume)}
+          <VolumeIcon muted={sink.muted} volume={sink.volume} className="h-[18px] w-[18px]" />
         </button>
         <input
           type="range"

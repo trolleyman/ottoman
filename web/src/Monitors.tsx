@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Settings, Sun, Volume2, VolumeX } from "lucide-react";
 import type { Monitor, MonitorSettingsRequest } from "./api";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
@@ -22,26 +23,22 @@ function visible(monitor: Monitor, control: string): boolean {
   return v === undefined ? true : v;
 }
 
+// MonitorControls renders the in-body sliders (brightness, and TV volume). Power
+// lives in the card header (see MonitorCard).
 function MonitorControls({ monitor }: { monitor: Monitor }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
   const tv = useStore((s) => s.tv);
   const setTVVolume = useStore((s) => s.setTVVolume);
   const setTVMute = useStore((s) => s.setTVMute);
 
-  // Power switch with a confirmation poll (seeded optimistically from `active`).
-  // Hooks run unconditionally, so call before any early return below.
-  const { on: powerOn, loading: powerLoading, toggle: togglePower } =
-    useMonitorPower(monitor.edid, !!monitor.active);
-
   const caps = monitor.capabilities;
   if (!caps) return null;
 
   const showBrightness = caps.brightness && visible(monitor, "brightness");
-  const showPower = caps.power && visible(monitor, "power");
   // A TV-backed monitor (caps.volume) drives the network TV's volume; that state
   // lives in the shared tv store (there's only ever one TV).
   const showVolume = caps.volume && visible(monitor, "volume") && !!tv?.paired;
-  if (!showBrightness && !showPower && !showVolume) return null;
+  if (!showBrightness && !showVolume) return null;
 
   const brightness = monitor.brightness ?? -1;
 
@@ -49,9 +46,7 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
     <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
       {showBrightness && (
         <div className="flex items-center gap-3">
-          <span className="text-lg leading-none select-none" title="Brightness">
-            ☀️
-          </span>
+          <Sun className="h-[18px] w-[18px] shrink-0 text-amber-400/90" aria-label="Brightness" />
           <input
             type="range"
             min={0}
@@ -70,10 +65,11 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setTVMute(!tv.muted)}
-            className="text-xl leading-none cursor-pointer select-none"
+            className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
             title={tv.muted ? "Unmute" : "Mute"}
+            aria-label={tv.muted ? "Unmute" : "Mute"}
           >
-            {tv.muted ? "🔇" : "🔊"}
+            {tv.muted ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
           </button>
           <input
             type="range"
@@ -87,9 +83,6 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
             {tv.volume}
           </span>
         </div>
-      )}
-      {showPower && (
-        <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
       )}
     </div>
   );
@@ -238,6 +231,13 @@ function TVPairPill() {
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   const [editing, setEditing] = useState(false);
+
+  // Power switch (with confirmation poll) lives in the header; the hook runs
+  // unconditionally, seeded optimistically from `active`.
+  const { on: powerOn, loading: powerLoading, toggle: togglePower } =
+    useMonitorPower(monitor.edid, !!a);
+  const showPower = !!monitor.capabilities?.power && visible(monitor, "power");
+
   return (
     <div className={`rounded-xl border p-5 flex flex-col gap-3 ${a
       ? "border-zinc-700/50 bg-zinc-800/50"
@@ -259,13 +259,19 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
               Primary
             </span>
           )}
+          {showPower && (
+            <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
+          )}
           <button
             onClick={() => setEditing((v) => !v)}
             title="Monitor settings"
             aria-label="Monitor settings"
-            className={`text-sm leading-none select-none cursor-pointer transition-colors ${editing ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${editing
+              ? "bg-zinc-700/70 border-zinc-600 text-zinc-100"
+              : "bg-zinc-800/70 border-zinc-700/60 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700/60 hover:border-zinc-600"
+              }`}
           >
-            ⚙️
+            <Settings className="h-4 w-4" />
           </button>
         </div>
       </div>
