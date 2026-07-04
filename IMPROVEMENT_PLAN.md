@@ -150,9 +150,9 @@ clear choice. One integration gives everything we want:
 
 - **Power on**: Wake-on-LAN magic packet to the TV's MAC — `8C:19:B5:72:FE:62` (reuses
   `internal/controller/wol.go`!). The TV is on Wi-Fi, which is fine: LG TVs support wake over
-  their own Wi-Fi (WoWLAN), no ethernet run needed. The enabling toggle on webOS 6 lives under
-  **Settings → General → Network → "TV On With Mobile" → "Turn On via Wi-Fi"** (not under
-  Devices, easy to miss). Give the TV a DHCP reservation so its IP is stable for the SSAP
+  their own Wi-Fi (WoWLAN), no ethernet run needed. The enabling toggle on this set lives under
+  **Settings → Devices → TV Management → "TV On With Mobile"** (verified on the actual TV).
+  Give the TV a DHCP reservation so its IP is stable for the SSAP
   connection. If broadcast magic packets prove unreliable through the Wi-Fi AP, send the
   packet as a subnet-directed/unicast datagram to the TV's IP as well — worth supporting both
   in the wake code anyway.
@@ -338,7 +338,9 @@ wake. Two constraints shape the design:
    `bcdedit /set {fwbootmgr} bootsequence <GRUB entry GUID>` + `shutdown /r /t 0` (needs
    admin). Until then, switching Windows→Linux means a manual reboot or the TV-side keyboard.
 
-UI: turn the Wake button into a split-button (Wake → Linux / Windows), driven by a
+UI: turn the Wake button into a split-button (Wake → Linux / Windows), and likewise split the
+Shutdown button into shutdown / reboot, with the reboot half carrying a dropdown for
+"Reboot into Windows" (plain reboot lands back in the Linux default). All driven by a
 `[boot]` config section listing the GRUB entry names.
 
 **Effort:** GRUB config is minutes; `/api/boot` endpoint + controller orchestration + UI
@@ -378,5 +380,5 @@ UI: turn the Wake button into a split-button (Wake → Linux / Windows), driven 
 ## Remaining open questions
 
 - Current BIOS state of `Resume By PCI-E Device` / `ErP Ready` (needs a reboot to check).
-- Enable the TV's wake toggle: Settings → General → **Network → "TV On With Mobile" →
-  "Turn On via Wi-Fi"** — then verify with a test magic packet to the TV's MAC.
+- Enable the TV's wake toggle: **Settings → Devices → TV Management → "TV On With Mobile"** —
+  then verify with a test magic packet to the TV's MAC.
