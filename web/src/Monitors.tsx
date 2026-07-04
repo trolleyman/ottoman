@@ -1,10 +1,9 @@
 import { useState } from "react";
-import type { Monitor } from "./api";
+import type { Monitor, MonitorSettingsRequest } from "./api";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
-import { TVCard } from "./TV";
 
-export function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: string }) {
   return (
     <>
       <span className="text-zinc-500">{label}</span>
@@ -75,8 +74,120 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
   );
 }
 
+const BACKENDS: { value: string; label: string }[] = [
+  { value: "", label: "Auto-detect" },
+  { value: "ddc", label: "Monitor (DDC/CI)" },
+  { value: "tv", label: "Network TV (webOS)" },
+  { value: "none", label: "None" },
+];
+
+// MonitorSettingsEditor is the per-monitor config form: friendly name, control
+// backend, TV transport (when the backend is a network TV), and which controls
+// are shown. Saving persists to the registry via the agent.
+function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose: () => void }) {
+  const save = useStore((s) => s.saveMonitorSettings);
+  const [friendlyName, setFriendlyName] = useState(monitor.friendly_name ?? "");
+  const [backend, setBackend] = useState(monitor.control_backend ?? "");
+  const [tvHost, setTvHost] = useState(monitor.tv?.host ?? "");
+  const [tvMac, setTvMac] = useState(monitor.tv?.mac ?? "");
+  const [visibility, setVisibility] = useState<Record<string, boolean>>(monitor.visibility ?? {});
+  const [saving, setSaving] = useState(false);
+
+  const controls =
+    backend === "tv"
+      ? ["brightness", "power", "volume"]
+      : backend === "ddc"
+        ? ["brightness", "power"]
+        : [];
+
+  const submit = async () => {
+    setSaving(true);
+    const req: MonitorSettingsRequest = {
+      edid: monitor.edid,
+      friendly_name: friendlyName,
+      backend,
+      visibility,
+    };
+    if (backend === "tv") {
+      req.tv = { type: "webos", host: tvHost.trim(), mac: tvMac.trim() };
+    }
+    const ok = await save(req);
+    setSaving(false);
+    if (ok) onClose();
+  };
+
+  const field = "bg-zinc-900/60 border border-zinc-700/60 rounded-lg px-2.5 py-1.5 text-sm text-zinc-200 w-full focus:outline-none focus:border-zinc-500";
+
+  return (
+    <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-zinc-500">Friendly name</span>
+        <input className={field} value={friendlyName} placeholder={monitor.name || "Unnamed"} onChange={(e) => setFriendlyName(e.target.value)} />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-zinc-500">Control backend</span>
+        <select className={field} value={backend} onChange={(e) => setBackend(e.target.value)}>
+          {BACKENDS.map((b) => (
+            <option key={b.value} value={b.value}>{b.label}</option>
+          ))}
+        </select>
+      </label>
+
+      {backend === "tv" && (
+        <>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">TV host (IP or hostname)</span>
+            <input className={field} value={tvHost} placeholder="192.168.1.50" onChange={(e) => setTvHost(e.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">TV MAC (for Wake-on-LAN)</span>
+            <input className={`${field} font-mono`} value={tvMac} placeholder="8C:19:B5:72:FE:62" onChange={(e) => setTvMac(e.target.value)} />
+          </label>
+        </>
+      )}
+
+      {controls.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-zinc-500">Show controls</span>
+          <div className="flex flex-wrap gap-3">
+            {controls.map((c) => (
+              <label key={c} className="flex items-center gap-1.5 text-sm text-zinc-300 capitalize cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visibility[c] ?? true}
+                  onChange={(e) => setVisibility((v) => ({ ...v, [c]: e.target.checked }))}
+                  className="accent-blue-500 cursor-pointer"
+                />
+                {c}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="flex-1 text-xs font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 text-xs font-medium bg-zinc-700/40 hover:bg-zinc-600/50 text-zinc-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
+  const [editing, setEditing] = useState(false);
   return (
     <div className={`rounded-xl border p-5 flex flex-col gap-3 ${a
       ? "border-zinc-700/50 bg-zinc-800/50"
@@ -86,7 +197,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
         <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
           {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
         </h3>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {!a && (
             <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
               Inactive
@@ -97,6 +208,14 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
               Primary
             </span>
           )}
+          <button
+            onClick={() => setEditing((v) => !v)}
+            title="Monitor settings"
+            aria-label="Monitor settings"
+            className={`text-sm leading-none select-none cursor-pointer transition-colors ${editing ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}`}
+          >
+            ⚙️
+          </button>
         </div>
       </div>
 
@@ -118,7 +237,11 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
         )}
       </div>
 
-      <MonitorControls monitor={monitor} />
+      {editing ? (
+        <MonitorSettingsEditor monitor={monitor} onClose={() => setEditing(false)} />
+      ) : (
+        <MonitorControls monitor={monitor} />
+      )}
     </div>
   );
 }
@@ -127,12 +250,6 @@ export function Monitors() {
   const monitors = useStore((s) => s.monitors);
   const loading = useStore((s) => s.monitorsLoading);
   const error = useStore((s) => s.monitorsError);
-  const tv = useStore((s) => s.tv);
-
-  // The TV sits in this section as another display; show the grid whenever
-  // there are monitors OR a configured TV.
-  const hasTV = !!tv?.configured;
-  const isEmpty = monitors.length === 0 && !hasTV;
 
   return (
     <section>
@@ -147,18 +264,17 @@ export function Monitors() {
           {monitors.filter((m) => m.active).length} active / {monitors.length} total
         </span>
       </div>
-      {loading && monitors.length === 0 && !hasTV ? (
+      {loading && monitors.length === 0 ? (
         <div className="text-zinc-500 text-sm">Loading monitors...</div>
       ) : error ? (
         <div className="text-red-400 text-sm">{error}</div>
-      ) : isEmpty ? (
+      ) : monitors.length === 0 ? (
         <p className="text-zinc-500 text-sm">No monitors detected.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {monitors.map((m, i) => (
             <MonitorCard key={m.port || m.edid || i} monitor={m} />
           ))}
-          <TVCard />
         </div>
       )}
     </section>

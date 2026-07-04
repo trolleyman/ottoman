@@ -213,6 +213,13 @@ func (c *monitorControl) enrich(monitors []api.Monitor) []api.Monitor {
 			vis := entry.Visibility
 			monitors[i].Visibility = &vis
 		}
+		if entry.TV != nil {
+			monitors[i].Tv = &api.TVConn{
+				Type: strPtr(entry.TV.Type),
+				Host: strPtr(entry.TV.Host),
+				Mac:  strPtr(entry.TV.Mac),
+			}
+		}
 		if caps.Brightness {
 			if v, ok := c.currentBrightness(edid); ok {
 				monitors[i].Brightness = intPtr(v)

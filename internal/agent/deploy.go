@@ -132,7 +132,7 @@ func installLinuxService() error {
 		log.Printf("Warning: failed to install GNOME extension: %v", err)
 	}
 
-	printLinuxHostSetupHint()
+	setUpLinuxHost()
 
 	return nil
 }

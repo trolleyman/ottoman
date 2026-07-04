@@ -53,6 +53,7 @@ export type { TrackpadMessageMousePositionUpdate } from './models/TrackpadMessag
 export type { TrackpadMessageMouseScroll } from './models/TrackpadMessageMouseScroll';
 export type { TrackpadMessageMouseUp } from './models/TrackpadMessageMouseUp';
 export type { TrackpadMessageText } from './models/TrackpadMessageText';
+export type { TVConn } from './models/TVConn';
 export type { TVInputRequest } from './models/TVInputRequest';
 export type { TVPowerRequest } from './models/TVPowerRequest';
 export type { TVResponse } from './models/TVResponse';

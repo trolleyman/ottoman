@@ -178,6 +178,16 @@ var agentUninstallCmd = &cobra.Command{
 	},
 }
 
+var hostSetupUser string
+
+var agentHostSetupCmd = &cobra.Command{
+	Use:   "host-setup",
+	Short: "Grant one-time root host access (uinput, i2c, grub-reboot); self-elevates via sudo",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return agent.HostSetup(hostSetupUser)
+	},
+}
+
 // Install command (root level)
 var installCmd = &cobra.Command{
 	Use:   "install",
@@ -819,6 +829,8 @@ func init() {
 	agentCmd.AddCommand(monitorCmd)
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
+	agentHostSetupCmd.Flags().StringVar(&hostSetupUser, "user", "", "user to grant access to (default: invoking user)")
+	agentCmd.AddCommand(agentHostSetupCmd)
 
 	// Monitor commands
 	monitorCmd.AddCommand(monitorListCmd)
