@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -32,14 +33,35 @@ type LinuxManager struct {
 }
 
 func newPlatformManager(store *Layouts) (Manager, error) {
+	// Prefer the GNOME Mutter D-Bus backend under Wayland: xrandr only talks to
+	// XWayland there and cannot reconfigure real outputs. Fall back to xrandr
+	// on X11 (or if Mutter is unavailable).
+	if isWaylandSession() {
+		if mgr, err := newMutterManager(store); err == nil {
+			log.Printf("Display backend: GNOME Mutter (Wayland D-Bus)")
+			return mgr, nil
+		} else {
+			log.Printf("Mutter display backend unavailable, falling back to xrandr: %v", err)
+		}
+	}
+
 	// Check if xrandr is available
 	if _, err := exec.LookPath("xrandr"); err != nil {
-		return nil, errors.Wrap(err, "xrandr not found")
+		return nil, errors.Wrap(err, "no usable display backend: mutter unavailable and xrandr not found")
 	}
+	log.Printf("Display backend: xrandr")
 	return &LinuxManager{
 		store: store,
 		cache: &monitorCache{},
 	}, nil
+}
+
+// isWaylandSession reports whether we're running under a Wayland session.
+func isWaylandSession() bool {
+	if strings.EqualFold(os.Getenv("XDG_SESSION_TYPE"), "wayland") {
+		return true
+	}
+	return os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
 // ListMonitors returns information about connected monitors
