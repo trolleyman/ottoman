@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Hydra artifact/test scratch (worktree-local bun cache + screenshot output)
+.bun-cache
+.bun-tmp
+scripts/screenshots/out
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

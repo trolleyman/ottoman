@@ -156,10 +156,28 @@ icon = "web/public/ottoman_logo.png"
 ## logical width (pixels / dpi): a 2x shot lays out like a 1x one, only sharper.
 ## For a video, an optional fps (e.g. {"fps": 60}) sets the frame rate the diff
 ## viewer's frame-step buttons use (HTML5 video exposes no frame rate of its own).
-# [[artifacts]]
-# name = "screenshots"
-# command = "bun run screenshots.ts"
-# timeout_sec = 900
+# Renders Ottoman's web UI to PNGs so visual changes show up side-by-side in the
+# diff viewer. The script (web/scripts/screenshots/take-screenshots.ts) builds
+# the frontend, builds the ottoman binary, boots `controller simulate` — which
+# serves the REAL frontend against mock API data and needs no browser auth — and
+# screenshots the dashboard offline + online, at phone and desktop viewports,
+# with headless Chromium (Playwright). Each PNG gets a <file>.png.meta sidecar
+# tagging its viewport/state for the diff viewer's filters. It's best-effort: a
+# build or boot failure yields no images rather than failing the head.
+#   bun's default cache (~/.bun) is read-only in the sandbox, so point its cache
+#   and tmp at gitignored worktree-local dirs (same fix as the [[tests]] "web"
+#   runner). Playwright's Chromium is pre-cached under ~/.cache/ms-playwright, so
+#   `bun install` pulls only JS — no browser download.
+[[artifacts]]
+name = "screenshots"
+command = '''
+cd web
+export BUN_INSTALL_CACHE_DIR="$PWD/.bun-cache" BUN_TMPDIR="$PWD/.bun-tmp"
+mkdir -p "$BUN_TMPDIR"
+bun install
+bun scripts/screenshots/take-screenshots.ts
+'''
+timeout_sec = 900
 
 ## [[services]]: per-project long-running commands the daemon supervises while the
 ## project is registered. Each is started on daemon boot (and when the project is
@@ -222,7 +240,40 @@ icon = "web/public/ottoman_logo.png"
 ## backslash-n to a newline, backslash-t to a tab, backslash-r to a carriage return
 ## (so a multi-line stack trace fits on the one line) - and a doubled backslash
 ## becomes one literal backslash. Any other escape is left as-is.
-# [[tests]]
-# name = "go"
-# command = "gotestsum --junitfile $HYDRA_TEST_OUTPUT/go.xml ./..."
-# timeout_sec = 600
+# Go test suite (type = "stdout": streams per-case results into the tests panel
+# live via ::hydra:test:*:: markers). `go test -json ./...` is piped through
+# scripts/hydra/gotest-markers, a tiny stdlib converter that turns each test2json
+# event into a marker (package import path as the location — Hydra strips the
+# go.mod prefix — subtests as › scopes) and echoes the normal go-test text to the
+# build log. A package that fails to BUILD surfaces as its own fail marker, so a
+# broken branch reads red rather than as an empty run. No gotestsum/global tool
+# needed — it builds from the module cache wherever `go` works.
+#   web/dist is git-ignored and not committed, but web/embed.go's `//go:embed
+#   all:dist` needs it present to compile the whole module; a stub index.html is
+#   enough for the tests (they don't assert on the bundled frontend).
+[[tests]]
+name = "go"
+command = '''
+mkdir -p web/dist
+[ -e web/dist/index.html ] || printf '<!doctype html>\n' > web/dist/index.html
+go test -json ./... 2>&1 | go run ./scripts/hydra/gotest-markers
+'''
+timeout_sec = 600
+type = "stdout"
+
+# Frontend type-check: `tsc -b` across the web project references. Exit-code
+# verdict (green when types are sound, red on a type regression) — no report
+# file. ESLint is deliberately NOT run here: `bun run lint` currently reports
+# thousands of errors on the checked-in tree (it lints the generated api/
+# client), so it would gate every merge red; wire it in once that's cleaned up.
+# Same read-only-~/.bun workaround as the screenshots artifact.
+[[tests]]
+name = "web"
+command = '''
+cd web
+export BUN_INSTALL_CACHE_DIR="$PWD/.bun-cache" BUN_TMPDIR="$PWD/.bun-tmp"
+mkdir -p "$BUN_TMPDIR"
+bun install
+bun x tsc -b
+'''
+timeout_sec = 300
