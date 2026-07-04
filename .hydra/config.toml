@@ -1,0 +1,228 @@
+## Hydra project configuration - .hydra/config.toml
+##
+## Hydra runs autonomous coding agents ("heads"), each on its own git branch in an
+## isolated worktree and OS sandbox, supervised by a per-project daemon. This file
+## configures those agents and the daemon: the default pre-prompt, the sandbox
+## policy (what agents may read, write and reach over the network), the decision
+## gate, per-agent ([claude], [gemini], ...) overrides, and the [[artifacts]],
+## [[services]] and [[tests]] commands run per project.
+##
+## Reading this file:
+##   ##  lines are Hydra's own docs and defaults - rewritten on every save, so edit
+##       the setting below each, not the ## text itself.
+##   # key = value   is a commented-out default; delete the leading "# " to override it.
+##   # your note     a single-# comment is yours and is preserved across saves.
+## Most settings are also editable from the Settings screen in the web UI.
+
+## extra instructions appended to every agent's system prompt.
+# pre_prompt = ""
+
+## custom project icon shown in the web UI's project switcher and dropdown: an emoji, a lucide-react icon name (e.g. "Rocket"), or an image path/URL ending in .png/.svg/.ico/.jpg. Empty = the default folder icon.
+# icon = "Rocket"
+
+## message typed into an agent that was working when the daemon restarted, so it resumes its task instead of idling (default "Continue"; "" disables).
+# resume_prompt = "Continue"
+
+## max visual-artifact generations run at once, across foreground (viewing a diff) and background (proactive) work; lower it for RAM-hungry generators, or 0 for unlimited (default 2).
+# artifact_concurrency = 2
+
+## pre-generate a head's artifacts in the background once it settles, so a diff is ready before you open it; set false to generate only when viewing - foreground generation and the concurrency cap still apply (default true).
+# artifact_prefetch = true
+
+## max test-runner generations run at once; lower it for heavy suites, or 0 for unlimited (default 1).
+# test_concurrency = 1
+
+## re-run a head's test suites in the background when its branch-tip verdict is missing or stale, so it's ready before you open the panel; set false to run only on open / at merge - foreground runs and the concurrency cap still apply (default true).
+# test_prefetch = true
+
+[sandbox]
+## extra paths made writable in the sandbox (added to the built-in defaults).
+# writable_paths = ["~/.cache", "~/.npm", "~/.cargo", "~/.gradle", "~/.local/share/mise", "~/.local/share/JetBrains", "~/.local/share/kotlin", "~/.local/state", "~/.local/share/hydra/logs", "~/.claude", "~/.claude.json", "~/.gemini", "~/.copilot", "~/.codex"]
+
+## extra paths hidden in the sandbox (added to the built-in defaults).
+# masked_paths = ["~/.ssh", "~/.aws", "~/.azure", "~/.gnupg", "~/.docker", "~/.kube", "~/.password-store", "~/.config", "~/.netrc", "~/.git-credentials", "~/.npmrc", "~/.pypirc", "~/.zsh_history", "~/.bash_history", "~/.sh_history", "~/.config/mise/config.local.toml", "~/.dotfiles/mise/config.local.toml"]
+
+## paths re-exposed read-only after a masked parent (added to the built-in defaults).
+# restore_ro = ["~/.config/git", "~/.config/gh", "~/.config/mise/config.toml"]
+
+## worktree-relative paths mounted copy-on-write from the project root (read source, writes kept per-head; e.g. large gitignored build dirs).
+# cow_paths = []
+
+## shell script run in the sandbox before every agent launch - spawn and resume, so it must be idempotent (e.g. mise trust).
+# pre_spawn_script = ""
+
+## shell script run in a sandbox when a head ends, before its worktree is removed - gets HYDRA_* + HYDRA_END_STATE; e.g. release a claimed resource.
+# pre_exit_script = ""
+
+[sandbox.network]
+## egress posture: "off" (no network), "unrestricted" (network, no host filtering), "advisory" (proxy-only host filtering - every honest client is filtered, but escapable), or "hard" (inescapable pasta+nft netns, failing closed when the tooling is unavailable unless strict=false; "on" is a synonym for "hard"). Default "hard". Supersedes the legacy enabled/filter_enabled booleans.
+# mode = "hard"
+
+## with mode = "hard", fail closed (block all egress) when the inescapable boundary can't be built, instead of degrading to advisory filtering (default true).
+# strict = true
+
+## LEGACY (use mode): allow outbound network access from the sandbox. Honoured only when mode is unset.
+# enabled = true
+
+## LEGACY (use mode): enforce the allowed_hosts list (deny-by-default egress). Honoured only when mode is unset. Unset = on when allowed_hosts is non-empty; true = only allowed_hosts reachable; false = allow every host.
+# filter_enabled = false
+
+## extra outbound hosts (exact host or *.suffix) allowed when filtering is on,
+## unioned on top of the built-in default allow-list below. Leaving this empty
+## does NOT disable the defaults - to remove one, list it in blocked_hosts.
+## Built-in defaults, always allowed regardless of agent (package registries,
+## language toolchains, git hosts):
+##     registry.npmjs.org, *.npmjs.org, *.yarnpkg.com, pypi.org, *.pypi.org,
+##     files.pythonhosted.org, *.golang.org, proxy.golang.org,
+##     sum.golang.org, crates.io, *.crates.io, static.crates.io,
+##     rubygems.org, *.rubygems.org, github.com, *.github.com,
+##     *.githubusercontent.com, codeload.github.com, gitlab.com,
+##     *.gitlab.com, bitbucket.org, *.bitbucket.org
+## Plus the AI-provider hosts for the agent's own type (a bash or unknown agent
+## gets the union of every provider's hosts):
+##     claude: *.anthropic.com, claude.ai, *.claude.ai, *.claudeusercontent.com,
+##       platform.claude.com, http-intake.logs.us5.datadoghq.com
+##     codex: api.openai.com, *.openai.com, chatgpt.com
+##     gemini: *.googleapis.com
+##     copilot: *.githubcopilot.com
+# allowed_hosts = []
+
+## outbound hosts (exact host or *.suffix) to deny even when otherwise allowed - overrides both allowed_hosts and the built-in defaults, so you can subtract a default host without redefining the list.
+# blocked_hosts = []
+
+## host-loopback TCP ports reachable from the sandbox even under mode = "hard" (whose netns otherwise cuts off the host's 127.0.0.1) - for host-local daemons that hardcode loopback, e.g. adb's server: [5037]. No effect in other modes (they share the host loopback already).
+# allowed_loopback_ports = []
+
+[policy]
+## enable the decision-capable gate that can deny tool calls (non-allow-listed MCP, credential reads, policy-file writes, global installs) even under skip-permissions (default true).
+# gate_enabled = true
+
+## MCP server names the agent may use (whole-server grant covers all its tools); any other server is stripped before launch and denied at runtime (default none).
+# mcp_allowed = []
+
+## individual MCP tools ("<server>__<tool>") allowed even when the whole server is not; the server is kept (spawned) so those tools work, other tools park for approval (default none).
+# mcp_tools_allowed = []
+
+## auto-allow MCP tools the read/write classifier deems read-only (parking only writes/unknown). Best-effort heuristic - off by default.
+# mcp_auto_allow_read = false
+
+## extra tool names to treat as safe (allowed without approval), extending the gate's built-in set. The gate fails closed on any tool it doesn't recognize (not a known built-in and no mcp__ prefix), parking it for approval; register a legitimate tool here to stop that. The default value below is the built-in set the gate already recognizes - add names to it, don't remove.
+# known_tools = ["Agent", "Artifact", "AskUserQuestion", "Bash", "BashOutput", "CronCreate", "CronDelete", "CronList", "DesignSync", "Edit", "EnterPlanMode", "EnterWorktree", "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "KillBash", "KillShell", "LS", "LSP", "Monitor", "MultiEdit", "NotebookEdit", "NotebookRead", "PushNotification", "Read", "RemoteTrigger", "ReportFindings", "ScheduleWakeup", "SendMessage", "Skill", "SlashCommand", "Task", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite", "ToolSearch", "WebFetch", "WebSearch", "Workflow", "Write"]
+
+## Claude-specific overrides: any of the settings above, applied only to claude agents.
+# [claude]
+## enable Claude Code's fullscreen (alternate-screen) rendering - flicker-free, but it takes over the terminal and captures the mouse; off (the default) keeps this terminal's native scrollbar and select-to-copy.
+# fullscreen = false
+
+## Gemini-specific overrides: any of the settings above, applied only to gemini agents.
+# [gemini]
+
+## Copilot-specific overrides: any of the settings above, applied only to copilot agents.
+# [copilot]
+
+## Codex-specific overrides: any of the settings above, applied only to codex agents.
+# [codex]
+
+## [[artifacts]]: per-project commands that render visual artifacts (e.g. screenshots)
+## of a checkout. The diff viewer runs each against both sides of a comparison and
+## shows the outputs that differ. Fields:
+##   name         unique label, also used as the cache directory (required).
+##   command      shell command run via `bash -c` in the checkout directory (required).
+##   timeout_sec  max seconds the command may run (0 = built-in default).
+##   unsafe_host  run on the host with NO sandbox - full access to your machine and
+##                credentials; only for audited, self-contained commands (default false).
+##   clean_ignored  also delete git-ignored files (e.g. node_modules) before each run -
+##                a pristine checkout (git clean -fdx) instead of the default that keeps
+##                dependency/build caches warm (-fd). Slower; set true only if stale
+##                ignored output can leak between commits (default false).
+##   strict       run the command under `set -eo pipefail` so a failing step aborts
+##                and propagates instead of being swallowed (default true; set false
+##                to run the command exactly as written).
+##   enabled      set false to skip this script in the diff viewer (default true).
+## Formats: .png, .jpg and .gif are diffed pixel-by-pixel; .webm video is diffed
+## frame-by-frame when ffmpeg is installed (otherwise by byte hash). Other types
+## (.webp .avif .svg .bmp .pdf) are compared by byte hash. Video is .webm ONLY, and
+## should be LOSSLESS (e.g. ffmpeg ... -c:v libvpx-vp9 -lossless 1): the frame check
+## compares decoded pixels, so a lossy encode of identical frames still reads as
+## "modified".
+## The command is given: HYDRA_ARTIFACT_OUTPUT (directory to write images into),
+## HYDRA_ARTIFACT_SOURCE (the checkout dir), HYDRA_ARTIFACT_REF (the resolved ref).
+## Tags: alongside an image foo.png the command may write a JSON sidecar foo.png.meta
+## like {"tags": ["theme::dark", "viewport::phone"]}. The diff viewer shows these as
+## labels and offers a filter. A "category::value" tag is a scoped label: only one
+## value per category is kept (the last one wins); plain tags are free-form.
+## The sidecar may also carry an optional dpi - the device-scale factor the shot was
+## captured at, e.g. {"tags": [...], "dpi": 2} - so the grid sizes a tile by its
+## logical width (pixels / dpi): a 2x shot lays out like a 1x one, only sharper.
+## For a video, an optional fps (e.g. {"fps": 60}) sets the frame rate the diff
+## viewer's frame-step buttons use (HTML5 video exposes no frame rate of its own).
+# [[artifacts]]
+# name = "screenshots"
+# command = "bun run screenshots.ts"
+# timeout_sec = 900
+
+## [[services]]: per-project long-running commands the daemon supervises while the
+## project is registered. Each is started on daemon boot (and when the project is
+## added), restarted with capped backoff if it exits unexpectedly, and
+## process-group-killed on daemon shutdown, project removal, or a config save.
+## Fields:
+##   name          unique label, shown in the UI and logs (required).
+##   command       shell command run via `bash -c` from the project root (required).
+##   host          run on the host with NO sandbox - full machine/credential access;
+##                 needed for host devices the sandbox hides, e.g. /dev/kvm (default false).
+##   max_restarts  relaunch cap after an unexpected exit (default 3; 0 = never).
+##   strict        run the command under `set -eo pipefail` so a failed startup step
+##                 surfaces as a crash instead of a healthy process (default true).
+##   enabled       set false to stop the daemon supervising this service (default true).
+# [[services]]
+# name = "emu-pool"
+# command = "scripts/emu-pool.sh up 3 --foreground"
+# host = true
+# max_restarts = 3
+
+## [[tests]]: per-project test-runner commands. Hydra runs each against a head's
+## branch and parses the report into a pass/fail verdict that gates the merge
+## button (failing/errored soft-block merge; force always available). Fields:
+##   name         unique label, also used as the cache directory (required).
+##   command      shell command run via `bash -c` in the checkout directory (required).
+##   timeout_sec  max seconds the command may run (0 = built-in default).
+##   unsafe_host  run on the host with NO sandbox - runs the diffed ref's test code;
+##                only for trusted refs (default false).
+##   clean_ignored  also delete git-ignored files before each run (default false).
+##   strict       run the command under `set -eo pipefail` (default true). Note: a
+##                runner exiting non-zero because tests FAILED is a valid verdict,
+##                not a strict abort - strict only governs the shell pipeline.
+##   enabled      set false to skip this runner (default true).
+##   type         "junit" (default) reads report files after exit; "stdout" parses
+##                ::hydra:test:*:: markers live from stdout (see streaming note below).
+## The command writes a report into $HYDRA_TEST_OUTPUT: JUnit XML (*.xml - go test
+## via gotestsum, pytest, jest/vitest, cargo-nextest, ...) or a Hydra-native *.json
+## ({total,passed,failed,skipped,duration_ms,cases:[{name,status,duration_ms,message}]}).
+## Every *.xml / *.json in the dir is parsed and the cases are merged, so one
+## command may emit several reports (e.g. a test report plus a lint report).
+## If it writes no report, the exit code alone becomes a red/green verdict.
+## Warnings: a case with status "warning" (Hydra JSON), or a JUnit <failure
+## type="warning">, is a non-failing diagnostic - it shows as an amber ⚠ N on the
+## long verdict chip (agent header / tests panel) but never fails the run or gates
+## the merge (lint errors stay failures and do gate). ESLint 9's junit formatters
+## don't tag severity, so feed lint via `-f json` converted to a Hydra-JSON report
+## (severity 2 → status "failed", severity 1 → "warning").
+## It is also given HYDRA_TEST_SOURCE (the checkout dir) and HYDRA_TEST_REF (the
+## resolved ref).
+## Streaming (type = "stdout"): instead of a report file, print one marker per line
+## and Hydra counts them live (into the panel and the sidebar chip):
+##   ::hydra:test:total:: 4556                                  (optional denominator)
+##   ::hydra:test:pass:: internal/artifacts › TestGenerateAndCache
+##   ::hydra:test:fail:: auth/rotation.test.ts:48:24 › grace window | expected 3 got 2
+##   ::hydra:test:warn:: web/src/x.ts:12:5 › no-console | Unexpected console statement
+##   ::hydra:test:skip:: heads/resume_test.go › TestResumeOnBoot | needs daemon
+## The token before the first › is the location (path[:line[:col]] or dotted class),
+## middle › tokens are scope levels, the last is the test name, text after | is the
+## message. A marker is one line; in the message an escape sequence expands -
+## backslash-n to a newline, backslash-t to a tab, backslash-r to a carriage return
+## (so a multi-line stack trace fits on the one line) - and a doubled backslash
+## becomes one literal backslash. Any other escape is left as-is.
+# [[tests]]
+# name = "go"
+# command = "gotestsum --junitfile $HYDRA_TEST_OUTPUT/go.xml ./..."
+# timeout_sec = 600
