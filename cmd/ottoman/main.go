@@ -150,6 +150,8 @@ var agentCmd = &cobra.Command{
 	Short: "Agent commands (runs on desktop)",
 }
 
+var agentRunGreeter bool
+
 var agentRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the agent",
@@ -157,6 +159,9 @@ var agentRunCmd = &cobra.Command{
 		cfg, err := agent.LoadConfig(configFile)
 		if err != nil {
 			return errors.Wrap(err, "failed to load config")
+		}
+		if agentRunGreeter {
+			return agent.RunGreeter(cfg)
 		}
 		return agent.Run(cfg)
 	},
@@ -824,6 +829,7 @@ func init() {
 	controllerCmd.AddCommand(controllerUninstallCmd)
 
 	// Agent commands
+	agentRunCmd.Flags().BoolVar(&agentRunGreeter, "greeter", false, "run in GDM greeter mode: display/layouts only, applies the last-used layout on start")
 	agentCmd.AddCommand(agentRunCmd)
 	agentCmd.AddCommand(layoutCmd)
 	agentCmd.AddCommand(monitorCmd)

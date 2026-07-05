@@ -48,13 +48,28 @@ type Agent struct {
 	audio         audio.Controller
 	startTime     time.Time
 	currentLayout string
+	greeter       bool
 }
 
 // Ensure Agent implements StrictServerInterface
 var _ api.StrictServerInterface = (*Agent)(nil)
 
-// New creates a new agent instance
+// New creates a new agent instance.
 func New(cfg *config.AgentConfig) (*Agent, error) {
+	return newAgent(cfg, false)
+}
+
+// NewGreeter creates an agent for the GDM login screen: it runs as the gdm user
+// against the greeter's own Mutter, so it serves only display/layout control
+// (input and audio are skipped) and applies the last-used layout on startup so
+// the login screen mirrors the user's session.
+func NewGreeter(cfg *config.AgentConfig) (*Agent, error) {
+	return newAgent(cfg, true)
+}
+
+// newAgent builds an agent. In greeter mode it skips the input and audio
+// controllers, which need a real user session that the gdm greeter doesn't have.
+func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid config")
 	}
@@ -75,24 +90,30 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to create display manager")
 	}
 
-	// Create mouse controller
-	mouse, err := input.NewMouseController()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create mouse controller")
-	}
-
-	// Create keyboard controller
-	keyboard, err := input.NewKeyboardController()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create keyboard controller")
-	}
-
-	// Audio control is optional: if PipeWire/wpctl isn't available the agent
-	// still runs, and the audio endpoints report the feature as unavailable.
-	audioCtl, err := audio.NewController()
-	if err != nil {
-		log.Printf("Audio control unavailable: %v", err)
-		audioCtl = nil
+	// Input and audio need an interactive user session (uinput permissions /
+	// PipeWire) that the greeter doesn't have, so greeter mode leaves them nil;
+	// the corresponding endpoints report the feature as unavailable.
+	var mouse input.MouseController
+	var keyboard input.KeyboardController
+	var audioCtl audio.Controller
+	if greeter {
+		log.Println("Greeter mode: input, audio and TV control are disabled")
+	} else {
+		mouse, err = input.NewMouseController()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create mouse controller")
+		}
+		keyboard, err = input.NewKeyboardController()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create keyboard controller")
+		}
+		// Audio control is optional: if PipeWire/wpctl isn't available the agent
+		// still runs, and the audio endpoints report the feature as unavailable.
+		audioCtl, err = audio.NewController()
+		if err != nil {
+			log.Printf("Audio control unavailable: %v", err)
+			audioCtl = nil
+		}
 	}
 
 	// Monitor registry (friendly names, control backends, visibility) lives in
@@ -123,13 +144,41 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 		keyboard:    keyboard,
 		audio:       audioCtl,
 		startTime:   time.Now(),
+		greeter:     greeter,
 	}
 
 	if err := a.setupRoutes(); err != nil {
 		return nil, err
 	}
 
+	// In greeter mode, bring the login screen up in the user's last layout.
+	if greeter {
+		a.applyStartupLayout()
+	}
+
 	return a, nil
+}
+
+// applyStartupLayout applies the last-used layout (recorded by the user's agent
+// on each switch) so the greeter mirrors the user's session. Best-effort: any
+// problem just leaves the greeter's default layout in place.
+func (a *Agent) applyStartupLayout() {
+	id := store.LoadCurrentLayout()
+	if id == "" {
+		log.Println("Greeter: no last-used layout recorded; leaving display as-is")
+		return
+	}
+	matches := a.layouts.FindByIDOrAlias(id)
+	if len(matches) != 1 {
+		log.Printf("Greeter: last-used layout %q not found; leaving display as-is", id)
+		return
+	}
+	if err := a.displayMgr.ApplyLayoutConfig(matches[0]); err != nil {
+		log.Printf("Greeter: failed to apply last-used layout %q: %v", id, err)
+		return
+	}
+	a.currentLayout = matches[0].Id
+	log.Printf("Greeter: applied last-used layout %q", matches[0].Name)
 }
 
 // agentHandler wraps the strict handler to allow manual handling of WebSockets
@@ -322,6 +371,7 @@ func (a *Agent) SwitchLayout(ctx context.Context, request api.SwitchLayoutReques
 	}
 
 	a.currentLayout = layoutName
+	a.recordCurrentLayout(layout.Id)
 
 	msg := fmt.Sprintf("Switched to layout: %s", layoutName)
 	return api.SwitchLayout200JSONResponse{
@@ -574,6 +624,12 @@ func (a *Agent) SimState(ctx context.Context, request api.SimStateRequestObject)
 // handleTrackpad handles WebSocket connections for trackpad input
 // This is called by the wrapper, bypassing the strict handler
 func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
+	// Input control is unavailable in greeter mode (no uinput as the gdm user).
+	if a.mouse == nil || a.keyboard == nil {
+		http.Error(w, "input control not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		log.Printf("Trackpad WebSocket accept error: %v", err)
@@ -734,6 +790,16 @@ func Run(config *config.AgentConfig) error {
 	return agent.Start()
 }
 
+// RunGreeter starts the agent in GDM greeter mode (display/layouts only).
+func RunGreeter(config *config.AgentConfig) error {
+	agent, err := NewGreeter(config)
+	if err != nil {
+		return err
+	}
+
+	return agent.Start()
+}
+
 type logResponseWriter struct {
 	http.ResponseWriter
 	status int
@@ -801,4 +867,16 @@ func slugify(input string) string {
 // can never clobber saved layouts.
 func (a *Agent) saveLayouts() error {
 	return a.layoutStore.Save(a.layouts.ToSlice())
+}
+
+// recordCurrentLayout persists the last-applied layout ID so the greeter agent
+// can restore it on the next login screen. The greeter itself doesn't record —
+// it follows the user's session choice rather than setting it.
+func (a *Agent) recordCurrentLayout(id string) {
+	if a.greeter {
+		return
+	}
+	if err := store.SaveCurrentLayout(id); err != nil {
+		log.Printf("Warning: failed to record current layout: %v", err)
+	}
 }
