@@ -85,7 +85,7 @@ icon = "web/public/ottoman_logo.png"
 ##     codex: api.openai.com, *.openai.com, chatgpt.com
 ##     gemini: *.googleapis.com
 ##     copilot: *.githubcopilot.com
-# allowed_hosts = []
+allowed_hosts = ["mise-versions.jdx.dev"]
 
 ## outbound hosts (exact host or *.suffix) to deny even when otherwise allowed - overrides both allowed_hosts and the built-in defaults, so you can subtract a default host without redefining the list.
 # blocked_hosts = []
