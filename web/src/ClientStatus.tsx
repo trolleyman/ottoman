@@ -77,14 +77,14 @@ export function ClientStatus() {
           {isOffline && (
             <>
               <button
-                onClick={() => wake("linux")}
+                onClick={() => void wake("linux")}
                 disabled={isBusy}
                 className="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Wake → Linux
               </button>
               <button
-                onClick={() => wake("windows")}
+                onClick={() => void wake("windows")}
                 disabled={isBusy}
                 className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
                 title="Wake, then reboot into Windows once the agent is up"
@@ -96,7 +96,7 @@ export function ClientStatus() {
           {isOnline && (
             <>
               <button
-                onClick={() => reboot("windows")}
+                onClick={() => void reboot("windows")}
                 disabled={isBusy}
                 className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
                 title="Reboot into Windows once"
@@ -104,7 +104,7 @@ export function ClientStatus() {
                 Reboot → Windows
               </button>
               <button
-                onClick={shutdown}
+                onClick={() => void shutdown()}
                 disabled={isBusy}
                 className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >

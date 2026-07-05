@@ -78,8 +78,8 @@ export function MonitorDisplay({
   const scale = Math.min(effectiveWidth / totalW, maxH / totalH);
 
   const hasCursor = connected && cursorPos;
-  const dotX = hasCursor ? (cursorPos!.x - minX) * scale : 0;
-  const dotY = hasCursor ? (cursorPos!.y - minY) * scale : 0;
+  const dotX = hasCursor ? (cursorPos.x - minX) * scale : 0;
+  const dotY = hasCursor ? (cursorPos.y - minY) * scale : 0;
 
   const handlePointer = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!onSetPosition || !previewRef.current) return;
@@ -132,7 +132,7 @@ export function MonitorDisplay({
       </div>
       {hasCursor && (
         <span className="text-[10px] text-zinc-500 font-mono select-none">
-          {cursorPos!.x}, {cursorPos!.y}
+          {cursorPos.x}, {cursorPos.y}
         </span>
       )}
     </div>

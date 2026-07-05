@@ -3,7 +3,7 @@ import type { Layout, LayoutMonitor, Monitor } from "./api";
 export async function getJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  return (await res.json()) as T;
 }
 
 export async function postJSON<TRequest, TResponse>(url: string, data: TRequest): Promise<TResponse> {
@@ -15,7 +15,7 @@ export async function postJSON<TRequest, TResponse>(url: string, data: TRequest)
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  return (await res.json()) as TResponse;
 }
 
 /** Compute a uniform scale that fits all layouts into the same coordinate space */

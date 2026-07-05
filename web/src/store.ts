@@ -214,8 +214,8 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
         // Agent just came online — refresh layouts and monitors
         if (wasOnline === false) {
-          get().fetchLayouts(true);
-          get().fetchMonitors(true);
+          void get().fetchLayouts(true);
+          void get().fetchMonitors(true);
         }
       } catch {
         const { agentStatus } = get();
@@ -317,7 +317,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   startPolling: () => {
     if (get()._pollTimer) return;
     const timer = setInterval(() => {
-      get().refreshAll(true);
+      void get().refreshAll(true);
     }, 3000);
     set({ _pollTimer: timer });
   },
@@ -339,7 +339,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       const data = await client.default.switchLayout({ layout: id });
       if (data.success) {
         set({ currentLayout: data.current_layout ?? "" });
-        get().refreshAll(false);
+        void get().refreshAll(false);
       } else {
         alert(data.message || "Switch failed");
       }
@@ -355,7 +355,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       const data = await client.default.removeLayout({ layout: id });
       if (data.success) {
-        get().fetchLayouts(false);
+        void get().fetchLayouts(false);
       } else {
         alert(data.message || "Failed to remove layout");
       }
@@ -368,7 +368,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       const data = await client.default.saveCurrentLayout({ name, emoji });
       if (data.success) {
-        get().fetchLayouts(false);
+        void get().fetchLayouts(false);
       } else {
         alert(data.message || "Failed to save layout");
       }
@@ -432,7 +432,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setAudioVolume({ name, volume });
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -443,7 +443,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setAudioVolume({ name, muted });
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -453,9 +453,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
     }));
     try {
       await client.default.setAudioVolume({ name, default: true });
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -469,7 +469,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setMonitorBrightness({ edid, brightness });
     } catch {
-      get().fetchMonitors(true);
+      void get().fetchMonitors(true);
     }
   },
 
@@ -498,7 +498,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       // Re-fetch so capabilities/backend/tv reflect the saved change.
       await get().fetchMonitors(true);
       // The TV section is driven by a monitor's tv backend; refresh it too.
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
       return true;
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save monitor settings");
@@ -523,7 +523,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       const data = await client.default.pairTv();
       if (data.success) {
         alert(data.message || "Pairing started — accept the prompt on the TV.");
-        get().fetchTVState(true);
+        void get().fetchTVState(true);
       } else {
         alert(data.message || "Pairing failed");
       }
@@ -535,7 +535,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   setTVPower: async (on: boolean) => {
     try {
       await client.default.setTvPower({ on });
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to set TV power");
     }
@@ -546,7 +546,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setTvVolume({ volume });
     } catch {
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     }
   },
 
@@ -555,7 +555,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setTvVolume({ muted });
     } catch {
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     }
   },
 }));

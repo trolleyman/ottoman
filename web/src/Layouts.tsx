@@ -64,7 +64,7 @@ export function Layouts() {
             />
           </div>
           <button
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={!newLayoutName.trim()}
             className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
@@ -90,8 +90,8 @@ export function Layouts() {
                 isCurrent={l.id === currentLayout}
                 disabled={switching}
                 scale={layoutScale}
-                onClick={() => switchLayout(l.id)}
-                onDelete={() => removeLayout(l.id)}
+                onClick={() => void switchLayout(l.id)}
+                onDelete={() => void removeLayout(l.id)}
               />
             ))}
           </div>

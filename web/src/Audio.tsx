@@ -27,7 +27,7 @@ function SinkCard({ sink }: { sink: AudioSink }) {
           </span>
         ) : (
           <button
-            onClick={() => setSinkDefault(sink.name)}
+            onClick={() => void setSinkDefault(sink.name)}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             Make default
@@ -37,7 +37,7 @@ function SinkCard({ sink }: { sink: AudioSink }) {
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setSinkMute(sink.name, !sink.muted)}
+          onClick={() => void setSinkMute(sink.name, !sink.muted)}
           className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
           title={sink.muted ? "Unmute" : "Mute"}
           aria-label={sink.muted ? "Unmute" : "Mute"}
@@ -49,7 +49,7 @@ function SinkCard({ sink }: { sink: AudioSink }) {
           min={0}
           max={150}
           value={pct}
-          onChange={(e) => setSinkVolume(sink.name, Number(e.target.value) / 100)}
+          onChange={(e) => void setSinkVolume(sink.name, Number(e.target.value) / 100)}
           className={`flex-1 accent-blue-500 cursor-pointer ${sink.muted ? "opacity-40" : ""}`}
         />
         <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
