@@ -96,7 +96,7 @@ export function MonitorDisplay({
     >
       <div
         ref={previewRef}
-        className="relative select-none cursor-crosshair"
+        className={`relative select-none ${onSetPosition ? "cursor-crosshair" : ""}`}
         onPointerDown={(e) => {
           if (!onSetPosition) return;
           pointerStartRef.current = { x: e.clientX, y: e.clientY };

@@ -5,6 +5,10 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  // Whether the agent can read/set the absolute cursor position. The uinput
+  // backend (Wayland) can inject input but can't query the cursor, so it sends
+  // a "connected" message instead of position updates; hide cursor UI then.
+  const [cursorSupported, setCursorSupported] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,7 +44,12 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       try {
         const msg = JSON.parse(e.data as string) as TrackpadMessage;
         if (msg.type === "mousepositionupdate") {
+          setCursorSupported(true);
           setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
+        } else if (msg.type === "connected") {
+          // Agent can't read the cursor position (e.g. uinput on Wayland).
+          setCursorSupported(false);
+          setCursorPos(null);
         }
       } catch { /* ignore parse errors */ }
     };
@@ -67,5 +76,5 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     }
   }, []);
 
-  return { connected, connecting, cursorPos, send };
+  return { connected, connecting, cursorPos, cursorSupported, send };
 }
