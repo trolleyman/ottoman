@@ -751,9 +751,17 @@ func setUpLinuxHost() {
 	}
 
 	greeterInstalled := fileExists(greeterDesktop)
-	fmt.Printf("  [%-11s] %s  (%s)\n", markDone(greeterInstalled), "GDM login-screen layout agent", "switch layouts on the login screen (opt-in)")
+	greeterStale := greeterInstalled && greeterBinaryOutdated()
+	greeterMark := "needs setup"
+	if greeterInstalled {
+		greeterMark = "ok"
+	}
+	if greeterStale {
+		greeterMark = "stale"
+	}
+	fmt.Printf("  [%-11s] %s  (%s)\n", greeterMark, "GDM login-screen layout agent", "switch layouts on the login screen (opt-in)")
 
-	if pending == 0 && greeterInstalled {
+	if pending == 0 && greeterInstalled && !greeterStale {
 		fmt.Println("\nEverything is already configured. Nothing to do.")
 		return
 	}
@@ -766,6 +774,9 @@ func setUpLinuxHost() {
 		if !greeterInstalled {
 			fmt.Println("  Login-screen layouts:  sudo ottoman agent host-setup --greeter")
 		}
+		if greeterStale {
+			fmt.Println("  Greeter binary is out of date:  sudo ottoman agent host-setup --greeter")
+		}
 		return
 	}
 
@@ -775,31 +786,52 @@ func setUpLinuxHost() {
 		applyBase = promptYesNo(fmt.Sprintf("\nApply host setup now with sudo? (%d item(s) pending) [y/N] ", pending))
 	}
 
-	// Login-screen layout agent — separate opt-in prompt.
-	installGreeter := false
+	// Login-screen layout agent. Offer it as an opt-in when it isn't installed;
+	// once installed, refresh it automatically when the deployed binary has
+	// changed (and do nothing when it already matches).
+	greeterWanted := false
 	if !greeterInstalled {
 		fmt.Println("\nOptional: a GDM login-screen agent lets you switch display layouts on")
 		fmt.Println("the login screen and mirrors your session's layout there (runs as gdm).")
-		installGreeter = promptYesNo("Install the login-screen layout agent? [y/N] ")
+		greeterWanted = promptYesNo("Install the login-screen layout agent? [y/N] ")
+	} else if greeterStale {
+		fmt.Println("\nThe login-screen layout agent's binary is out of date; refreshing it.")
+		greeterWanted = true
 	}
 
-	if !applyBase && !installGreeter {
+	if !applyBase && !greeterWanted {
 		fmt.Println("\nSkipped. Apply it later with:  sudo ottoman agent host-setup [--greeter]")
 		return
 	}
 	fmt.Println()
-	if err := HostSetup(username, installGreeter); err != nil {
+	if err := HostSetup(username, greeterWanted); err != nil {
 		fmt.Printf("\nHost setup did not complete: %v\n", err)
 		fmt.Println("You can retry with:  sudo ottoman agent host-setup")
 	}
 }
 
-// markDone returns the checklist status label for a boolean state.
-func markDone(done bool) string {
-	if done {
-		return "ok"
+// greeterBinaryOutdated reports whether the installed greeter binary copy differs
+// from the currently running binary (the freshly deployed one), so a redeploy can
+// refresh it. A missing copy counts as outdated.
+func greeterBinaryOutdated() bool {
+	self, err := os.Executable()
+	if err != nil {
+		return false
 	}
-	return "needs setup"
+	return !filesEqual(self, greeterBin)
+}
+
+// filesEqual reports whether two files have identical contents.
+func filesEqual(a, b string) bool {
+	da, err := os.ReadFile(a)
+	if err != nil {
+		return false
+	}
+	db, err := os.ReadFile(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(da, db)
 }
 
 // userGroups returns the set of groups the given user belongs to.
