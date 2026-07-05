@@ -221,9 +221,17 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 	}
 
 	obj := m.conn.Object(mutterBusName, dbus.ObjectPath(mutterObjectPath))
+	// Apply with the TEMPORARY method, not PERSISTENT. PERSISTENT makes Mutter
+	// apply the config and then emit confirm-display-change, which triggers
+	// GNOME Shell's "Keep these display settings?" dialog with a countdown that
+	// auto-reverts to the previous layout if not confirmed in time. Since
+	// Ottoman is the on-demand source of truth for layout switching, we want the
+	// switch to take effect immediately with no confirmation prompt. The only
+	// tradeoff is the config isn't written to Mutter's monitors.xml, so it won't
+	// survive a GNOME logout/reboot — the user just re-applies via Ottoman.
 	call := obj.Call(mutterInterface+".ApplyMonitorsConfig", 0,
 		serial,
-		uint32(mutterMethodPersistent),
+		uint32(mutterMethodTemporary),
 		logicals,
 		map[string]dbus.Variant{},
 	)
