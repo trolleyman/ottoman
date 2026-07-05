@@ -85,7 +85,7 @@ icon = "web/public/ottoman_logo.png"
 ##     codex: api.openai.com, *.openai.com, chatgpt.com
 ##     gemini: *.googleapis.com
 ##     copilot: *.githubcopilot.com
-# allowed_hosts = []
+allowed_hosts = ["mise-versions.jdx.dev"]
 
 ## outbound hosts (exact host or *.suffix) to deny even when otherwise allowed - overrides both allowed_hosts and the built-in defaults, so you can subtract a default host without redefining the list.
 # blocked_hosts = []
@@ -262,7 +262,6 @@ timeout_sec = 600
 type = "stdout"
 
 # Frontend type-check (type = "stdout": streams results into the tests panel via
-# ::hydra:test:*:: markers). scripts/hydra/tsc-markers.ts runs `tsc -b` and turns
 # each diagnostic into a fail marker located at file:line:col, or emits a single
 # passing "typecheck" case when clean — nicer than a bare "command exited 0".
 # ESLint is deliberately NOT run here: `bun run lint` currently reports thousands
