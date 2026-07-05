@@ -111,6 +111,7 @@ ottoman config init      # Create default config file
 | `/api/layouts/switch` | `POST` | Switch to specified layout |
 | `/api/layouts/save-current` | `POST` | Save the current layout as a new layout |
 | `/api/layouts/remove` | `POST` | Remove the specified layout |
+| `/api/layouts/update` | `POST` | Update a layout's name, emoji, and aliases |
 | `/api/monitors` | `GET` | Get all monitors (with control backend, capabilities, brightness, visibility) |
 | `/api/monitors/brightness` | `POST` | Set a monitor's brightness (DDC or TV backend) |
 | `/api/monitors/power` | `POST` | Turn a monitor on/off (DDC standby or TV power) |

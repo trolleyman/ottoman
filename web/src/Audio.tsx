@@ -1,5 +1,6 @@
 import { Volume1, Volume2, VolumeX } from "lucide-react";
 import type { AudioSink } from "./api";
+import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 
 function VolumeIcon({ muted, volume, className }: { muted: boolean; volume: number; className?: string }) {
@@ -70,20 +71,15 @@ export function Audio() {
   if (!loading && !error && sinks.length === 0) return null;
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          Audio
-          {loading && sinks.length > 0 && (
-            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          )}
-        </h2>
-        <span className="text-xs text-zinc-500">{sinks.length} output{sinks.length === 1 ? "" : "s"}</span>
-      </div>
+    <Section
+      title="Audio"
+      loading={loading && sinks.length > 0}
+      meta={sinks.length > 0 ? `${sinks.length} output${sinks.length === 1 ? "" : "s"}` : undefined}
+    >
       {loading && sinks.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Loading audio...</div>
+        <SectionState>Loading audio…</SectionState>
       ) : error && sinks.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Audio control unavailable.</div>
+        <SectionState>Audio control unavailable.</SectionState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {sinks.map((s) => (
@@ -91,6 +87,6 @@ export function Audio() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }

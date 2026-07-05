@@ -61,6 +61,8 @@ export type { TVPowerRequest } from './models/TVPowerRequest';
 export type { TVResponse } from './models/TVResponse';
 export type { TVStateResponse } from './models/TVStateResponse';
 export type { TVVolumeRequest } from './models/TVVolumeRequest';
+export type { UpdateLayoutRequest } from './models/UpdateLayoutRequest';
+export type { UpdateLayoutResponse } from './models/UpdateLayoutResponse';
 export type { WakeRequest } from './models/WakeRequest';
 export type { WakeResponse } from './models/WakeResponse';
 

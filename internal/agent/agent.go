@@ -446,6 +446,62 @@ func (a *Agent) RemoveLayout(ctx context.Context, request api.RemoveLayoutReques
 	}, nil
 }
 
+// UpdateLayout implements api.StrictServerInterface
+func (a *Agent) UpdateLayout(ctx context.Context, request api.UpdateLayoutRequestObject) (api.UpdateLayoutResponseObject, error) {
+	if request.Body == nil || request.Body.Id == "" {
+		return api.UpdateLayout400JSONResponse{Code: 400, Error: "layout id is required"}, nil
+	}
+	id := request.Body.Id
+
+	if _, ok := a.layouts.Get(id); !ok {
+		return api.UpdateLayout404JSONResponse{Code: 404, Error: fmt.Sprintf("layout %q not found", id)}, nil
+	}
+
+	// Normalise and validate the new alias set: trim, drop blanks/dupes, and
+	// reject any alias already claimed by another layout (or matching another
+	// layout's ID), which would make switching ambiguous.
+	if request.Body.Aliases != nil {
+		seen := make(map[string]bool)
+		cleaned := make([]string, 0, len(*request.Body.Aliases))
+		for _, raw := range *request.Body.Aliases {
+			alias := strings.TrimSpace(raw)
+			if alias == "" || seen[alias] {
+				continue
+			}
+			if alias == id {
+				continue // an alias equal to the layout's own ID is redundant
+			}
+			if owner := a.layouts.AliasOwner(alias, id); owner != "" {
+				return api.UpdateLayout400JSONResponse{Code: 400, Error: fmt.Sprintf("alias %q is already used by layout %q", alias, owner)}, nil
+			}
+			seen[alias] = true
+			cleaned = append(cleaned, alias)
+		}
+		request.Body.Aliases = &cleaned
+	}
+
+	if request.Body.Name != nil {
+		trimmed := strings.TrimSpace(*request.Body.Name)
+		if trimmed == "" {
+			return api.UpdateLayout400JSONResponse{Code: 400, Error: "name cannot be empty"}, nil
+		}
+		request.Body.Name = &trimmed
+	}
+
+	layout, _ := a.layouts.UpdateMeta(id, request.Body.Name, request.Body.Emoji, request.Body.Aliases)
+
+	if err := a.saveLayouts(); err != nil {
+		log.Printf("Failed to save layouts: %v", err)
+		return api.UpdateLayout500JSONResponse{Code: 500, Error: "failed to save layout"}, nil
+	}
+
+	log.Printf("Updated layout: %s", id)
+	return api.UpdateLayout200JSONResponse{
+		Success: true,
+		Layout:  &layout,
+	}, nil
+}
+
 // GetMonitors implements api.StrictServerInterface
 func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
 	monitors, err := a.displayMgr.ListMonitors()

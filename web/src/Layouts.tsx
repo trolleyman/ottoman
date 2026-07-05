@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { Plus, X } from "lucide-react";
 import { computeUniformScale } from "./utils";
 import { LayoutCard } from "./LayoutCard";
+import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 
 export function Layouts() {
@@ -12,6 +14,7 @@ export function Layouts() {
   const switchLayout = useStore((s) => s.switchLayout);
   const removeLayout = useStore((s) => s.removeLayout);
   const saveCurrentLayout = useStore((s) => s.saveCurrentLayout);
+  const updateLayout = useStore((s) => s.updateLayout);
 
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [newLayoutName, setNewLayoutName] = useState("");
@@ -25,22 +28,20 @@ export function Layouts() {
   };
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          Layouts
-          {loading && layouts.length > 0 && (
-            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          )}
-        </h2>
+    <Section
+      title="Layouts"
+      loading={loading && layouts.length > 0}
+      actions={
         <button
           onClick={() => setShowSaveForm(!showSaveForm)}
-          className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors border border-zinc-700 cursor-pointer text-lg leading-none"
+          title={showSaveForm ? "Cancel" : "Save current layout"}
+          aria-label={showSaveForm ? "Cancel" : "Save current layout"}
+          className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors border border-zinc-700 cursor-pointer"
         >
-          {showSaveForm ? "\u00d7" : "+"}
+          {showSaveForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
         </button>
-      </div>
-
+      }
+    >
       {showSaveForm && (
         <div className="mb-6 p-4 rounded-xl border border-zinc-700 bg-zinc-800/50 flex flex-col sm:flex-row gap-3 items-end sm:items-center">
           <div className="flex-1 w-full">
@@ -74,11 +75,11 @@ export function Layouts() {
       )}
 
       {loading && layouts.length === 0 && !error ? (
-        <div className="text-zinc-500 text-sm">Loading layouts...</div>
+        <SectionState>Loading layouts…</SectionState>
       ) : error ? (
-        <div className="text-red-400 text-sm">{error}</div>
+        <SectionState>{error}</SectionState>
       ) : layouts.length === 0 ? (
-        <div className="text-zinc-500 text-sm">No layouts found.</div>
+        <SectionState>No layouts saved yet.</SectionState>
       ) : (() => {
         const layoutScale = computeUniformScale(layouts, 500, 300);
         return (
@@ -92,11 +93,12 @@ export function Layouts() {
                 scale={layoutScale}
                 onClick={() => void switchLayout(l.id)}
                 onDelete={() => void removeLayout(l.id)}
+                onUpdate={(changes) => updateLayout(l.id, changes)}
               />
             ))}
           </div>
         );
       })()}
-    </section>
+    </Section>
   );
 }
