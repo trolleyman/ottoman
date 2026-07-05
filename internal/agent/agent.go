@@ -804,7 +804,7 @@ func (w *logResponseWriter) WriteHeader(code int) {
 func (a *Agent) Start() error {
 	a.server = &http.Server{
 		Addr:         a.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(a.router),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(a.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

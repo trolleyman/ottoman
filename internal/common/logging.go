@@ -28,6 +28,24 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// HealthCORS adds a permissive CORS header to the unauthenticated /health
+// endpoint. The SPA (served from e.g. ottoman.local) probes the desktop's LAN
+// IP directly at /health to decide whether to redirect onto the local network;
+// that fetch is cross-origin, so without this header the browser blocks the
+// response even though the server answers 200.
+func HealthCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 type logResponseWriter struct {
 	http.ResponseWriter
 	status int

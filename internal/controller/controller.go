@@ -556,7 +556,7 @@ func Run(config *config.ControllerConfig) error {
 func (c *Controller) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(c.router),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(c.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
