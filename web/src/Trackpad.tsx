@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Settings, X } from "lucide-react";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage } from "./api";
@@ -640,9 +641,14 @@ export function Trackpad({
         <div className="relative" ref={settingsRef}>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
+            title={showSettings ? "Close settings" : "Trackpad settings"}
+            aria-label={showSettings ? "Close settings" : "Trackpad settings"}
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors border cursor-pointer ${showSettings
+              ? "bg-zinc-700 border-zinc-600 text-zinc-100"
+              : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300"
+              }`}
           >
-            {showSettings ? "Close" : "Settings"}
+            {showSettings ? <X className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
           </button>
           {showSettings && (
             <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-20 flex flex-col gap-4">

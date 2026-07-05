@@ -409,6 +409,38 @@ func (c *Controller) RemoveLayout(ctx context.Context, request api.RemoveLayoutR
 	})
 }
 
+// UpdateLayout implements api.StrictServerInterface
+func (c *Controller) UpdateLayout(ctx context.Context, request api.UpdateLayoutRequestObject) (api.UpdateLayoutResponseObject, error) {
+	body, _ := json.Marshal(request.Body)
+	return proxyRequest(ctx, c, "POST", "/api/layouts/update", body, func(resp *http.Response) (api.UpdateLayoutResponseObject, error) {
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var result api.UpdateLayoutResponse
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return nil, err
+			}
+			return api.UpdateLayout200JSONResponse(result), nil
+		case http.StatusBadRequest:
+			// Preserve the agent's message (e.g. an alias conflict) so the UI can
+			// tell the user why the update was rejected.
+			msg := "Bad Request"
+			var e api.ErrorResponse
+			if json.NewDecoder(resp.Body).Decode(&e) == nil && e.Error != "" {
+				msg = e.Error
+			}
+			return api.UpdateLayout400JSONResponse{Code: resp.StatusCode, Error: msg}, nil
+		case http.StatusUnauthorized:
+			return api.UpdateLayout401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
+		case http.StatusNotFound:
+			return api.UpdateLayout404JSONResponse{Code: resp.StatusCode, Error: "Layout not found"}, nil
+		case http.StatusInternalServerError:
+			return api.UpdateLayout500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+		default:
+			return api.UpdateLayout502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
+		}
+	})
+}
+
 // Shutdown implements api.StrictServerInterface
 func (c *Controller) Shutdown(ctx context.Context, request api.ShutdownRequestObject) (api.ShutdownResponseObject, error) {
 	return proxyRequest(ctx, c, "POST", "/api/shutdown", nil, func(resp *http.Response) (api.ShutdownResponseObject, error) {
