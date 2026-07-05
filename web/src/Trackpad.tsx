@@ -382,7 +382,7 @@ function TouchArea({
       document.removeEventListener("pointerlockchange", handlePointerLockChange);
       if (document.pointerLockElement) document.exitPointerLock();
     };
-  }, [connected, send]);
+  }, [connected, send, settings.cursorSensitivity]);
 
   // Keyboard capture on the trackpad div
   useEffect(() => {
@@ -427,7 +427,7 @@ function TouchArea({
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [connected, send]);
+  }, [connected, send, settings.scrollSensitivity]);
 
   // When the mobile keyboard opens/closes, re-scroll the trackpad into view
   useEffect(() => {

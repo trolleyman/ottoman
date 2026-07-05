@@ -32,7 +32,8 @@ export default function App() {
     void refreshAll(false);
     startPolling();
     return () => stopPolling();
-  }, [authed]);
+    // refreshAll/startPolling/stopPolling are stable Zustand actions.
+  }, [authed, refreshAll, startPolling, stopPolling]);
 
   // Auth check pending
   if (authed === null) {
