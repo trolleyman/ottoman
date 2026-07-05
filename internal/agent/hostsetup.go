@@ -41,21 +41,36 @@ const (
 )
 
 // lockOnLoginScript locks the GNOME screen after autologin so the desktop stays
-// password-protected while the agent runs behind the lock. It retries because
-// GNOME's screensaver may not answer the bus the instant autostart fires.
+// password-protected while the agent runs behind the lock.
+//
+// GNOME's ScreenSaver interface may not be on the bus the instant autostart
+// fires, so we wait for it rather than poll on a timer: `gdbus wait` blocks
+// until the name is owned (i.e. the shell is ready) and then we lock once, so
+// the lock fires the moment it can rather than after an arbitrary delay. The
+// --timeout is only a hang backstop. On glib too old for `gdbus wait` (<2.72)
+// we fall back to a bounded retry — still preferring "keep trying" over
+// leaving the screen unlocked.
 const lockOnLoginScript = `#!/bin/sh
 # Installed by ottoman. Locks the GNOME screen right after autologin so the
 # desktop stays password-protected while the ottoman agent runs behind it.
-for i in $(seq 1 15); do
-	if gdbus call --session \
+lock() {
+	gdbus call --session \
 		--dest org.gnome.ScreenSaver \
 		--object-path /org/gnome/ScreenSaver \
-		--method org.gnome.ScreenSaver.Lock >/dev/null 2>&1; then
-		exit 0
-	fi
-	sleep 1
-done
-exit 0
+		--method org.gnome.ScreenSaver.Lock >/dev/null 2>&1
+}
+
+if gdbus wait --session --timeout 120 org.gnome.ScreenSaver 2>/dev/null; then
+	lock
+else
+	# Old glib without "gdbus wait", or the name never appeared: keep trying.
+	i=0
+	while [ "$i" -lt 120 ]; do
+		lock && break
+		i=$((i + 1))
+		sleep 1
+	done
+fi
 `
 
 // lockOnLoginDesktop is the autostart entry that runs lockOnLoginScript. The
