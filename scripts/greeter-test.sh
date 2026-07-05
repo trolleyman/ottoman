@@ -136,8 +136,12 @@ cmd_setup() {
 	echo -n "$layout" | $SUDO tee "$LAYOUTFILE" >/dev/null
 
 	echo "==> backing up the greeter's monitors.xml (if any)"
-	if [ -f "$GDM_MON" ]; then
-		$SUDO cp -n "$GDM_MON" "$GDM_MON_BAK" || true
+	if $SUDO test -f "$GDM_MON_BAK"; then
+		# Never clobber an existing backup — re-running setup must keep the
+		# pristine original, not overwrite it with an already-tested state.
+		echo "    backup already exists, keeping it: $GDM_MON_BAK"
+	elif [ -f "$GDM_MON" ]; then
+		$SUDO cp "$GDM_MON" "$GDM_MON_BAK"
 		echo "    backup: $GDM_MON_BAK"
 	else
 		echo "    (none yet at $GDM_MON)"
