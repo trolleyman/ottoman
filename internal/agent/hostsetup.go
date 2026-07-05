@@ -84,6 +84,95 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 `
 
+const (
+	// greeterRoot is a gdm-readable copy of the user's ottoman config + layouts.
+	// The login-screen agent runs as gdm (which can't read the user's home), so
+	// its HOME/XDG point here. Owned <user>:gdm, group-readable, setgid dirs so
+	// the user's agent can keep it in sync and gdm can still read it.
+	greeterRoot    = "/var/lib/ottoman/greeter"
+	greeterBin     = "/usr/local/bin/ottoman"
+	greeterDesktop = "/usr/share/gdm/greeter/autostart/ottoman-greeter.desktop"
+)
+
+// greeterDesktopContent is the greeter autostart entry. Exec overrides
+// HOME/XDG so the agent reads the gdm-readable copy under greeterRoot.
+func greeterDesktopContent() string {
+	return fmt.Sprintf(`[Desktop Entry]
+Type=Application
+Name=Ottoman login-screen layout agent
+Exec=env HOME=%[1]s XDG_CONFIG_HOME=%[1]s/.config XDG_DATA_HOME=%[1]s/.local/share %[2]s agent run --greeter
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+`, greeterRoot, greeterBin)
+}
+
+// installGreeter deploys the login-screen layout agent: a system copy of the
+// ottoman binary, a gdm-readable copy of the user's config + layouts under
+// greeterRoot, and the greeter autostart entry that launches it. Returns
+// whether it changed anything. Must run as root.
+func installGreeter(username string) (bool, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return false, errors.Wrapf(err, "no such user %q", username)
+	}
+	if _, err := user.LookupGroup("gdm"); err != nil {
+		return false, errors.New("no 'gdm' group found — is GDM installed?")
+	}
+
+	// System copy of the binary (gdm can't exec the user's ~/.local/bin).
+	self, err := os.Executable()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to find own executable")
+	}
+	if err := run("install", "-Dm0755", self, greeterBin); err != nil {
+		return false, errors.Wrap(err, "failed to install greeter binary")
+	}
+	fmt.Printf("  installed %s\n", greeterBin)
+
+	// gdm-readable copy of config + layouts.
+	cfgDst := filepath.Join(greeterRoot, ".config", "ottoman")
+	dataDst := filepath.Join(greeterRoot, ".local", "share", "ottoman")
+	if err := os.MkdirAll(cfgDst, 0750); err != nil {
+		return false, errors.Wrapf(err, "failed to create %s", cfgDst)
+	}
+	if err := os.MkdirAll(dataDst, 0750); err != nil {
+		return false, errors.Wrapf(err, "failed to create %s", dataDst)
+	}
+	copyTreeInto(filepath.Join(u.HomeDir, ".config", "ottoman"), cfgDst)
+	copyTreeInto(filepath.Join(u.HomeDir, ".local", "share", "ottoman"), dataDst)
+
+	// Owner <user>:gdm; setgid dirs so files the user's agent later mirrors in
+	// inherit the gdm group and stay group-readable; nothing readable by others.
+	if err := run("chown", "-R", username+":gdm", greeterRoot); err != nil {
+		return false, errors.Wrap(err, "failed to chown greeter dir")
+	}
+	if err := run("find", greeterRoot, "-type", "d", "-exec", "chmod", "2750", "{}", "+"); err != nil {
+		return false, errors.Wrap(err, "failed to chmod greeter dirs")
+	}
+	if err := run("find", greeterRoot, "-type", "f", "-exec", "chmod", "0640", "{}", "+"); err != nil {
+		return false, errors.Wrap(err, "failed to chmod greeter files")
+	}
+	fmt.Printf("  populated %s (owner %s, group gdm)\n", greeterRoot, username)
+
+	// Greeter autostart entry.
+	changed, err := writeFileIfChanged(greeterDesktop, []byte(greeterDesktopContent()), 0644)
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+// copyTreeInto copies the contents of src into dst (best-effort; a missing src
+// is fine — the user may simply have no config/layouts yet).
+func copyTreeInto(src, dst string) {
+	if !fileExists(src) {
+		return
+	}
+	if err := run("cp", "-a", src+"/.", dst); err != nil {
+		fmt.Printf("  note: could not copy %s: %v\n", src, err)
+	}
+}
+
 // grubSudoersContent is the NOPASSWD rule allowing the agent to set a one-shot
 // GRUB next-boot entry (covers both grub-reboot and grub2-reboot paths).
 func grubSudoersContent(username string) string {
@@ -93,8 +182,9 @@ func grubSudoersContent(username string) string {
 // HostSetup provisions the root-only host prerequisites for username. If not
 // already running as root it re-execs itself once via sudo (so sudo can prompt
 // on the terminal); as root it applies each step directly in Go. Passing an
-// empty username resolves it from SUDO_USER / USER.
-func HostSetup(username string) error {
+// empty username resolves it from SUDO_USER / USER. When greeter is true it also
+// installs the GDM login-screen layout agent.
+func HostSetup(username string, greeter bool) error {
 	if username == "" {
 		username = setupTargetUser()
 	}
@@ -103,19 +193,23 @@ func HostSetup(username string) error {
 	}
 
 	if os.Geteuid() != 0 {
-		return elevateHostSetup(username)
+		return elevateHostSetup(username, greeter)
 	}
-	return applyHostSetup(username)
+	return applyHostSetup(username, greeter)
 }
 
 // elevateHostSetup re-runs `ottoman agent host-setup --user <name>` under sudo.
-func elevateHostSetup(username string) error {
+func elevateHostSetup(username string, greeter bool) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return errors.Wrap(err, "failed to find own executable")
 	}
 	fmt.Println("Requesting root via sudo to apply host setup...")
-	cmd := exec.Command("sudo", exe, "agent", "host-setup", "--user", username)
+	args := []string{exe, "agent", "host-setup", "--user", username}
+	if greeter {
+		args = append(args, "--greeter")
+	}
+	cmd := exec.Command("sudo", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -126,7 +220,7 @@ func elevateHostSetup(username string) error {
 }
 
 // applyHostSetup performs the privileged work. It must run as root.
-func applyHostSetup(username string) error {
+func applyHostSetup(username string, greeter bool) error {
 	if os.Geteuid() != 0 {
 		return errors.New("applyHostSetup must run as root")
 	}
@@ -198,6 +292,16 @@ func applyHostSetup(username string) error {
 		changed = true
 	}
 
+	// --- GDM login-screen layout agent (opt-in) ---
+	if greeter {
+		fmt.Println("[greeter] GDM login-screen layout agent (ottoman agent run --greeter)")
+		if c, err := installGreeter(username); err != nil {
+			return err
+		} else if c {
+			changed = true
+		}
+	}
+
 	// Reload udev only if a rule changed.
 	if udevChanged {
 		fmt.Println("[udev] reloading rules")
@@ -217,6 +321,11 @@ func applyHostSetup(username string) error {
 			fmt.Println("Autologin enabled: the machine now boots straight into your session (locked).")
 			fmt.Println("Reboot to test. To undo, restore the backed-up GDM config and delete")
 			fmt.Printf("  ~/%s\n", autostartLockRel)
+		}
+		if greeter {
+			fmt.Println("Login-screen layout agent installed. Log out to test it on the GDM")
+			fmt.Println("greeter. Re-run with --greeter after updating ottoman to refresh the")
+			fmt.Println("system binary copy.")
 		}
 	}
 	return nil
@@ -631,26 +740,56 @@ func setUpLinuxHost() {
 		fmt.Printf("  [%-11s] %s  (%s)\n", mark, c.label, c.hint)
 	}
 
-	if pending == 0 {
+	greeterInstalled := fileExists(greeterDesktop)
+	fmt.Printf("  [%-11s] %s  (%s)\n", markDone(greeterInstalled), "GDM login-screen layout agent", "switch layouts on the login screen (opt-in)")
+
+	if pending == 0 && greeterInstalled {
 		fmt.Println("\nEverything is already configured. Nothing to do.")
 		return
 	}
 
 	if !stdinIsTerminal() {
-		fmt.Println("\n  Run:  sudo ottoman agent host-setup")
-		fmt.Println("Then log out and back in (group changes) and restart the agent.")
+		if pending > 0 {
+			fmt.Println("\n  Run:  sudo ottoman agent host-setup")
+			fmt.Println("Then log out and back in (group changes) and restart the agent.")
+		}
+		if !greeterInstalled {
+			fmt.Println("  Login-screen layouts:  sudo ottoman agent host-setup --greeter")
+		}
 		return
 	}
 
-	if !promptYesNo(fmt.Sprintf("\nApply host setup now with sudo? (%d item(s) pending) [y/N] ", pending)) {
-		fmt.Println("\nSkipped. Apply it later with:  sudo ottoman agent host-setup")
+	// Base setup (uinput/i2c/grub/autologin) — one prompt.
+	applyBase := false
+	if pending > 0 {
+		applyBase = promptYesNo(fmt.Sprintf("\nApply host setup now with sudo? (%d item(s) pending) [y/N] ", pending))
+	}
+
+	// Login-screen layout agent — separate opt-in prompt.
+	installGreeter := false
+	if !greeterInstalled {
+		fmt.Println("\nOptional: a GDM login-screen agent lets you switch display layouts on")
+		fmt.Println("the login screen and mirrors your session's layout there (runs as gdm).")
+		installGreeter = promptYesNo("Install the login-screen layout agent? [y/N] ")
+	}
+
+	if !applyBase && !installGreeter {
+		fmt.Println("\nSkipped. Apply it later with:  sudo ottoman agent host-setup [--greeter]")
 		return
 	}
 	fmt.Println()
-	if err := HostSetup(username); err != nil {
+	if err := HostSetup(username, installGreeter); err != nil {
 		fmt.Printf("\nHost setup did not complete: %v\n", err)
 		fmt.Println("You can retry with:  sudo ottoman agent host-setup")
 	}
+}
+
+// markDone returns the checklist status label for a boolean state.
+func markDone(done bool) string {
+	if done {
+		return "ok"
+	}
+	return "needs setup"
 }
 
 // userGroups returns the set of groups the given user belongs to.

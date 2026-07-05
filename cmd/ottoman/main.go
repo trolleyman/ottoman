@@ -184,12 +184,13 @@ var agentUninstallCmd = &cobra.Command{
 }
 
 var hostSetupUser string
+var hostSetupGreeter bool
 
 var agentHostSetupCmd = &cobra.Command{
 	Use:   "host-setup",
 	Short: "Grant one-time root host access (uinput, i2c, grub-reboot, GDM autologin); self-elevates via sudo",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return agent.HostSetup(hostSetupUser)
+		return agent.HostSetup(hostSetupUser, hostSetupGreeter)
 	},
 }
 
@@ -836,6 +837,7 @@ func init() {
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
 	agentHostSetupCmd.Flags().StringVar(&hostSetupUser, "user", "", "user to grant access to (default: invoking user)")
+	agentHostSetupCmd.Flags().BoolVar(&hostSetupGreeter, "greeter", false, "also install the GDM login-screen layout agent")
 	agentCmd.AddCommand(agentHostSetupCmd)
 
 	// Monitor commands

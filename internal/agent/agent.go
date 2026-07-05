@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -866,7 +867,11 @@ func slugify(input string) string {
 // file is deliberately left untouched so that redeploying the config template
 // can never clobber saved layouts.
 func (a *Agent) saveLayouts() error {
-	return a.layoutStore.Save(a.layouts.ToSlice())
+	if err := a.layoutStore.Save(a.layouts.ToSlice()); err != nil {
+		return err
+	}
+	a.mirrorToGreeter()
+	return nil
 }
 
 // recordCurrentLayout persists the last-applied layout ID so the greeter agent
@@ -879,4 +884,47 @@ func (a *Agent) recordCurrentLayout(id string) {
 	if err := store.SaveCurrentLayout(id); err != nil {
 		log.Printf("Warning: failed to record current layout: %v", err)
 	}
+	a.mirrorToGreeter()
+}
+
+// greeterDataDir is the gdm-readable copy the login-screen agent reads its
+// layouts + current-layout from (see internal/agent/hostsetup.go greeterRoot).
+const greeterDataDir = "/var/lib/ottoman/greeter/.local/share/ottoman"
+
+// mirrorToGreeter keeps the greeter's copy of layouts + current-layout in sync
+// with the user's, so the login screen reflects the latest state. No-op unless
+// the greeter agent is installed. Best-effort; failures are logged, not fatal.
+func (a *Agent) mirrorToGreeter() {
+	if a.greeter {
+		return
+	}
+	if _, err := os.Stat(greeterDataDir); err != nil {
+		return // greeter agent not installed
+	}
+	for _, name := range []string{"layouts.json", "current-layout"} {
+		if err := copyFileInto(filepath.Join(store.DataDir(), name), filepath.Join(greeterDataDir, name)); err != nil {
+			log.Printf("Warning: failed to mirror %s to greeter: %v", name, err)
+		}
+	}
+}
+
+// copyFileInto copies src to dst atomically (temp + rename in dst's dir, so the
+// group/setgid inheritance of that dir applies). A missing src is not an error.
+func copyFileInto(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, 0640); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
