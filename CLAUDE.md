@@ -130,9 +130,11 @@ Runtime data (layouts, monitor registry, TV pairing key) lives in the XDG data
 dir (`~/.local/share/ottoman/`), separate from the config file, so redeploying
 config never clobbers it. Linux backends: displays via GNOME Mutter D-Bus
 (Wayland) with an xrandr fallback; input via `/dev/uinput`; audio via `wpctl`;
-brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot) is
-written to `~/.config/ottoman/ottoman-host-setup.sh` by `agent install`. A GNOME
-Quick Settings extension lives in `gnome-extension/`.
+brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot, plus
+optional GDM autologin-into-a-locked-screen so the agent runs after Wake-on-LAN)
+is applied natively as root by `ottoman agent host-setup` (self-elevates via
+sudo), offered interactively at the end of `agent install`. A GNOME Quick
+Settings extension lives in `gnome-extension/`.
 
 # Debug
 When running you may encounter `unsupported OS: MINGW64_NT-10.0-26200` - ignore this.

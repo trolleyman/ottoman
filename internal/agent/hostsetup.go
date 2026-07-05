@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -26,8 +27,47 @@ const (
 	grubSudoers      = "/etc/sudoers.d/ottoman-grub"
 	grubDefaults     = "/etc/default/grub"
 
+	// GDM config lives at different paths depending on distro (Debian/Ubuntu
+	// package the daemon as "gdm3"; Fedora/Arch/openSUSE as "gdm").
+	gdmConfDebian = "/etc/gdm3/custom.conf"
+	gdmConfOther  = "/etc/gdm/custom.conf"
+
+	// autostartLockRel is the per-user autostart entry (relative to $HOME) that
+	// locks the screen right after autologin.
+	autostartLockRel = ".config/autostart/ottoman-lock.desktop"
+	lockScriptRel    = ".config/ottoman/lock-on-login.sh"
+
 	uinputRuleContent = "KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\", OPTIONS+=\"static_node=uinput\"\n"
 )
+
+// lockOnLoginScript locks the GNOME screen after autologin so the desktop stays
+// password-protected while the agent runs behind the lock. It retries because
+// GNOME's screensaver may not answer the bus the instant autostart fires.
+const lockOnLoginScript = `#!/bin/sh
+# Installed by ottoman. Locks the GNOME screen right after autologin so the
+# desktop stays password-protected while the ottoman agent runs behind it.
+for i in $(seq 1 15); do
+	if gdbus call --session \
+		--dest org.gnome.ScreenSaver \
+		--object-path /org/gnome/ScreenSaver \
+		--method org.gnome.ScreenSaver.Lock >/dev/null 2>&1; then
+		exit 0
+	fi
+	sleep 1
+done
+exit 0
+`
+
+// lockOnLoginDesktop is the autostart entry that runs lockOnLoginScript. The
+// %s is the absolute path to the installed script.
+const lockOnLoginDesktop = `[Desktop Entry]
+Type=Application
+Name=Ottoman Lock On Login
+Comment=Lock the screen after autologin so the desktop stays password-protected
+Exec=%s
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+`
 
 // grubSudoersContent is the NOPASSWD rule allowing the agent to set a one-shot
 // GRUB next-boot entry (covers both grub-reboot and grub2-reboot paths).
@@ -80,7 +120,7 @@ func applyHostSetup(username string) error {
 	}
 
 	fmt.Printf("== Ottoman host setup for %s ==\n", username)
-	var changed, relogin bool
+	var changed, relogin, autologin bool
 
 	// --- uinput: virtual mouse/keyboard on Wayland ---
 	fmt.Println("[uinput] virtual input device (Wayland mouse/keyboard)")
@@ -127,6 +167,22 @@ func applyHostSetup(username string) error {
 	}
 	warnIfGrubDefaultNotSaved()
 
+	// --- GDM autologin into a locked screen (agent works after Wake-on-LAN) ---
+	// Autologin starts a graphical session at boot so the agent's display/audio
+	// backends come up without a manual login; the lock-on-login autostart then
+	// locks it immediately, so the desktop still needs the password to be used.
+	fmt.Println("[autologin] GDM automatic login into a locked screen")
+	if c, err := enableGdmAutologin(username); err != nil {
+		return err
+	} else if c {
+		changed, autologin = true, true
+	}
+	if c, err := installAutostartLock(username); err != nil {
+		return err
+	} else if c {
+		changed = true
+	}
+
 	// Reload udev only if a rule changed.
 	if udevChanged {
 		fmt.Println("[udev] reloading rules")
@@ -141,6 +197,11 @@ func applyHostSetup(username string) error {
 		fmt.Println("Host setup complete.")
 		if relogin {
 			fmt.Println("Log out and back in (or reboot) for new group memberships to take effect.")
+		}
+		if autologin {
+			fmt.Println("Autologin enabled: the machine now boots straight into your session (locked).")
+			fmt.Println("Reboot to test. To undo, restore the backed-up GDM config and delete")
+			fmt.Printf("  ~/%s\n", autostartLockRel)
 		}
 	}
 	return nil
@@ -293,6 +354,207 @@ func warnIfGrubDefaultNotSaved() {
 	}
 }
 
+// gdmConfigPath returns the GDM custom.conf path present on this system, or ""
+// if neither known location exists (e.g. a non-GDM display manager).
+func gdmConfigPath() string {
+	for _, p := range []string{gdmConfDebian, gdmConfOther} {
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
+// enableGdmAutologin turns on GDM automatic login for username by editing the
+// [daemon] section of custom.conf in place, preserving every other setting. It
+// backs the file up once before the first change. Returns whether it changed
+// anything; if no GDM config is found it warns and makes no change.
+func enableGdmAutologin(username string) (bool, error) {
+	path := gdmConfigPath()
+	if path == "" {
+		fmt.Printf("  note: no GDM config found (%s or %s)\n", gdmConfDebian, gdmConfOther)
+		fmt.Println("        skipping autologin — is this system using GDM?")
+		return false, nil
+	}
+	orig, err := os.ReadFile(path)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to read %s", path)
+	}
+	updated := setGdmAutologin(string(orig), username)
+	if updated == string(orig) {
+		return false, nil
+	}
+	backup := path + ".ottoman-bak"
+	if !fileExists(backup) {
+		if err := atomicWrite(backup, orig, 0644); err != nil {
+			return false, errors.Wrap(err, "failed to back up GDM config")
+		}
+		fmt.Printf("  backed up %s -> %s\n", path, backup)
+	}
+	if err := atomicWrite(path, []byte(updated), 0644); err != nil {
+		return false, err
+	}
+	fmt.Printf("  enabled autologin for %s in %s\n", username, path)
+	return true, nil
+}
+
+// gdmAutologinEnabled reports whether GDM autologin is already configured for
+// username (i.e. applying setGdmAutologin would be a no-op).
+func gdmAutologinEnabled(username string) bool {
+	path := gdmConfigPath()
+	if path == "" {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return string(data) == setGdmAutologin(string(data), username)
+}
+
+// setGdmAutologin returns content with AutomaticLoginEnable=true and
+// AutomaticLogin=<username> set inside the [daemon] section, preserving all
+// other lines. Existing copies of those keys (including commented-out ones) are
+// replaced in place; missing keys are inserted into [daemon], and the section
+// is created if it is absent.
+func setGdmAutologin(content, username string) string {
+	want := map[string]string{
+		"AutomaticLoginEnable": "true",
+		"AutomaticLogin":       username,
+	}
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines)+4)
+	section := ""
+	seen := map[string]bool{}
+	daemonSeen := false
+
+	flushMissing := func() {
+		if !seen["AutomaticLoginEnable"] {
+			out = append(out, "AutomaticLoginEnable="+want["AutomaticLoginEnable"])
+			seen["AutomaticLoginEnable"] = true
+		}
+		if !seen["AutomaticLogin"] {
+			out = append(out, "AutomaticLogin="+want["AutomaticLogin"])
+			seen["AutomaticLogin"] = true
+		}
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if section == "daemon" {
+				flushMissing() // finish [daemon] before starting the next section
+			}
+			section = strings.ToLower(strings.TrimSpace(trimmed[1 : len(trimmed)-1]))
+			if section == "daemon" {
+				daemonSeen = true
+			}
+			out = append(out, line)
+			continue
+		}
+		if section == "daemon" {
+			if key := matchedDaemonKey(trimmed); key != "" {
+				if !seen[key] {
+					out = append(out, key+"="+want[key])
+					seen[key] = true
+				}
+				continue // drop the original (and any duplicate/commented copies)
+			}
+		}
+		out = append(out, line)
+	}
+	if section == "daemon" {
+		flushMissing()
+	}
+	if !daemonSeen {
+		out = append(out, "[daemon]", "AutomaticLoginEnable="+want["AutomaticLoginEnable"], "AutomaticLogin="+want["AutomaticLogin"])
+	}
+	return strings.Join(out, "\n")
+}
+
+// matchedDaemonKey returns the canonical autologin key a line sets (ignoring a
+// leading comment marker), or "" if it sets neither. "AutomaticLoginEnable" is
+// checked first since "AutomaticLogin" is a prefix of it.
+func matchedDaemonKey(line string) string {
+	s := strings.TrimLeft(strings.TrimSpace(line), "#; ")
+	for _, k := range []string{"AutomaticLoginEnable", "AutomaticLogin"} {
+		if rest := strings.TrimSpace(strings.TrimPrefix(s, k)); strings.HasPrefix(s, k) && strings.HasPrefix(rest, "=") {
+			return k
+		}
+	}
+	return ""
+}
+
+// installAutostartLock installs the per-user lock-on-login script and autostart
+// entry into username's home, owned by that user. Returns whether it changed
+// anything. Runs as root, so every file/dir it creates is chowned back.
+func installAutostartLock(username string) (bool, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return false, errors.Wrapf(err, "no such user %q", username)
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return false, errors.Wrapf(err, "bad uid for %s", username)
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return false, errors.Wrapf(err, "bad gid for %s", username)
+	}
+	if u.HomeDir == "" {
+		return false, errors.Errorf("no home directory for %s", username)
+	}
+
+	scriptPath := filepath.Join(u.HomeDir, lockScriptRel)
+	desktopPath := filepath.Join(u.HomeDir, autostartLockRel)
+	changed := false
+
+	if err := ensureUserDir(filepath.Dir(scriptPath), uid, gid); err != nil {
+		return false, err
+	}
+	if c, err := writeFileIfChanged(scriptPath, []byte(lockOnLoginScript), 0755); err != nil {
+		return false, err
+	} else if c {
+		changed = true
+	}
+	if err := os.Chown(scriptPath, uid, gid); err != nil {
+		return false, errors.Wrapf(err, "failed to chown %s", scriptPath)
+	}
+
+	if err := ensureUserDir(filepath.Dir(desktopPath), uid, gid); err != nil {
+		return false, err
+	}
+	if c, err := writeFileIfChanged(desktopPath, []byte(fmt.Sprintf(lockOnLoginDesktop, scriptPath)), 0644); err != nil {
+		return false, err
+	} else if c {
+		changed = true
+	}
+	if err := os.Chown(desktopPath, uid, gid); err != nil {
+		return false, errors.Wrapf(err, "failed to chown %s", desktopPath)
+	}
+	return changed, nil
+}
+
+// ensureUserDir creates dir (if needed) and chowns it to uid:gid so files the
+// root process writes under it end up owned by the target user.
+func ensureUserDir(dir string, uid, gid int) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return errors.Wrapf(err, "failed to create %s", dir)
+	}
+	if err := os.Chown(dir, uid, gid); err != nil {
+		return errors.Wrapf(err, "failed to chown %s", dir)
+	}
+	return nil
+}
+
+// userHome returns username's home directory, or "" if it can't be resolved.
+func userHome(username string) string {
+	if u, err := user.Lookup(username); err == nil {
+		return u.HomeDir
+	}
+	return ""
+}
+
 // run executes a command, surfacing combined output on failure.
 func run(name string, args ...string) error {
 	out, err := exec.Command(name, args...).CombinedOutput()
@@ -318,10 +580,12 @@ type hostCheck struct {
 // installer can tell the user what (if anything) still needs doing.
 func checkLinuxHostSetup(username string) []hostCheck {
 	groups := userGroups(username)
+	autologinDone := gdmAutologinEnabled(username) && fileExists(filepath.Join(userHome(username), autostartLockRel))
 	return []hostCheck{
 		{"input group + uinput udev rule", "mouse/keyboard control on Wayland", groups["input"] && fileExists(uinputUdevRule)},
 		{"i2c group + i2c-dev module", "monitor brightness/power over DDC/CI", groups["i2c"] && fileExists(i2cModuleConf)},
 		{"grub-reboot sudoers rule", "remote 'boot into Windows'", fileExists(grubSudoers)},
+		{"GDM autologin + lock-on-login", "agent works after Wake-on-LAN; desktop stays locked", autologinDone},
 	}
 }
 
