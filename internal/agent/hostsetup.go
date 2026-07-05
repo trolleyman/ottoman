@@ -141,6 +141,16 @@ func installGreeter(username string) (bool, error) {
 	copyTreeInto(filepath.Join(u.HomeDir, ".config", "ottoman"), cfgDst)
 	copyTreeInto(filepath.Join(u.HomeDir, ".local", "share", "ottoman"), dataDst)
 
+	// The greeter dir is read-only to gdm, so the agent must never need to write
+	// during load. Ensure layouts.json exists so its migrate-on-missing path (a
+	// write) can't trigger; an empty store is fine — the user's agent mirrors the
+	// real layouts in on the next switch.
+	if lj := filepath.Join(dataDst, "layouts.json"); !fileExists(lj) {
+		if err := os.WriteFile(lj, []byte("[]\n"), 0640); err != nil {
+			return false, errors.Wrapf(err, "failed to seed %s", lj)
+		}
+	}
+
 	// Owner <user>:gdm; setgid dirs so files the user's agent later mirrors in
 	// inherit the gdm group and stay group-readable; nothing readable by others.
 	if err := run("chown", "-R", username+":gdm", greeterRoot); err != nil {

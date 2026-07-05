@@ -133,8 +133,14 @@ config never clobbers it. Linux backends: displays via GNOME Mutter D-Bus
 brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot, plus
 optional GDM autologin-into-a-locked-screen so the agent runs after Wake-on-LAN)
 is applied natively as root by `ottoman agent host-setup` (self-elevates via
-sudo), offered interactively at the end of `agent install`. A GNOME Quick
-Settings extension lives in `gnome-extension/`.
+sudo), offered interactively at the end of `agent install`. `host-setup
+--greeter` additionally deploys a **login-screen layout agent**: `ottoman agent
+run --greeter` runs as the `gdm` user against the GDM greeter's own Mutter
+(display/layouts only — input/audio are skipped), so you can switch display
+layouts on the login screen and it mirrors the user's last-used layout there. It
+reads a gdm-readable copy of config + layouts under `/var/lib/ottoman/greeter`
+(owned `<user>:gdm`, setgid, group-readable) that the user's agent keeps in sync.
+A GNOME Quick Settings extension lives in `gnome-extension/`.
 
 # Debug
 When running you may encounter `unsupported OS: MINGW64_NT-10.0-26200` - ignore this.
