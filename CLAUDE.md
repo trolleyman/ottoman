@@ -131,9 +131,8 @@ Runtime data (layouts, monitor registry, TV pairing key) lives in the XDG data
 dir (`~/.local/share/ottoman/`), separate from the config file, so redeploying
 config never clobbers it. Linux backends: displays via GNOME Mutter D-Bus
 (Wayland) with an xrandr fallback; input via `/dev/uinput`; audio via `wpctl`;
-brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot, plus
-optional GDM autologin-into-a-locked-screen so the agent runs after Wake-on-LAN)
-is applied natively as root by `ottoman agent host-setup` (self-elevates via
+brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot) is
+applied natively as root by `ottoman agent host-setup` (self-elevates via
 sudo), offered interactively at the end of `agent install`. `host-setup
 --greeter` additionally deploys a **login-screen layout agent**: `ottoman agent
 run --greeter` runs as the `gdm` user against the GDM greeter's own Mutter

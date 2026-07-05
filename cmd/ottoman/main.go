@@ -188,7 +188,7 @@ var hostSetupGreeter bool
 
 var agentHostSetupCmd = &cobra.Command{
 	Use:   "host-setup",
-	Short: "Grant one-time root host access (uinput, i2c, grub-reboot, GDM autologin); self-elevates via sudo",
+	Short: "Grant one-time root host access (uinput, i2c, grub-reboot); self-elevates via sudo",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return agent.HostSetup(hostSetupUser, hostSetupGreeter)
 	},
