@@ -77,6 +77,10 @@ interface OttomanStore {
   switchLayout: (id: string) => Promise<void>;
   removeLayout: (id: string) => Promise<void>;
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
+  updateLayout: (
+    id: string,
+    changes: { name?: string; emoji?: string; aliases?: string[] },
+  ) => Promise<boolean>;
 
   // ── Power Actions ─────────────────────────────────────
   wake: (target?: "linux" | "windows") => Promise<void>;
@@ -247,7 +251,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
           layoutsError: null,
         });
       } catch {
-        set({ layoutsError: "Failed to load layouts" });
+        set({ layoutsError: "Layouts unavailable — the desktop may be offline." });
       } finally {
         set({ layoutsLoading: false, _inflightLayouts: null });
       }
@@ -270,7 +274,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
           monitorsError: null,
         });
       } catch {
-        set({ monitorsError: "Failed to load monitors" });
+        set({ monitorsError: "Monitors unavailable — the desktop may be offline." });
       } finally {
         set({ monitorsLoading: false, _inflightMonitors: null });
       }
@@ -374,6 +378,40 @@ export const useStore = create<OttomanStore>((set, get) => ({
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save layout");
+    }
+  },
+
+  updateLayout: async (id, changes) => {
+    // Optimistic local update so the edited card settles immediately; a
+    // failure re-fetches to reconcile.
+    set((s) => ({
+      layouts: s.layouts.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              ...(changes.name !== undefined ? { name: changes.name } : {}),
+              ...(changes.emoji !== undefined ? { emoji: changes.emoji } : {}),
+              ...(changes.aliases !== undefined ? { aliases: changes.aliases } : {}),
+            }
+          : l,
+      ),
+    }));
+    try {
+      const data = await client.default.updateLayout({ id, ...changes });
+      if (data.success) {
+        get().fetchLayouts(true);
+        return true;
+      }
+      alert(data.message || "Failed to update layout");
+      get().fetchLayouts(true);
+      return false;
+    } catch (e) {
+      // The generated client throws ApiError with a generic message but keeps the
+      // server's ErrorResponse in `.body` — surface that (e.g. an alias conflict).
+      const body = (e as { body?: { error?: string } })?.body;
+      alert(body?.error || (e instanceof Error ? e.message : "Failed to update layout"));
+      get().fetchLayouts(true);
+      return false;
     }
   },
 

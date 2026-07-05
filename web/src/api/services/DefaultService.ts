@@ -32,6 +32,8 @@ import type { TVPowerRequest } from '../models/TVPowerRequest';
 import type { TVResponse } from '../models/TVResponse';
 import type { TVStateResponse } from '../models/TVStateResponse';
 import type { TVVolumeRequest } from '../models/TVVolumeRequest';
+import type { UpdateLayoutRequest } from '../models/UpdateLayoutRequest';
+import type { UpdateLayoutResponse } from '../models/UpdateLayoutResponse';
 import type { WakeRequest } from '../models/WakeRequest';
 import type { WakeResponse } from '../models/WakeResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
@@ -251,6 +253,29 @@ export class DefaultService {
             mediaType: 'application/json',
             errors: {
                 400: `Bad Request (Invalid body)`,
+                401: `Unauthorized`,
+                404: `Layout not found`,
+                500: `Internal Server Error`,
+                502: `Bad Gateway (Agent unreachable)`,
+            },
+        });
+    }
+    /**
+     * Update layout metadata (name, emoji, aliases)
+     * @param requestBody
+     * @returns UpdateLayoutResponse Success
+     * @throws ApiError
+     */
+    public updateLayout(
+        requestBody?: UpdateLayoutRequest,
+    ): CancelablePromise<UpdateLayoutResponse> {
+        return this.httpRequest.request({
+            method: 'POST',
+            url: '/api/layouts/update',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Bad Request (Invalid body or duplicate alias)`,
                 401: `Unauthorized`,
                 404: `Layout not found`,
                 500: `Internal Server Error`,

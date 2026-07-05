@@ -480,6 +480,28 @@ type TrackpadMessageText struct {
 // TrackpadMessageTextType defines model for TrackpadMessageText.Type.
 type TrackpadMessageTextType string
 
+// UpdateLayoutRequest defines model for UpdateLayoutRequest.
+type UpdateLayoutRequest struct {
+	// Aliases Replacement alias list (optional; unchanged if omitted)
+	Aliases *[]string `json:"aliases,omitempty"`
+
+	// Emoji New emoji (optional; empty string clears it, omitted leaves unchanged)
+	Emoji *string `json:"emoji,omitempty"`
+
+	// Id ID of the layout to update
+	Id string `json:"id"`
+
+	// Name New display name (optional; unchanged if omitted)
+	Name *string `json:"name,omitempty"`
+}
+
+// UpdateLayoutResponse defines model for UpdateLayoutResponse.
+type UpdateLayoutResponse struct {
+	Layout  *Layout `json:"layout,omitempty"`
+	Message *string `json:"message,omitempty"`
+	Success bool    `json:"success"`
+}
+
 // WakeRequest defines model for WakeRequest.
 type WakeRequest struct {
 	// Target linux | windows (optional; default boots the GRUB default)
@@ -509,6 +531,9 @@ type SaveCurrentLayoutJSONRequestBody = SaveLayoutRequest
 
 // SwitchLayoutJSONRequestBody defines body for SwitchLayout for application/json ContentType.
 type SwitchLayoutJSONRequestBody = SwitchLayoutRequest
+
+// UpdateLayoutJSONRequestBody defines body for UpdateLayout for application/json ContentType.
+type UpdateLayoutJSONRequestBody = UpdateLayoutRequest
 
 // SetMonitorBrightnessJSONRequestBody defines body for SetMonitorBrightness for application/json ContentType.
 type SetMonitorBrightnessJSONRequestBody = SetBrightnessRequest
@@ -963,6 +988,9 @@ type ServerInterface interface {
 	// Switch layout
 	// (POST /api/layouts/switch)
 	SwitchLayout(w http.ResponseWriter, r *http.Request)
+	// Update layout metadata (name, emoji, aliases)
+	// (POST /api/layouts/update)
+	UpdateLayout(w http.ResponseWriter, r *http.Request)
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(w http.ResponseWriter, r *http.Request)
@@ -1176,6 +1204,20 @@ func (siw *ServerInterfaceWrapper) SwitchLayout(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SwitchLayout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateLayout operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLayout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateLayout(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1582,6 +1624,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/remove", wrapper.RemoveLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/save-current", wrapper.SaveCurrentLayout)
 	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/switch", wrapper.SwitchLayout)
+	m.HandleFunc("POST "+options.BaseURL+"/api/layouts/update", wrapper.UpdateLayout)
 	m.HandleFunc("GET "+options.BaseURL+"/api/monitors", wrapper.GetMonitors)
 	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/brightness", wrapper.SetMonitorBrightness)
 	m.HandleFunc("POST "+options.BaseURL+"/api/monitors/power", wrapper.SetMonitorPower)
@@ -2063,6 +2106,68 @@ func (response SwitchLayout500JSONResponse) VisitSwitchLayoutResponse(w http.Res
 type SwitchLayout502JSONResponse ErrorResponse
 
 func (response SwitchLayout502JSONResponse) VisitSwitchLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayoutRequestObject struct {
+	Body *UpdateLayoutJSONRequestBody
+}
+
+type UpdateLayoutResponseObject interface {
+	VisitUpdateLayoutResponse(w http.ResponseWriter) error
+}
+
+type UpdateLayout200JSONResponse UpdateLayoutResponse
+
+func (response UpdateLayout200JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayout400JSONResponse ErrorResponse
+
+func (response UpdateLayout400JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayout401JSONResponse ErrorResponse
+
+func (response UpdateLayout401JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayout404JSONResponse ErrorResponse
+
+func (response UpdateLayout404JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayout500JSONResponse ErrorResponse
+
+func (response UpdateLayout500JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLayout502JSONResponse ErrorResponse
+
+func (response UpdateLayout502JSONResponse) VisitUpdateLayoutResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(502)
 
@@ -2822,6 +2927,9 @@ type StrictServerInterface interface {
 	// Switch layout
 	// (POST /api/layouts/switch)
 	SwitchLayout(ctx context.Context, request SwitchLayoutRequestObject) (SwitchLayoutResponseObject, error)
+	// Update layout metadata (name, emoji, aliases)
+	// (POST /api/layouts/update)
+	UpdateLayout(ctx context.Context, request UpdateLayoutRequestObject) (UpdateLayoutResponseObject, error)
 	// Get all monitors
 	// (GET /api/monitors)
 	GetMonitors(ctx context.Context, request GetMonitorsRequestObject) (GetMonitorsResponseObject, error)
@@ -3209,6 +3317,37 @@ func (sh *strictHandler) SwitchLayout(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SwitchLayoutResponseObject); ok {
 		if err := validResponse.VisitSwitchLayoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateLayout operation middleware
+func (sh *strictHandler) UpdateLayout(w http.ResponseWriter, r *http.Request) {
+	var request UpdateLayoutRequestObject
+
+	var body UpdateLayoutJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateLayout(ctx, request.(UpdateLayoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateLayout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateLayoutResponseObject); ok {
+		if err := validResponse.VisitUpdateLayoutResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

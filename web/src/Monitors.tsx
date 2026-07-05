@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Settings, Sun, Volume2, VolumeX } from "lucide-react";
 import type { Monitor, MonitorSettingsRequest } from "./api";
+import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
 import { useMonitorPower } from "./useMonitorPower";
@@ -322,24 +323,21 @@ export function Monitors() {
   const error = useStore((s) => s.monitorsError);
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          Monitors
-          {loading && monitors.length > 0 && (
-            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          )}
-        </h2>
-        <span className="text-xs text-zinc-500">
-          {monitors.filter((m) => m.active).length} active / {monitors.length} total
-        </span>
-      </div>
+    <Section
+      title="Monitors"
+      loading={loading && monitors.length > 0}
+      meta={
+        monitors.length > 0
+          ? `${monitors.filter((m) => m.active).length} active / ${monitors.length} total`
+          : undefined
+      }
+    >
       {loading && monitors.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Loading monitors...</div>
-      ) : error ? (
-        <div className="text-red-400 text-sm">{error}</div>
+        <SectionState>Loading monitors…</SectionState>
+      ) : error && monitors.length === 0 ? (
+        <SectionState>{error}</SectionState>
       ) : monitors.length === 0 ? (
-        <p className="text-zinc-500 text-sm">No monitors detected.</p>
+        <SectionState>No monitors detected.</SectionState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {monitors.map((m, i) => (
@@ -347,6 +345,6 @@ export function Monitors() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }

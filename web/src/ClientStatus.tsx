@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Power, RotateCcw } from "lucide-react";
 import { useStore } from "./store";
 
 export function ClientStatus() {
@@ -79,17 +80,20 @@ export function ClientStatus() {
               <button
                 onClick={() => wake("linux")}
                 disabled={isBusy}
-                className="px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                title="Wake the desktop (boots Linux)"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/15 hover:bg-green-500/25 text-green-300 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                Wake → Linux
+                <Power className="w-4 h-4" />
+                Wake
               </button>
               <button
                 onClick={() => wake("windows")}
                 disabled={isBusy}
-                className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
-                title="Wake, then reboot into Windows once the agent is up"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                title="Wake the desktop, then boot into Windows once it's up"
               >
-                → Windows
+                <Power className="w-4 h-4" />
+                Wake to Windows
               </button>
             </>
           )}
@@ -98,17 +102,20 @@ export function ClientStatus() {
               <button
                 onClick={() => reboot("windows")}
                 disabled={isBusy}
-                className="px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
                 title="Reboot into Windows once"
               >
-                Reboot → Windows
+                <RotateCcw className="w-4 h-4" />
+                Restart to Windows
               </button>
               <button
                 onClick={shutdown}
                 disabled={isBusy}
-                className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                title="Shut down the desktop"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                Shutdown
+                <Power className="w-4 h-4" />
+                Shut down
               </button>
             </>
           )}
