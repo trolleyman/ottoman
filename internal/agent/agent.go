@@ -679,62 +679,72 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	// Send initial position immediately so the frontend detects connection
-	if mx, my, err := a.mouse.GetPosition(); err == nil {
-		msg := api.TrackpadMessage{}
-		msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
-			X: mx,
-			Y: my,
-		})
-		data, _ := json.Marshal(msg)
-		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-			return
-		}
+	// Send an initial message immediately so the frontend detects the
+	// connection: it treats the first message as proof the agent end of the
+	// proxy is live. Prefer the real cursor position (X11), but fall back to a
+	// bare "connected" ping when position is unreadable — e.g. the uinput
+	// backend on Wayland, where the socket and input injection work fine but
+	// the cursor position can't be queried.
+	msg := api.TrackpadMessage{}
+	mx, my, posErr := a.mouse.GetPosition()
+	posSupported := posErr == nil
+	if posSupported {
+		msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{X: mx, Y: my})
 		latestX.Store(int32(mx))
 		latestY.Store(int32(my))
+	} else {
+		msg.FromTrackpadMessageConnected(api.TrackpadMessageConnected{Type: api.Connected})
+	}
+	data, _ := json.Marshal(msg)
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		return
 	}
 
-	// Position update sender goroutine (60Hz), skip if position unchanged
+	// Position update sender goroutine (60Hz), skip if position unchanged. Only
+	// runs when the backend can read the cursor position; otherwise it would
+	// busy-poll a call that always errors and never send anything.
 	var lastSentX, lastSentY atomic.Int32
 	lastSentX.Store(latestX.Load())
 	lastSentY.Store(latestY.Load())
-	go func() {
-		ticker := time.NewTicker(16 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				var x, y int32
-				if !posReady.Swap(false) {
-					// Poll current position to catch external movement
-					mx, my, err := a.mouse.GetPosition()
-					if err != nil {
+	if posSupported {
+		go func() {
+			ticker := time.NewTicker(16 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					var x, y int32
+					if !posReady.Swap(false) {
+						// Poll current position to catch external movement
+						mx, my, err := a.mouse.GetPosition()
+						if err != nil {
+							continue
+						}
+						x, y = int32(mx), int32(my)
+					} else {
+						x = latestX.Load()
+						y = latestY.Load()
+					}
+					if x == lastSentX.Load() && y == lastSentY.Load() {
 						continue
 					}
-					x, y = int32(mx), int32(my)
-				} else {
-					x = latestX.Load()
-					y = latestY.Load()
-				}
-				if x == lastSentX.Load() && y == lastSentY.Load() {
-					continue
-				}
-				lastSentX.Store(x)
-				lastSentY.Store(y)
-				msg := api.TrackpadMessage{}
-				msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
-					X: int(x),
-					Y: int(y),
-				})
-				data, _ := json.Marshal(msg)
-				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-					return
+					lastSentX.Store(x)
+					lastSentY.Store(y)
+					msg := api.TrackpadMessage{}
+					msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
+						X: int(x),
+						Y: int(y),
+					})
+					data, _ := json.Marshal(msg)
+					if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+						return
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// Read loop
 	for {
@@ -804,7 +814,7 @@ func (w *logResponseWriter) WriteHeader(code int) {
 func (a *Agent) Start() error {
 	a.server = &http.Server{
 		Addr:         a.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(a.router),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(a.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

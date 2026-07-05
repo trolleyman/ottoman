@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { TrackpadMessageConnected } from './TrackpadMessageConnected';
 import type { TrackpadMessageKeyDown } from './TrackpadMessageKeyDown';
 import type { TrackpadMessageKeyUp } from './TrackpadMessageKeyUp';
 import type { TrackpadMessageMouseClick } from './TrackpadMessageMouseClick';
@@ -12,5 +13,5 @@ import type { TrackpadMessageMousePositionUpdate } from './TrackpadMessageMouseP
 import type { TrackpadMessageMouseScroll } from './TrackpadMessageMouseScroll';
 import type { TrackpadMessageMouseUp } from './TrackpadMessageMouseUp';
 import type { TrackpadMessageText } from './TrackpadMessageText';
-export type TrackpadMessage = (TrackpadMessageMousePositionUpdate | TrackpadMessageMouseMoveRelative | TrackpadMessageMouseMoveTo | TrackpadMessageMouseClick | TrackpadMessageMouseDown | TrackpadMessageMouseUp | TrackpadMessageMouseScroll | TrackpadMessageKeyDown | TrackpadMessageKeyUp | TrackpadMessageText);
+export type TrackpadMessage = (TrackpadMessageMousePositionUpdate | TrackpadMessageMouseMoveRelative | TrackpadMessageMouseMoveTo | TrackpadMessageMouseClick | TrackpadMessageMouseDown | TrackpadMessageMouseUp | TrackpadMessageMouseScroll | TrackpadMessageKeyDown | TrackpadMessageKeyUp | TrackpadMessageText | TrackpadMessageConnected);
 

@@ -45,6 +45,7 @@ export type { StatusResponse } from './models/StatusResponse';
 export type { SwitchLayoutRequest } from './models/SwitchLayoutRequest';
 export type { SwitchLayoutResponse } from './models/SwitchLayoutResponse';
 export type { TrackpadMessage } from './models/TrackpadMessage';
+export type { TrackpadMessageConnected } from './models/TrackpadMessageConnected';
 export type { TrackpadMessageKeyDown } from './models/TrackpadMessageKeyDown';
 export type { TrackpadMessageKeyUp } from './models/TrackpadMessageKeyUp';
 export type { TrackpadMessageMouseClick } from './models/TrackpadMessageMouseClick';

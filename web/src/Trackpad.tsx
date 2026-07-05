@@ -499,11 +499,13 @@ export function Trackpad({
   connected,
   connecting,
   cursorPos,
+  cursorSupported,
   send,
 }: {
   connected: boolean;
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
+  cursorSupported: boolean;
   send: (msg: TrackpadMessage) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
@@ -646,7 +648,7 @@ export function Trackpad({
           cursorPos={cursorPos}
           connected={connected}
           loading={loading}
-          onSetPosition={(x, y) => send({ type: "mousemoveto", x, y })}
+          onSetPosition={cursorSupported ? (x, y) => send({ type: "mousemoveto", x, y }) : undefined}
         />
       </div>
     </section>
