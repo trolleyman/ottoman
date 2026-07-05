@@ -33,6 +33,11 @@ const (
 	Right   MouseButton = "right"
 )
 
+// Defines values for TrackpadMessageConnectedType.
+const (
+	Connected TrackpadMessageConnectedType = "connected"
+)
+
 // Defines values for TrackpadMessageKeyDownType.
 const (
 	Keydown TrackpadMessageKeyDownType = "keydown"
@@ -379,6 +384,14 @@ type TVVolumeRequest struct {
 type TrackpadMessage struct {
 	union json.RawMessage
 }
+
+// TrackpadMessageConnected defines model for TrackpadMessageConnected.
+type TrackpadMessageConnected struct {
+	Type TrackpadMessageConnectedType `json:"type"`
+}
+
+// TrackpadMessageConnectedType defines model for TrackpadMessageConnected.Type.
+type TrackpadMessageConnectedType string
 
 // TrackpadMessageKeyDown defines model for TrackpadMessageKeyDown.
 type TrackpadMessageKeyDown struct {
@@ -904,6 +917,34 @@ func (t *TrackpadMessage) MergeTrackpadMessageText(v TrackpadMessageText) error 
 	return err
 }
 
+// AsTrackpadMessageConnected returns the union data inside the TrackpadMessage as a TrackpadMessageConnected
+func (t TrackpadMessage) AsTrackpadMessageConnected() (TrackpadMessageConnected, error) {
+	var body TrackpadMessageConnected
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrackpadMessageConnected overwrites any union data inside the TrackpadMessage as the provided TrackpadMessageConnected
+func (t *TrackpadMessage) FromTrackpadMessageConnected(v TrackpadMessageConnected) error {
+	v.Type = "connected"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrackpadMessageConnected performs a merge with any union data inside the TrackpadMessage, using the provided TrackpadMessageConnected
+func (t *TrackpadMessage) MergeTrackpadMessageConnected(v TrackpadMessageConnected) error {
+	v.Type = "connected"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t TrackpadMessage) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -918,6 +959,8 @@ func (t TrackpadMessage) ValueByDiscriminator() (interface{}, error) {
 		return nil, err
 	}
 	switch discriminator {
+	case "connected":
+		return t.AsTrackpadMessageConnected()
 	case "keydown":
 		return t.AsTrackpadMessageKeyDown()
 	case "keyup":

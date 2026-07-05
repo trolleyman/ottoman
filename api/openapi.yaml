@@ -1407,6 +1407,16 @@ components:
         type: { type: string, enum: ["text"] }
         text: { type: string }
 
+    # Server -> client only. Sent once when the trackpad socket is accepted, so
+    # the frontend (which treats the first message as proof the agent end of the
+    # proxy is live) marks the trackpad connected even when the cursor position
+    # is unreadable — e.g. the uinput backend on Wayland.
+    TrackpadMessageConnected:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: ["connected"] }
+
     TrackpadMessage:
       oneOf:
         - $ref: '#/components/schemas/TrackpadMessageMousePositionUpdate'
@@ -1419,6 +1429,7 @@ components:
         - $ref: '#/components/schemas/TrackpadMessageKeyDown'
         - $ref: '#/components/schemas/TrackpadMessageKeyUp'
         - $ref: '#/components/schemas/TrackpadMessageText'
+        - $ref: '#/components/schemas/TrackpadMessageConnected'
       discriminator:
         propertyName: type
         mapping:
@@ -1432,3 +1443,4 @@ components:
           keydown: '#/components/schemas/TrackpadMessageKeyDown'
           keyup: '#/components/schemas/TrackpadMessageKeyUp'
           text: '#/components/schemas/TrackpadMessageText'
+          connected: '#/components/schemas/TrackpadMessageConnected'
