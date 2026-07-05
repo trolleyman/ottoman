@@ -639,6 +639,56 @@ func (s *SimulatedController) RemoveLayout(ctx context.Context, request api.Remo
 	}, nil
 }
 
+func (s *SimulatedController) UpdateLayout(ctx context.Context, request api.UpdateLayoutRequestObject) (api.UpdateLayoutResponseObject, error) {
+	if request.Body == nil || request.Body.Id == "" {
+		return api.UpdateLayout400JSONResponse{Error: "layout id is required"}, nil
+	}
+	id := request.Body.Id
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.layouts.Get(id); !ok {
+		return api.UpdateLayout404JSONResponse{
+			Code:  http.StatusNotFound,
+			Error: fmt.Sprintf("layout %q not found", id),
+		}, nil
+	}
+
+	if request.Body.Aliases != nil {
+		seen := make(map[string]bool)
+		cleaned := make([]string, 0, len(*request.Body.Aliases))
+		for _, raw := range *request.Body.Aliases {
+			alias := strings.TrimSpace(raw)
+			if alias == "" || seen[alias] || alias == id {
+				continue
+			}
+			if owner := s.layouts.AliasOwner(alias, id); owner != "" {
+				return api.UpdateLayout400JSONResponse{Code: http.StatusBadRequest, Error: fmt.Sprintf("alias %q is already used by layout %q", alias, owner)}, nil
+			}
+			seen[alias] = true
+			cleaned = append(cleaned, alias)
+		}
+		request.Body.Aliases = &cleaned
+	}
+
+	if request.Body.Name != nil {
+		trimmed := strings.TrimSpace(*request.Body.Name)
+		if trimmed == "" {
+			return api.UpdateLayout400JSONResponse{Code: http.StatusBadRequest, Error: "name cannot be empty"}, nil
+		}
+		request.Body.Name = &trimmed
+	}
+
+	layout, _ := s.layouts.UpdateMeta(id, request.Body.Name, request.Body.Emoji, request.Body.Aliases)
+	log.Printf("[SIM] Updated layout %q (%s)", layout.Name, layout.Id)
+
+	return api.UpdateLayout200JSONResponse{
+		Success: true,
+		Layout:  &layout,
+	}, nil
+}
+
 func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
 	s.mu.RLock()
 	// Return a copy
@@ -1136,7 +1186,7 @@ func (s *SimulatedController) SimSetState(ctx context.Context, request api.SimSe
 func (s *SimulatedController) Start() error {
 	s.server = &http.Server{
 		Addr:         s.controllerCfg.ListenAddress,
-		Handler:      common.LoggingMiddleware(s.router),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(s.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

@@ -35,7 +35,8 @@ for (const line of out.split('\n')) {
   console.log(`::hydra:test:fail:: web/${file}:${ln}:${col} › ${code} | ${esc(msg)}`)
 }
 
-console.log('::hydra:test:total:: 1')
+// No ::total:: denominator — the sibling eslint-markers run shares this stdout
+// stream, so let Hydra count the emitted cases (typecheck + lint) itself.
 if (errors === 0) console.log('::hydra:test:pass:: web › typecheck')
 
 process.exit(res.status ?? (errors > 0 ? 1 : 0))

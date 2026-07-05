@@ -148,6 +148,42 @@ func matches(monitors []api.Monitor, layout api.Layout) bool {
 	return true
 }
 
+// AliasOwner returns the ID of the layout that already claims the given alias,
+// ignoring the layout identified by exceptID. Empty string means the alias
+// (or matching layout ID) is free to use.
+func (s *Layouts) AliasOwner(alias, exceptID string) string {
+	for id, layout := range s.layouts {
+		if id == exceptID {
+			continue
+		}
+		if id == alias || slices.Contains(layout.Aliases, alias) {
+			return id
+		}
+	}
+	return ""
+}
+
+// UpdateMeta updates a layout's editable metadata (name, emoji, aliases) in
+// place, preserving its monitors. Any nil field is left unchanged; a non-nil
+// emoji of "" clears it. Returns the updated layout and whether it existed.
+func (s *Layouts) UpdateMeta(id string, name, emoji *string, aliases *[]string) (api.Layout, bool) {
+	layout, ok := s.layouts[id]
+	if !ok {
+		return api.Layout{}, false
+	}
+	if name != nil {
+		layout.Name = *name
+	}
+	if emoji != nil {
+		layout.Emoji = emoji
+	}
+	if aliases != nil {
+		layout.Aliases = *aliases
+	}
+	s.layouts[id] = layout
+	return layout, true
+}
+
 // AddAlias adds an alias to a layout
 func (s *Layouts) AddAlias(id, alias string) bool {
 	layout, ok := s.layouts[id]

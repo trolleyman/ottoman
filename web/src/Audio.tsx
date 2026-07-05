@@ -1,5 +1,6 @@
 import { Volume1, Volume2, VolumeX } from "lucide-react";
 import type { AudioSink } from "./api";
+import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 
 function VolumeIcon({ muted, volume, className }: { muted: boolean; volume: number; className?: string }) {
@@ -15,6 +16,14 @@ function SinkCard({ sink }: { sink: AudioSink }) {
 
   const pct = Math.round(sink.volume * 100);
 
+  // The slider runs 0–150%; 100% is the "normal max" and everything past it is
+  // overdrive. 100% therefore sits at 100/150 ≈ 66.67% of the track width.
+  const MAX = 150;
+  const MARK = (100 / MAX) * 100; // % position of the 100% mark
+  const overdrive = pct > 100;
+  const fillPct = (Math.min(pct, 100) / MAX) * 100;
+  const overdrivePct = (Math.max(pct - 100, 0) / MAX) * 100;
+
   return (
     <div className="rounded-xl border border-zinc-700/50 bg-zinc-800/50 p-5 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -27,7 +36,7 @@ function SinkCard({ sink }: { sink: AudioSink }) {
           </span>
         ) : (
           <button
-            onClick={() => setSinkDefault(sink.name)}
+            onClick={() => void setSinkDefault(sink.name)}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
           >
             Make default
@@ -37,22 +46,60 @@ function SinkCard({ sink }: { sink: AudioSink }) {
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setSinkMute(sink.name, !sink.muted)}
+          onClick={() => void setSinkMute(sink.name, !sink.muted)}
           className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
           title={sink.muted ? "Unmute" : "Mute"}
           aria-label={sink.muted ? "Unmute" : "Mute"}
         >
           <VolumeIcon muted={sink.muted} volume={sink.volume} className="h-[18px] w-[18px]" />
         </button>
-        <input
-          type="range"
-          min={0}
-          max={150}
-          value={pct}
-          onChange={(e) => setSinkVolume(sink.name, Number(e.target.value) / 100)}
-          className={`flex-1 accent-blue-500 cursor-pointer ${sink.muted ? "opacity-40" : ""}`}
-        />
-        <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
+        <div className={`flex-1 flex flex-col gap-1 ${sink.muted ? "opacity-40" : ""}`}>
+          <div className="relative h-4 flex items-center">
+            {/* Track with a distinct overdrive zone (100–150%) */}
+            <div className="absolute inset-x-0 h-1.5 rounded-full overflow-hidden bg-zinc-700">
+              <div
+                className="absolute inset-y-0 right-0 bg-amber-500/25"
+                style={{ width: `${100 - MARK}%` }}
+              />
+            </div>
+            {/* Current-value fill: blue up to 100%, amber into overdrive */}
+            <div
+              className="absolute h-1.5 rounded-full bg-blue-500"
+              style={{ width: `${fillPct}%` }}
+            />
+            {overdrive && (
+              <div
+                className="absolute h-1.5 bg-amber-500"
+                style={{ left: `${MARK}%`, width: `${overdrivePct}%` }}
+              />
+            )}
+            {/* The 100% mark */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 rounded-full bg-zinc-300"
+              style={{ left: `${MARK}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={MAX}
+              value={pct}
+              onChange={(e) => void setSinkVolume(sink.name, Number(e.target.value) / 100)}
+              className="volume-slider absolute inset-0"
+              style={{ ["--slider-thumb" as string]: overdrive ? "#f59e0b" : "#3b82f6" }}
+            />
+          </div>
+          {/* Tick labels: make the 100% mark and the overdrive range explicit */}
+          <div className="relative h-3 text-[10px] font-medium text-zinc-500 select-none">
+            <span className="absolute left-0">0</span>
+            <span className="absolute -translate-x-1/2 text-zinc-300" style={{ left: `${MARK}%` }}>
+              100%
+            </span>
+            <span className="absolute right-0 text-amber-500/80">150%</span>
+          </div>
+        </div>
+        <span
+          className={`text-sm font-mono w-10 text-right tabular-nums ${overdrive ? "text-amber-500" : "text-zinc-400"}`}
+        >
           {pct}%
         </span>
       </div>
@@ -70,20 +117,15 @@ export function Audio() {
   if (!loading && !error && sinks.length === 0) return null;
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          Audio
-          {loading && sinks.length > 0 && (
-            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          )}
-        </h2>
-        <span className="text-xs text-zinc-500">{sinks.length} output{sinks.length === 1 ? "" : "s"}</span>
-      </div>
+    <Section
+      title="Audio"
+      loading={loading && sinks.length > 0}
+      meta={sinks.length > 0 ? `${sinks.length} output${sinks.length === 1 ? "" : "s"}` : undefined}
+    >
       {loading && sinks.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Loading audio...</div>
+        <SectionState>Loading audio…</SectionState>
       ) : error && sinks.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Audio control unavailable.</div>
+        <SectionState>Audio control unavailable.</SectionState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {sinks.map((s) => (
@@ -91,6 +133,6 @@ export function Audio() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }

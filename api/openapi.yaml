@@ -354,6 +354,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/layouts/update:
+    post:
+      summary: Update layout metadata (name, emoji, aliases)
+      operationId: updateLayout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLayoutRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateLayoutResponse'
+        '400':
+          description: Bad Request (Invalid body or duplicate alias)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Layout not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Bad Gateway (Agent unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/shutdown:
     post:
       summary: Shutdown agent
@@ -1102,6 +1149,26 @@ components:
         success: { type: boolean }
         message: { type: string }
 
+    UpdateLayoutRequest:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, description: "ID of the layout to update" }
+        name: { type: string, description: "New display name (optional; unchanged if omitted)" }
+        emoji: { type: string, description: "New emoji (optional; empty string clears it, omitted leaves unchanged)" }
+        aliases:
+          type: array
+          description: "Replacement alias list (optional; unchanged if omitted)"
+          items: { type: string }
+
+    UpdateLayoutResponse:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        layout: { $ref: '#/components/schemas/Layout' }
+        message: { type: string }
+
     ShutdownResponse:
       type: object
       required: [success]
@@ -1340,6 +1407,16 @@ components:
         type: { type: string, enum: ["text"] }
         text: { type: string }
 
+    # Server -> client only. Sent once when the trackpad socket is accepted, so
+    # the frontend (which treats the first message as proof the agent end of the
+    # proxy is live) marks the trackpad connected even when the cursor position
+    # is unreadable — e.g. the uinput backend on Wayland.
+    TrackpadMessageConnected:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: ["connected"] }
+
     TrackpadMessage:
       oneOf:
         - $ref: '#/components/schemas/TrackpadMessageMousePositionUpdate'
@@ -1352,6 +1429,7 @@ components:
         - $ref: '#/components/schemas/TrackpadMessageKeyDown'
         - $ref: '#/components/schemas/TrackpadMessageKeyUp'
         - $ref: '#/components/schemas/TrackpadMessageText'
+        - $ref: '#/components/schemas/TrackpadMessageConnected'
       discriminator:
         propertyName: type
         mapping:
@@ -1365,3 +1443,4 @@ components:
           keydown: '#/components/schemas/TrackpadMessageKeyDown'
           keyup: '#/components/schemas/TrackpadMessageKeyUp'
           text: '#/components/schemas/TrackpadMessageText'
+          connected: '#/components/schemas/TrackpadMessageConnected'

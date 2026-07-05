@@ -27,7 +27,7 @@ export function LoginForm() {
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <form onSubmit={submit} className="w-full max-w-sm px-6">
+      <form onSubmit={(e) => void submit(e)} className="w-full max-w-sm px-6">
         <OttomanWithLogo className="mb-4">
           <p className="text-zinc-500 text-sm">
             Enter your auth token to continue.

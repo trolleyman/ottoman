@@ -497,6 +497,62 @@ func (a *Agent) RemoveLayout(ctx context.Context, request api.RemoveLayoutReques
 	}, nil
 }
 
+// UpdateLayout implements api.StrictServerInterface
+func (a *Agent) UpdateLayout(ctx context.Context, request api.UpdateLayoutRequestObject) (api.UpdateLayoutResponseObject, error) {
+	if request.Body == nil || request.Body.Id == "" {
+		return api.UpdateLayout400JSONResponse{Code: 400, Error: "layout id is required"}, nil
+	}
+	id := request.Body.Id
+
+	if _, ok := a.layouts.Get(id); !ok {
+		return api.UpdateLayout404JSONResponse{Code: 404, Error: fmt.Sprintf("layout %q not found", id)}, nil
+	}
+
+	// Normalise and validate the new alias set: trim, drop blanks/dupes, and
+	// reject any alias already claimed by another layout (or matching another
+	// layout's ID), which would make switching ambiguous.
+	if request.Body.Aliases != nil {
+		seen := make(map[string]bool)
+		cleaned := make([]string, 0, len(*request.Body.Aliases))
+		for _, raw := range *request.Body.Aliases {
+			alias := strings.TrimSpace(raw)
+			if alias == "" || seen[alias] {
+				continue
+			}
+			if alias == id {
+				continue // an alias equal to the layout's own ID is redundant
+			}
+			if owner := a.layouts.AliasOwner(alias, id); owner != "" {
+				return api.UpdateLayout400JSONResponse{Code: 400, Error: fmt.Sprintf("alias %q is already used by layout %q", alias, owner)}, nil
+			}
+			seen[alias] = true
+			cleaned = append(cleaned, alias)
+		}
+		request.Body.Aliases = &cleaned
+	}
+
+	if request.Body.Name != nil {
+		trimmed := strings.TrimSpace(*request.Body.Name)
+		if trimmed == "" {
+			return api.UpdateLayout400JSONResponse{Code: 400, Error: "name cannot be empty"}, nil
+		}
+		request.Body.Name = &trimmed
+	}
+
+	layout, _ := a.layouts.UpdateMeta(id, request.Body.Name, request.Body.Emoji, request.Body.Aliases)
+
+	if err := a.saveLayouts(); err != nil {
+		log.Printf("Failed to save layouts: %v", err)
+		return api.UpdateLayout500JSONResponse{Code: 500, Error: "failed to save layout"}, nil
+	}
+
+	log.Printf("Updated layout: %s", id)
+	return api.UpdateLayout200JSONResponse{
+		Success: true,
+		Layout:  &layout,
+	}, nil
+}
+
 // GetMonitors implements api.StrictServerInterface
 func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
 	monitors, err := a.displayMgr.ListMonitors()
@@ -680,62 +736,72 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	var latestX, latestY atomic.Int32
 	var posReady atomic.Bool
 
-	// Send initial position immediately so the frontend detects connection
-	if mx, my, err := a.mouse.GetPosition(); err == nil {
-		msg := api.TrackpadMessage{}
-		msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
-			X: mx,
-			Y: my,
-		})
-		data, _ := json.Marshal(msg)
-		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-			return
-		}
+	// Send an initial message immediately so the frontend detects the
+	// connection: it treats the first message as proof the agent end of the
+	// proxy is live. Prefer the real cursor position (X11), but fall back to a
+	// bare "connected" ping when position is unreadable — e.g. the uinput
+	// backend on Wayland, where the socket and input injection work fine but
+	// the cursor position can't be queried.
+	msg := api.TrackpadMessage{}
+	mx, my, posErr := a.mouse.GetPosition()
+	posSupported := posErr == nil
+	if posSupported {
+		msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{X: mx, Y: my})
 		latestX.Store(int32(mx))
 		latestY.Store(int32(my))
+	} else {
+		msg.FromTrackpadMessageConnected(api.TrackpadMessageConnected{Type: api.Connected})
+	}
+	data, _ := json.Marshal(msg)
+	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+		return
 	}
 
-	// Position update sender goroutine (60Hz), skip if position unchanged
+	// Position update sender goroutine (60Hz), skip if position unchanged. Only
+	// runs when the backend can read the cursor position; otherwise it would
+	// busy-poll a call that always errors and never send anything.
 	var lastSentX, lastSentY atomic.Int32
 	lastSentX.Store(latestX.Load())
 	lastSentY.Store(latestY.Load())
-	go func() {
-		ticker := time.NewTicker(16 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				var x, y int32
-				if !posReady.Swap(false) {
-					// Poll current position to catch external movement
-					mx, my, err := a.mouse.GetPosition()
-					if err != nil {
+	if posSupported {
+		go func() {
+			ticker := time.NewTicker(16 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					var x, y int32
+					if !posReady.Swap(false) {
+						// Poll current position to catch external movement
+						mx, my, err := a.mouse.GetPosition()
+						if err != nil {
+							continue
+						}
+						x, y = int32(mx), int32(my)
+					} else {
+						x = latestX.Load()
+						y = latestY.Load()
+					}
+					if x == lastSentX.Load() && y == lastSentY.Load() {
 						continue
 					}
-					x, y = int32(mx), int32(my)
-				} else {
-					x = latestX.Load()
-					y = latestY.Load()
-				}
-				if x == lastSentX.Load() && y == lastSentY.Load() {
-					continue
-				}
-				lastSentX.Store(x)
-				lastSentY.Store(y)
-				msg := api.TrackpadMessage{}
-				msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
-					X: int(x),
-					Y: int(y),
-				})
-				data, _ := json.Marshal(msg)
-				if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
-					return
+					lastSentX.Store(x)
+					lastSentY.Store(y)
+					msg := api.TrackpadMessage{}
+					msg.FromTrackpadMessageMousePositionUpdate(api.TrackpadMessageMousePositionUpdate{
+						X: int(x),
+						Y: int(y),
+					})
+					data, _ := json.Marshal(msg)
+					if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+						return
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// Read loop
 	for {
@@ -815,7 +881,7 @@ func (w *logResponseWriter) WriteHeader(code int) {
 func (a *Agent) Start() error {
 	a.server = &http.Server{
 		Addr:         a.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(a.router),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(a.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

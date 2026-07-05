@@ -77,6 +77,10 @@ interface OttomanStore {
   switchLayout: (id: string) => Promise<void>;
   removeLayout: (id: string) => Promise<void>;
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
+  updateLayout: (
+    id: string,
+    changes: { name?: string; emoji?: string; aliases?: string[] },
+  ) => Promise<boolean>;
 
   // ── Power Actions ─────────────────────────────────────
   wake: (target?: "linux" | "windows") => Promise<void>;
@@ -214,8 +218,8 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
         // Agent just came online — refresh layouts and monitors
         if (wasOnline === false) {
-          get().fetchLayouts(true);
-          get().fetchMonitors(true);
+          void get().fetchLayouts(true);
+          void get().fetchMonitors(true);
         }
       } catch {
         const { agentStatus } = get();
@@ -247,7 +251,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
           layoutsError: null,
         });
       } catch {
-        set({ layoutsError: "Failed to load layouts" });
+        set({ layoutsError: "Layouts unavailable — the desktop may be offline." });
       } finally {
         set({ layoutsLoading: false, _inflightLayouts: null });
       }
@@ -270,7 +274,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
           monitorsError: null,
         });
       } catch {
-        set({ monitorsError: "Failed to load monitors" });
+        set({ monitorsError: "Monitors unavailable — the desktop may be offline." });
       } finally {
         set({ monitorsLoading: false, _inflightMonitors: null });
       }
@@ -317,7 +321,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   startPolling: () => {
     if (get()._pollTimer) return;
     const timer = setInterval(() => {
-      get().refreshAll(true);
+      void get().refreshAll(true);
     }, 3000);
     set({ _pollTimer: timer });
   },
@@ -339,7 +343,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       const data = await client.default.switchLayout({ layout: id });
       if (data.success) {
         set({ currentLayout: data.current_layout ?? "" });
-        get().refreshAll(false);
+        void get().refreshAll(false);
       } else {
         alert(data.message || "Switch failed");
       }
@@ -355,7 +359,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       const data = await client.default.removeLayout({ layout: id });
       if (data.success) {
-        get().fetchLayouts(false);
+        void get().fetchLayouts(false);
       } else {
         alert(data.message || "Failed to remove layout");
       }
@@ -368,12 +372,46 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       const data = await client.default.saveCurrentLayout({ name, emoji });
       if (data.success) {
-        get().fetchLayouts(false);
+        void get().fetchLayouts(false);
       } else {
         alert(data.message || "Failed to save layout");
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save layout");
+    }
+  },
+
+  updateLayout: async (id, changes) => {
+    // Optimistic local update so the edited card settles immediately; a
+    // failure re-fetches to reconcile.
+    set((s) => ({
+      layouts: s.layouts.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              ...(changes.name !== undefined ? { name: changes.name } : {}),
+              ...(changes.emoji !== undefined ? { emoji: changes.emoji } : {}),
+              ...(changes.aliases !== undefined ? { aliases: changes.aliases } : {}),
+            }
+          : l,
+      ),
+    }));
+    try {
+      const data = await client.default.updateLayout({ id, ...changes });
+      if (data.success) {
+        void get().fetchLayouts(true);
+        return true;
+      }
+      alert(data.message || "Failed to update layout");
+      void get().fetchLayouts(true);
+      return false;
+    } catch (e) {
+      // The generated client throws ApiError with a generic message but keeps the
+      // server's ErrorResponse in `.body` — surface that (e.g. an alias conflict).
+      const body = (e as { body?: { error?: string } })?.body;
+      alert(body?.error || (e instanceof Error ? e.message : "Failed to update layout"));
+      void get().fetchLayouts(true);
+      return false;
     }
   },
 
@@ -432,7 +470,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setAudioVolume({ name, volume });
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -443,7 +481,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setAudioVolume({ name, muted });
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -453,9 +491,9 @@ export const useStore = create<OttomanStore>((set, get) => ({
     }));
     try {
       await client.default.setAudioVolume({ name, default: true });
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     } catch {
-      get().fetchAudioSinks(true);
+      void get().fetchAudioSinks(true);
     }
   },
 
@@ -469,7 +507,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setMonitorBrightness({ edid, brightness });
     } catch {
-      get().fetchMonitors(true);
+      void get().fetchMonitors(true);
     }
   },
 
@@ -498,7 +536,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       // Re-fetch so capabilities/backend/tv reflect the saved change.
       await get().fetchMonitors(true);
       // The TV section is driven by a monitor's tv backend; refresh it too.
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
       return true;
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save monitor settings");
@@ -523,7 +561,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       const data = await client.default.pairTv();
       if (data.success) {
         alert(data.message || "Pairing started — accept the prompt on the TV.");
-        get().fetchTVState(true);
+        void get().fetchTVState(true);
       } else {
         alert(data.message || "Pairing failed");
       }
@@ -535,7 +573,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   setTVPower: async (on: boolean) => {
     try {
       await client.default.setTvPower({ on });
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to set TV power");
     }
@@ -546,7 +584,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setTvVolume({ volume });
     } catch {
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     }
   },
 
@@ -555,7 +593,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
     try {
       await client.default.setTvVolume({ muted });
     } catch {
-      get().fetchTVState(true);
+      void get().fetchTVState(true);
     }
   },
 }));

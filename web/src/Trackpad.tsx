@@ -1,76 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Settings, X } from "lucide-react";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage } from "./api";
-
-export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const connect = useCallback(() => {
-    if (!authed) return;
-
-    if (reconnectRef.current) {
-      clearTimeout(reconnectRef.current);
-      reconnectRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-    }
-
-    setConnecting(true);
-
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
-    wsRef.current = ws;
-
-    ws.onclose = () => {
-      setConnected(false);
-      setConnecting(false);
-      setCursorPos(null);
-      // Attempt reconnect after 3 seconds
-      reconnectRef.current = setTimeout(connect, 3000);
-    };
-    ws.onmessage = (e) => {
-      // First data message from client proves connection is live
-      setConnected(true);
-      setConnecting(false);
-      try {
-        const msg: TrackpadMessage = JSON.parse(e.data);
-        if (msg.type === "mousepositionupdate") {
-          setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
-        }
-      } catch { /* ignore parse errors */ }
-    };
-  }, [authed]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      wsRef.current?.close();
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-    };
-  }, [connect]);
-
-  useEffect(() => {
-    if (!connected && authed) {
-      connect();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
-
-  const send = useCallback((msg: TrackpadMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
-
-  return { connected, connecting, cursorPos, send };
-}
 
 function getModifiers(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }) {
   const mod: Modifier[] = [];
@@ -376,7 +308,7 @@ function TouchArea({
     if (!document.pointerLockElement) {
       // requestPointerLock may fail after Escape (browser cooldown ~1.5s).
       // In that case, fallback mouse tracking via lastMousePos kicks in.
-      trackpadRef.current?.requestPointerLock();
+      void trackpadRef.current?.requestPointerLock();
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     }
     trackpadRef.current?.focus();
@@ -451,7 +383,7 @@ function TouchArea({
       document.removeEventListener("pointerlockchange", handlePointerLockChange);
       if (document.pointerLockElement) document.exitPointerLock();
     };
-  }, [connected, send]);
+  }, [connected, send, settings.cursorSensitivity]);
 
   // Keyboard capture on the trackpad div
   useEffect(() => {
@@ -496,7 +428,7 @@ function TouchArea({
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [connected, send]);
+  }, [connected, send, settings.scrollSensitivity]);
 
   // When the mobile keyboard opens/closes, re-scroll the trackpad into view
   useEffect(() => {
@@ -567,11 +499,13 @@ export function Trackpad({
   connected,
   connecting,
   cursorPos,
+  cursorSupported,
   send,
 }: {
   connected: boolean;
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
+  cursorSupported: boolean;
   send: (msg: TrackpadMessage) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
@@ -624,7 +558,7 @@ export function Trackpad({
       }
     };
 
-    checkLocalConnection();
+    void checkLocalConnection();
   }, [status?.ip_address, status?.port]);
 
   return (
@@ -640,9 +574,14 @@ export function Trackpad({
         <div className="relative" ref={settingsRef}>
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-1.5 rounded-md transition-colors border border-zinc-700 cursor-pointer"
+            title={showSettings ? "Close settings" : "Trackpad settings"}
+            aria-label={showSettings ? "Close settings" : "Trackpad settings"}
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors border cursor-pointer ${showSettings
+              ? "bg-zinc-700 border-zinc-600 text-zinc-100"
+              : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300"
+              }`}
           >
-            {showSettings ? "Close" : "Settings"}
+            {showSettings ? <X className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
           </button>
           {showSettings && (
             <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-20 flex flex-col gap-4">
@@ -709,7 +648,7 @@ export function Trackpad({
           cursorPos={cursorPos}
           connected={connected}
           loading={loading}
-          onSetPosition={(x, y) => send({ type: "mousemoveto", x, y })}
+          onSetPosition={cursorSupported ? (x, y) => send({ type: "mousemoveto", x, y }) : undefined}
         />
       </div>
     </section>

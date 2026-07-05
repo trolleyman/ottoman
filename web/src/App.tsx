@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
-import { Trackpad, useTrackpadWebSocket } from "./Trackpad";
+import { Trackpad } from "./Trackpad";
+import { useTrackpadWebSocket } from "./useTrackpadWebSocket";
 
 import { Monitors } from "./Monitors";
 import { Audio } from "./Audio";
@@ -18,20 +19,21 @@ export default function App() {
   const logout = useStore((s) => s.logout);
   const refreshKey = useStore((s) => s.refreshKey);
 
-  const { connected, connecting, cursorPos, send } = useTrackpadWebSocket(!!authed, refreshKey);
+  const { connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
 
   // Check auth on mount
   useEffect(() => {
-    checkAuth();
+    void checkAuth();
   }, [checkAuth]);
 
   // Start polling when authenticated
   useEffect(() => {
     if (!authed) return;
-    refreshAll(false);
+    void refreshAll(false);
     startPolling();
     return () => stopPolling();
-  }, [authed]);
+    // refreshAll/startPolling/stopPolling are stable Zustand actions.
+  }, [authed, refreshAll, startPolling, stopPolling]);
 
   // Auth check pending
   if (authed === null) {
@@ -57,13 +59,13 @@ export default function App() {
           </OttomanWithLogo>
           <div className="flex items-center gap-4">
             <button
-              onClick={() => refreshAll(false)}
+              onClick={() => void refreshAll(false)}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
             >
               Refresh
             </button>
             <button
-              onClick={logout}
+              onClick={() => void logout()}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
             >
               Log out
@@ -83,6 +85,7 @@ export default function App() {
           connected={connected}
           connecting={connecting}
           cursorPos={cursorPos}
+          cursorSupported={cursorSupported}
           send={send}
         />
 

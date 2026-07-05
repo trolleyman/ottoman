@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Settings, Sun, Volume2, VolumeX } from "lucide-react";
 import type { Monitor, MonitorSettingsRequest } from "./api";
+import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
 import { useMonitorPower } from "./useMonitorPower";
@@ -46,7 +47,7 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
           max={100}
           value={brightness < 0 ? 50 : brightness}
           disabled={brightness < 0}
-          onChange={(e) => setMonitorBrightness(monitor.edid, Number(e.target.value))}
+          onChange={(e) => void setMonitorBrightness(monitor.edid, Number(e.target.value))}
           className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
         />
         <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
@@ -74,13 +75,13 @@ function VolumeRail() {
         min={0}
         max={100}
         value={tv.volume}
-        onChange={(e) => setTVVolume(Number(e.target.value))}
+        onChange={(e) => void setTVVolume(Number(e.target.value))}
         aria-label="Volume"
         className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
         style={{ writingMode: "vertical-lr", direction: "rtl" }}
       />
       <button
-        onClick={() => setTVMute(!tv.muted)}
+        onClick={() => void setTVMute(!tv.muted)}
         className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
         title={tv.muted ? "Unmute" : "Mute"}
         aria-label={tv.muted ? "Unmute" : "Mute"}
@@ -185,7 +186,7 @@ function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose
 
       <div className="flex items-center gap-2 pt-1">
         <button
-          onClick={submit}
+          onClick={() => void submit()}
           disabled={saving}
           className="flex-1 text-xs font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
         >
@@ -223,7 +224,7 @@ function TVPairPill() {
   }
   return (
     <button
-      onClick={pairTV}
+      onClick={() => void pairTV()}
       className="text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
     >
       Pair
@@ -281,7 +282,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
               <Settings className="h-4 w-4" />
             </button>
             {showPower && (
-              <PowerToggle on={powerOn} loading={powerLoading} onChange={togglePower} />
+              <PowerToggle on={powerOn} loading={powerLoading} onChange={(on) => void togglePower(on)} />
             )}
           </div>
         </div>
@@ -322,24 +323,21 @@ export function Monitors() {
   const error = useStore((s) => s.monitorsError);
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          Monitors
-          {loading && monitors.length > 0 && (
-            <div className="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" />
-          )}
-        </h2>
-        <span className="text-xs text-zinc-500">
-          {monitors.filter((m) => m.active).length} active / {monitors.length} total
-        </span>
-      </div>
+    <Section
+      title="Monitors"
+      loading={loading && monitors.length > 0}
+      meta={
+        monitors.length > 0
+          ? `${monitors.filter((m) => m.active).length} active / ${monitors.length} total`
+          : undefined
+      }
+    >
       {loading && monitors.length === 0 ? (
-        <div className="text-zinc-500 text-sm">Loading monitors...</div>
-      ) : error ? (
-        <div className="text-red-400 text-sm">{error}</div>
+        <SectionState>Loading monitors…</SectionState>
+      ) : error && monitors.length === 0 ? (
+        <SectionState>{error}</SectionState>
       ) : monitors.length === 0 ? (
-        <p className="text-zinc-500 text-sm">No monitors detected.</p>
+        <SectionState>No monitors detected.</SectionState>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {monitors.map((m, i) => (
@@ -347,6 +345,6 @@ export function Monitors() {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }
