@@ -33,7 +33,21 @@ type tvController struct {
 	key        string
 	pairing    bool
 	pairErr    string
+	dialErr    error     // last failed connect, for a short negative cache
+	dialAt     time.Time // when dialErr was recorded
 }
+
+const (
+	// tvDialTimeout bounds a single connection attempt. A powered-off TV drops
+	// packets rather than refusing, so an unbounded dial would block on the OS
+	// TCP timeout (tens of seconds) — long enough to trip the controller's 10s
+	// proxy timeout and 500 the request.
+	tvDialTimeout = 5 * time.Second
+	// tvDialBackoff suppresses re-dialing after a recent failure, so repeated
+	// polls of /api/tv/state and /api/monitors fail fast instead of each queuing
+	// behind another full dial while holding the shared mutex.
+	tvDialBackoff = 15 * time.Second
+)
 
 func newTVController(reg *store.Registry, legacy config.TVConfig, st *store.TVStore) *tvController {
 	key, _ := st.LoadPairingKey()
@@ -80,13 +94,26 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 	if t.key == "" {
 		return nil, errors.New("TV is not paired yet — pair it first (POST /api/tv/pair)")
 	}
+	// Negative cache: after a recent failed dial, fail fast rather than block
+	// this (and every other) caller behind another full dial timeout.
+	if t.dialErr != nil && time.Since(t.dialAt) < tvDialBackoff {
+		return nil, t.dialErr
+	}
 
 	c := webos.New(conn.Host)
-	// Use a background context so the persistent read loop outlives the request.
-	newKey, err := c.Connect(context.Background(), t.key)
+	// Bound the dial so an unreachable/off TV can't hang the request (and, via
+	// the shared mutex, every other TV/monitor request) until the OS TCP
+	// timeout. The client's read loop uses its own background context, so the
+	// persistent connection outlives this deadline once established.
+	dialCtx, cancel := context.WithTimeout(context.Background(), tvDialTimeout)
+	defer cancel()
+	newKey, err := c.Connect(dialCtx, t.key)
 	if err != nil {
-		return nil, err
+		t.dialErr = errors.Wrap(err, "connect to TV")
+		t.dialAt = time.Now()
+		return nil, t.dialErr
 	}
+	t.dialErr = nil
 	if newKey != "" && newKey != t.key {
 		t.key = newKey
 		_ = t.store.SavePairingKey(newKey)
@@ -194,6 +221,8 @@ func (t *tvController) State(ctx context.Context) TVState {
 	t.mu.Unlock()
 
 	if st.Configured && st.Paired && !st.Pairing {
+		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
 		if err := t.withClient(ctx, func(c *webos.Client) error {
 			vol, err := c.GetVolume(ctx)
 			if err != nil {

@@ -76,7 +76,11 @@ func (c *Client) Connect(ctx context.Context, clientKey string) (string, error) 
 	c.conn = conn
 	c.mu.Unlock()
 
-	go c.readLoop(ctx)
+	// The read loop backs the persistent connection, so it must outlive the ctx
+	// that bounds this dial/registration — otherwise a caller passing a
+	// short-deadline ctx (to cap an unreachable-TV dial) would tear the
+	// connection down the moment Connect returns.
+	go c.readLoop(context.Background())
 
 	newKey, err := c.register(ctx, clientKey)
 	if err != nil {
