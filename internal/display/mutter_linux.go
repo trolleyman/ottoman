@@ -3,6 +3,7 @@
 package display
 
 import (
+	"log"
 	"math"
 	"strings"
 
@@ -191,6 +192,7 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 	}
 
 	var logicals []applyLogicalMonitor
+	var persist []persistLogicalMonitor
 	for _, lm := range layout.Monitors {
 		mon := resolveMonitor(lm, byEDID, byConnector)
 		if mon == nil {
@@ -214,6 +216,15 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 				Properties: map[string]dbus.Variant{},
 			}},
 		})
+		persist = append(persist, persistLogicalMonitor{
+			spec:    mon.Spec,
+			x:       int32(lm.PositionX),
+			y:       int32(lm.PositionY),
+			width:   mode.Width,
+			height:  mode.Height,
+			rate:    mode.RefreshRate,
+			primary: lm.Primary,
+		})
 	}
 
 	if len(logicals) == 0 {
@@ -224,11 +235,9 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 	// Apply with the TEMPORARY method, not PERSISTENT. PERSISTENT makes Mutter
 	// apply the config and then emit confirm-display-change, which triggers
 	// GNOME Shell's "Keep these display settings?" dialog with a countdown that
-	// auto-reverts to the previous layout if not confirmed in time. Since
-	// Ottoman is the on-demand source of truth for layout switching, we want the
-	// switch to take effect immediately with no confirmation prompt. The only
-	// tradeoff is the config isn't written to Mutter's monitors.xml, so it won't
-	// survive a GNOME logout/reboot — the user just re-applies via Ottoman.
+	// auto-reverts to the previous layout if not confirmed in time. TEMPORARY
+	// applies the switch immediately with no confirmation prompt; we then persist
+	// it ourselves by writing monitors.xml (below) so it still survives a reboot.
 	call := obj.Call(mutterInterface+".ApplyMonitorsConfig", 0,
 		serial,
 		uint32(mutterMethodTemporary),
@@ -237,6 +246,13 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 	)
 	if call.Err != nil {
 		return errors.Wrap(call.Err, "ApplyMonitorsConfig failed")
+	}
+
+	// Best-effort persistence: the layout is already applied, so a failure to
+	// write monitors.xml only means it won't be restored after a reboot — don't
+	// fail the switch over it.
+	if err := writeMonitorsXML(persist, monitors); err != nil {
+		log.Printf("Applied layout but failed to persist to monitors.xml: %v", err)
 	}
 	return nil
 }
