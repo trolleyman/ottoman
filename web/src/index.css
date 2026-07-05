@@ -1,1 +1,46 @@
 @import "tailwindcss";
+
+/*
+ * Custom volume slider used by the audio sinks (0–150%). The native track is
+ * made transparent so the decorative zone/fill layers rendered behind the
+ * input show through; only the thumb is drawn by the input itself. Thumb
+ * colour follows the `--slider-thumb` custom property so it can switch to the
+ * overdrive tint once volume crosses 100%.
+ */
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 100%;
+}
+
+.volume-slider::-moz-range-track {
+  background: transparent;
+  height: 100%;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  background: var(--slider-thumb, #3b82f6);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+}
+
+.volume-slider::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--slider-thumb, #3b82f6);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+}
