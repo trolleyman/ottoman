@@ -125,7 +125,7 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 	// Reachable UI origins, best first: the agent served directly (skips this
 	// proxy hop; only advertised while it answers /health), then this
 	// controller on the LAN. The SPA hops to the best one it can reach.
-	agentOK, publicIP := c.refreshEndpointState()
+	agentOK, publicIPs := c.refreshEndpointState()
 	endpoints := make([]string, 0, 2)
 	if agentOK {
 		endpoints = append(endpoints, "http://"+c.getAgentAddr())
@@ -133,7 +133,7 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 	if c.localIP != "" {
 		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", c.localIP, port))
 	}
-	local := clientIsLocal(ctx, publicIP)
+	local := c.clientIsLocal(ctx, publicIPs)
 
 	return api.GetStatus200JSONResponse{
 		Status:        "ok",
