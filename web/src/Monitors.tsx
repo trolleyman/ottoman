@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Settings, Sun, Volume2, VolumeX } from "lucide-react";
 import type { Monitor, MonitorSettingsRequest } from "./api";
 import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
 import { useMonitorPower } from "./useMonitorPower";
+import { useCoalescedSlider } from "./useCoalescedSlider";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -24,61 +25,15 @@ function visible(monitor: Monitor, control: string): boolean {
   return v === undefined ? true : v;
 }
 
-// BrightnessSlider is a self-contained brightness control that owns its drag
-// value locally so it stays smooth. Two problems it solves versus binding
-// straight to the store:
-//   1. Flooding — dragging fires an onChange per integer step, and each write
-//      runs a slow `ddcutil` round-trip on the agent. We coalesce to at most one
-//      in-flight write and always send the latest value, so the network paces
-//      itself to DDC speed instead of queuing dozens of stale writes.
-//   2. Snap-back — the 3s background poll replaces the whole monitors array
-//      (including brightness) with the agent's reported value, which lags behind
-//      a slow DDC write. Binding the thumb to a controlled store value makes it
-//      jump backward mid-drag. Local state is authoritative while dragging, and
-//      we ignore incoming server values until they catch up to our last write.
+// BrightnessSlider is a self-contained brightness control. It drives a slow
+// `ddcutil` backend and is overwritten by the 3s poll, so it delegates drag
+// smoothing and write coalescing to useCoalescedSlider (see that hook).
 function BrightnessSlider({ edid, brightness }: { edid: string; brightness: number }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
   const disabled = brightness < 0;
-
-  const [local, setLocal] = useState(disabled ? 50 : brightness);
-  const draggingRef = useRef(false);
-  // The most recent value we've committed to the agent; while set, server
-  // values that don't yet match it are stale echoes and must be ignored.
-  const lastSentRef = useRef<number | null>(null);
-  // Coalescing state: at most one write in flight, with the latest pending
-  // value queued behind it.
-  const pendingRef = useRef<number | null>(null);
-  const inflightRef = useRef(false);
-
-  // Adopt the server value only when we're idle and it reflects our last write
-  // (or we've never written) — otherwise a lagging poll would snap the thumb.
-  useEffect(() => {
-    if (draggingRef.current || disabled) return;
-    if (lastSentRef.current !== null && brightness !== lastSentRef.current) return;
-    lastSentRef.current = null;
-    setLocal(brightness);
-  }, [brightness, disabled]);
-
-  const flush = async () => {
-    if (inflightRef.current || pendingRef.current === null) return;
-    inflightRef.current = true;
-    const v = pendingRef.current;
-    pendingRef.current = null;
-    lastSentRef.current = v;
-    try {
-      await setMonitorBrightness(edid, v);
-    } finally {
-      inflightRef.current = false;
-      // A newer value may have queued while this write was in flight.
-      void flush();
-    }
-  };
-
-  const onSlide = (v: number) => {
-    setLocal(v);
-    pendingRef.current = v;
-    void flush();
-  };
+  const { value, set, dragProps } = useCoalescedSlider(brightness, (v) =>
+    setMonitorBrightness(edid, v),
+  );
 
   return (
     <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
@@ -88,16 +43,14 @@ function BrightnessSlider({ edid, brightness }: { edid: string; brightness: numb
           type="range"
           min={0}
           max={100}
-          value={disabled ? 50 : local}
+          value={disabled ? 50 : value}
           disabled={disabled}
-          onPointerDown={() => { draggingRef.current = true; }}
-          onPointerUp={() => { draggingRef.current = false; }}
-          onPointerCancel={() => { draggingRef.current = false; }}
-          onChange={(e) => onSlide(Number(e.target.value))}
+          {...dragProps}
+          onChange={(e) => set(Number(e.target.value))}
           className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
         />
         <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
-          {disabled ? "—" : `${local}%`}
+          {disabled ? "—" : `${value}%`}
         </span>
       </div>
     </div>
@@ -123,17 +76,19 @@ function VolumeRail() {
   const tv = useStore((s) => s.tv);
   const setTVVolume = useStore((s) => s.setTVVolume);
   const setTVMute = useStore((s) => s.setTVMute);
+  const { value, set, dragProps } = useCoalescedSlider(tv?.volume ?? 0, setTVVolume);
   if (!tv) return null;
 
   return (
     <div className="flex flex-col items-center gap-2 pl-4 border-l border-zinc-700/40">
-      <span className="text-sm text-zinc-400 font-mono tabular-nums">{tv.volume}</span>
+      <span className="text-sm text-zinc-400 font-mono tabular-nums">{value}</span>
       <input
         type="range"
         min={0}
         max={100}
-        value={tv.volume}
-        onChange={(e) => void setTVVolume(Number(e.target.value))}
+        value={value}
+        {...dragProps}
+        onChange={(e) => set(Number(e.target.value))}
         aria-label="Volume"
         className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
         style={{ writingMode: "vertical-lr", direction: "rtl" }}
