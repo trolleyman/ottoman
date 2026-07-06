@@ -20,3 +20,12 @@ func SetBrightness(bus, percent int) error { return errUnsupported }
 
 // SetPower is unsupported off Linux.
 func SetPower(bus int, on bool) error { return errUnsupported }
+
+// GetBrightnessDirect is unsupported off Linux.
+func GetBrightnessDirect(bus int) (int, error) { return 0, errUnsupported }
+
+// SetBrightnessDirect is unsupported off Linux.
+func SetBrightnessDirect(bus, percent int) error { return errUnsupported }
+
+// SetPowerDirect is unsupported off Linux.
+func SetPowerDirect(bus int, on bool) error { return errUnsupported }

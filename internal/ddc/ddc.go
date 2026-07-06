@@ -11,11 +11,17 @@ type Display struct {
 	Serial string // serial number (may be empty)
 }
 
-// VCP feature codes.
+// VCP feature codes, as strings for the ddcutil CLI.
 const (
 	vcpBrightness = "10"
 	vcpPower      = "D6"
 
 	powerOn      = 1 // 0xD6 value 1 = on
 	powerStandby = 4 // 0xD6 value 4 = standby/off
+)
+
+// VCP feature codes as raw bytes, for the direct-I2C transport.
+const (
+	vcpBrightnessCode = 0x10
+	vcpPowerCode      = 0xD6
 )

@@ -987,7 +987,7 @@ components:
         active: { $ref: '#/components/schemas/ActiveMonitor' }
         # Registry-derived control metadata (optional).
         friendly_name: { type: string }
-        control_backend: { type: string, description: "ddc | tv | none" }
+        control_backend: { type: string, description: "ddc | i2c | tv | none" }
         brightness: { type: integer, description: "current 0-100, -1 if unknown" }
         capabilities: { $ref: '#/components/schemas/MonitorCapabilities' }
         visibility:
@@ -1230,7 +1230,7 @@ components:
       properties:
         edid: { type: string }
         friendly_name: { type: string }
-        backend: { type: string, description: "ddc | tv | none" }
+        backend: { type: string, description: "ddc | i2c | tv | none" }
         visibility:
           type: object
           additionalProperties: { type: boolean }

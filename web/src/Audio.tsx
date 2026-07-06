@@ -2,6 +2,7 @@ import { Volume1, Volume2, VolumeX } from "lucide-react";
 import type { AudioSink } from "./api";
 import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
+import { useCoalescedSlider } from "./useCoalescedSlider";
 
 function VolumeIcon({ muted, volume, className }: { muted: boolean; volume: number; className?: string }) {
   if (muted || volume === 0) return <VolumeX className={className} />;
@@ -14,7 +15,12 @@ function SinkCard({ sink }: { sink: AudioSink }) {
   const setSinkMute = useStore((s) => s.setSinkMute);
   const setSinkDefault = useStore((s) => s.setSinkDefault);
 
-  const pct = Math.round(sink.volume * 100);
+  // Drive the slider in integer-percent units (matching PipeWire's fraction ×100)
+  // so drags stay smooth and don't fight the 3s poll — see useCoalescedSlider.
+  const { value: pct, set, dragProps } = useCoalescedSlider(
+    Math.round(sink.volume * 100),
+    (v) => setSinkVolume(sink.name, v / 100),
+  );
 
   // The slider runs 0–150%; 100% is the "normal max" and everything past it is
   // overdrive. 100% therefore sits at 100/150 ≈ 66.67% of the track width.
@@ -83,7 +89,8 @@ function SinkCard({ sink }: { sink: AudioSink }) {
               min={0}
               max={MAX}
               value={pct}
-              onChange={(e) => void setSinkVolume(sink.name, Number(e.target.value) / 100)}
+              {...dragProps}
+              onChange={(e) => set(Number(e.target.value))}
               className="volume-slider absolute inset-0"
               style={{ ["--slider-thumb" as string]: overdrive ? "#f59e0b" : "#3b82f6" }}
             />

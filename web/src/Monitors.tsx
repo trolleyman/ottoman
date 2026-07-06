@@ -5,6 +5,7 @@ import { Section, SectionState } from "./Section";
 import { useStore } from "./store";
 import { PowerToggle } from "./PowerToggle";
 import { useMonitorPower } from "./useMonitorPower";
+import { useCoalescedSlider } from "./useCoalescedSlider";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -24,18 +25,15 @@ function visible(monitor: Monitor, control: string): boolean {
   return v === undefined ? true : v;
 }
 
-// MonitorControls renders the in-body brightness slider. Power lives in the card
-// header and TV volume in a vertical rail on the right (see MonitorCard).
-function MonitorControls({ monitor }: { monitor: Monitor }) {
+// BrightnessSlider is a self-contained brightness control. It drives a slow
+// `ddcutil` backend and is overwritten by the 3s poll, so it delegates drag
+// smoothing and write coalescing to useCoalescedSlider (see that hook).
+function BrightnessSlider({ edid, brightness }: { edid: string; brightness: number }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
-
-  const caps = monitor.capabilities;
-  if (!caps) return null;
-
-  const showBrightness = caps.brightness && visible(monitor, "brightness");
-  if (!showBrightness) return null;
-
-  const brightness = monitor.brightness ?? -1;
+  const disabled = brightness < 0;
+  const { value, set, dragProps } = useCoalescedSlider(brightness, (v) =>
+    setMonitorBrightness(edid, v),
+  );
 
   return (
     <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
@@ -45,17 +43,30 @@ function MonitorControls({ monitor }: { monitor: Monitor }) {
           type="range"
           min={0}
           max={100}
-          value={brightness < 0 ? 50 : brightness}
-          disabled={brightness < 0}
-          onChange={(e) => void setMonitorBrightness(monitor.edid, Number(e.target.value))}
+          value={disabled ? 50 : value}
+          disabled={disabled}
+          {...dragProps}
+          onChange={(e) => set(Number(e.target.value))}
           className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
         />
         <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
-          {brightness < 0 ? "—" : `${brightness}%`}
+          {disabled ? "—" : `${value}%`}
         </span>
       </div>
     </div>
   );
+}
+
+// MonitorControls renders the in-body brightness slider. Power lives in the card
+// header and TV volume in a vertical rail on the right (see MonitorCard).
+function MonitorControls({ monitor }: { monitor: Monitor }) {
+  const caps = monitor.capabilities;
+  if (!caps) return null;
+
+  const showBrightness = caps.brightness && visible(monitor, "brightness");
+  if (!showBrightness) return null;
+
+  return <BrightnessSlider edid={monitor.edid} brightness={monitor.brightness ?? -1} />;
 }
 
 // VolumeRail is the vertical TV-volume control down the right side of a
@@ -65,17 +76,19 @@ function VolumeRail() {
   const tv = useStore((s) => s.tv);
   const setTVVolume = useStore((s) => s.setTVVolume);
   const setTVMute = useStore((s) => s.setTVMute);
+  const { value, set, dragProps } = useCoalescedSlider(tv?.volume ?? 0, setTVVolume);
   if (!tv) return null;
 
   return (
     <div className="flex flex-col items-center gap-2 pl-4 border-l border-zinc-700/40">
-      <span className="text-sm text-zinc-400 font-mono tabular-nums">{tv.volume}</span>
+      <span className="text-sm text-zinc-400 font-mono tabular-nums">{value}</span>
       <input
         type="range"
         min={0}
         max={100}
-        value={tv.volume}
-        onChange={(e) => void setTVVolume(Number(e.target.value))}
+        value={value}
+        {...dragProps}
+        onChange={(e) => set(Number(e.target.value))}
         aria-label="Volume"
         className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
         style={{ writingMode: "vertical-lr", direction: "rtl" }}
@@ -94,7 +107,8 @@ function VolumeRail() {
 
 const BACKENDS: { value: string; label: string }[] = [
   { value: "", label: "Auto-detect" },
-  { value: "ddc", label: "Monitor (DDC/CI)" },
+  { value: "ddc", label: "Monitor (DDC/CI via ddcutil)" },
+  { value: "i2c", label: "Monitor (direct I2C — faster)" },
   { value: "tv", label: "Network TV (webOS)" },
   { value: "none", label: "None" },
 ];
@@ -114,7 +128,7 @@ function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose
   const controls =
     backend === "tv"
       ? ["brightness", "power", "volume"]
-      : backend === "ddc"
+      : backend === "ddc" || backend === "i2c"
         ? ["brightness", "power"]
         : [];
 

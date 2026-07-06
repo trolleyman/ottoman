@@ -11,7 +11,8 @@ import (
 // Control backend identifiers for a monitor.
 const (
 	BackendNone = "none" // no external control
-	BackendDDC  = "ddc"  // DDC/CI over i2c (desktop monitors)
+	BackendDDC  = "ddc"  // DDC/CI via the ddcutil CLI (desktop monitors)
+	BackendI2C  = "i2c"  // DDC/CI direct over /dev/i2c (same monitors, lower latency)
 	BackendTV   = "tv"   // network API (e.g. LG webOS)
 )
 

@@ -187,7 +187,7 @@ type Monitor struct {
 	Brightness   *int                 `json:"brightness,omitempty"`
 	Capabilities *MonitorCapabilities `json:"capabilities,omitempty"`
 
-	// ControlBackend ddc | tv | none
+	// ControlBackend ddc | i2c | tv | none
 	ControlBackend *string          `json:"control_backend,omitempty"`
 	Edid           string           `json:"edid"`
 	FriendlyName   *string          `json:"friendly_name,omitempty"`
@@ -226,7 +226,7 @@ type MonitorPowerStateResponse struct {
 
 // MonitorSettingsRequest defines model for MonitorSettingsRequest.
 type MonitorSettingsRequest struct {
-	// Backend ddc | tv | none
+	// Backend ddc | i2c | tv | none
 	Backend      *string          `json:"backend,omitempty"`
 	Edid         string           `json:"edid"`
 	FriendlyName *string          `json:"friendly_name,omitempty"`

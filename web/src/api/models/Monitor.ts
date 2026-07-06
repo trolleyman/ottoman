@@ -13,7 +13,7 @@ export type Monitor = {
     active?: ActiveMonitor;
     friendly_name?: string;
     /**
-     * ddc | tv | none
+     * ddc | i2c | tv | none
      */
     control_backend?: string;
     /**
