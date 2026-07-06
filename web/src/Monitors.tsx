@@ -249,21 +249,32 @@ function TVPairPill() {
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   const [editing, setEditing] = useState(false);
+  const tv = useStore((s) => s.tv);
+
+  // Seed the power switch from real power state, not layout-activeness. A TV
+  // reports it directly (`reachable` ≈ powered on), so an on-but-inactive TV
+  // shows as on; other backends fall back to whether they're in the layout.
+  // The hook re-syncs when this value arrives (tv state loads asynchronously).
+  const isTV = monitor.control_backend === "tv";
+  const initialPowerOn = isTV ? !!tv?.reachable : !!a;
 
   // Power switch (with confirmation poll) lives in the header; the hook runs
-  // unconditionally, seeded optimistically from `active`.
+  // unconditionally.
   const { on: powerOn, loading: powerLoading, toggle: togglePower } =
-    useMonitorPower(monitor.edid, !!a);
+    useMonitorPower(monitor.edid, initialPowerOn);
   const showPower = !!monitor.capabilities?.power && visible(monitor, "power");
 
   // TV volume goes in a vertical rail on the right of the card (only when the TV
-  // is paired and we're not editing settings).
-  const tv = useStore((s) => s.tv);
-  const showVolume =
-    !editing && !!monitor.capabilities?.volume && visible(monitor, "volume") && !!tv?.paired;
+  // is paired). A rail-bearing card carries the most controls, so give it two
+  // grid columns' width to keep the header/details from cramping — decided by
+  // the rail's *potential* presence (not `editing`) so the card doesn't resize
+  // when the settings form is opened.
+  const hasVolumeRail =
+    !!monitor.capabilities?.volume && visible(monitor, "volume") && !!tv?.paired;
+  const showVolume = !editing && hasVolumeRail;
 
   return (
-    <div className={`rounded-xl border p-5 flex gap-4 ${a
+    <div className={`rounded-xl border p-5 flex gap-4 ${hasVolumeRail ? "sm:col-span-2 lg:col-span-2" : ""} ${a
       ? "border-zinc-700/50 bg-zinc-800/50"
       : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
       }`}>

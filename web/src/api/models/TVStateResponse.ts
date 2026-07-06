@@ -9,6 +9,7 @@ export type TVStateResponse = {
     host: string;
     volume: number;
     muted: boolean;
+    reachable: boolean;
     error?: string;
 };
 

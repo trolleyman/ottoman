@@ -203,6 +203,7 @@ type TVState struct {
 	Host       string `json:"host"`
 	Volume     int    `json:"volume"`
 	Muted      bool   `json:"muted"`
+	Reachable  bool   `json:"reachable"` // TV answered a request ≈ powered on
 	Error      string `json:"error,omitempty"`
 }
 
@@ -230,6 +231,7 @@ func (t *tvController) State(ctx context.Context) TVState {
 			}
 			st.Volume = vol.Volume
 			st.Muted = vol.Muted
+			st.Reachable = true // the volume read succeeded, so the TV is on
 			return nil
 		}); err != nil {
 			st.Error = err.Error()
@@ -310,6 +312,7 @@ func (a *Agent) GetTVState(ctx context.Context, request api.GetTVStateRequestObj
 		Host:       st.Host,
 		Volume:     st.Volume,
 		Muted:      st.Muted,
+		Reachable:  st.Reachable,
 	}
 	if st.Error != "" {
 		resp.Error = &st.Error
