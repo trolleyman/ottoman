@@ -25,10 +25,10 @@ function visible(monitor: Monitor, control: string): boolean {
   return v === undefined ? true : v;
 }
 
-// BrightnessSlider is a self-contained brightness control. It drives a slow
+// BrightnessRow is a self-contained brightness control. It drives a slow
 // `ddcutil` backend and is overwritten by the 3s poll, so it delegates drag
 // smoothing and write coalescing to useCoalescedSlider (see that hook).
-function BrightnessSlider({ edid, brightness }: { edid: string; brightness: number }) {
+function BrightnessRow({ edid, brightness }: { edid: string; brightness: number }) {
   const setMonitorBrightness = useStore((s) => s.setMonitorBrightness);
   const disabled = brightness < 0;
   const { value, set, dragProps } = useCoalescedSlider(brightness, (v) =>
@@ -36,43 +36,28 @@ function BrightnessSlider({ edid, brightness }: { edid: string; brightness: numb
   );
 
   return (
-    <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
-      <div className="flex items-center gap-3">
-        <Sun className="h-[18px] w-[18px] shrink-0 text-amber-400/90" aria-label="Brightness" />
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={disabled ? 50 : value}
-          disabled={disabled}
-          {...dragProps}
-          onChange={(e) => set(Number(e.target.value))}
-          className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
-        />
-        <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
-          {disabled ? "—" : `${value}%`}
-        </span>
-      </div>
+    <div className="flex items-center gap-3">
+      <Sun className="h-[18px] w-[18px] shrink-0 text-amber-400/90" aria-label="Brightness" />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={disabled ? 50 : value}
+        disabled={disabled}
+        {...dragProps}
+        onChange={(e) => set(Number(e.target.value))}
+        className="flex-1 accent-amber-500 cursor-pointer disabled:opacity-40"
+      />
+      <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">
+        {disabled ? "—" : `${value}%`}
+      </span>
     </div>
   );
 }
 
-// MonitorControls renders the in-body brightness slider. Power lives in the card
-// header and TV volume in a vertical rail on the right (see MonitorCard).
-function MonitorControls({ monitor }: { monitor: Monitor }) {
-  const caps = monitor.capabilities;
-  if (!caps) return null;
-
-  const showBrightness = caps.brightness && visible(monitor, "brightness");
-  if (!showBrightness) return null;
-
-  return <BrightnessSlider edid={monitor.edid} brightness={monitor.brightness ?? -1} />;
-}
-
-// VolumeRail is the vertical TV-volume control down the right side of a
-// TV-backed monitor card: value on top, a vertical slider filling the height,
-// and the mute toggle at the bottom.
-function VolumeRail() {
+// VolumeRow is the horizontal TV-volume control, sitting in the card body under
+// brightness. The leading speaker icon doubles as the mute toggle.
+function VolumeRow() {
   const tv = useStore((s) => s.tv);
   const setTVVolume = useStore((s) => s.setTVVolume);
   const setTVMute = useStore((s) => s.setTVMute);
@@ -80,8 +65,15 @@ function VolumeRail() {
   if (!tv) return null;
 
   return (
-    <div className="flex flex-col items-center gap-2 pl-4 border-l border-zinc-700/40">
-      <span className="text-sm text-zinc-400 font-mono tabular-nums">{value}</span>
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => void setTVMute(!tv.muted)}
+        className="shrink-0 text-blue-400/90 hover:text-blue-300 transition-colors cursor-pointer"
+        title={tv.muted ? "Unmute" : "Mute"}
+        aria-label={tv.muted ? "Unmute" : "Mute"}
+      >
+        {tv.muted ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
+      </button>
       <input
         type="range"
         min={0}
@@ -91,16 +83,24 @@ function VolumeRail() {
         onChange={(e) => set(Number(e.target.value))}
         aria-label="Volume"
         className={`flex-1 accent-blue-500 cursor-pointer ${tv.muted ? "opacity-40" : ""}`}
-        style={{ writingMode: "vertical-lr", direction: "rtl" }}
       />
-      <button
-        onClick={() => void setTVMute(!tv.muted)}
-        className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-        title={tv.muted ? "Unmute" : "Mute"}
-        aria-label={tv.muted ? "Unmute" : "Mute"}
-      >
-        {tv.muted ? <VolumeX className="h-[18px] w-[18px]" /> : <Volume2 className="h-[18px] w-[18px]" />}
-      </button>
+      <span className="text-sm text-zinc-400 font-mono w-10 text-right tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+// MonitorControls renders the in-body sliders — brightness for any capable
+// backend, and TV volume beneath it — under a single divider. Power lives in
+// the card header (see MonitorCard).
+function MonitorControls({ monitor, showVolume }: { monitor: Monitor; showVolume: boolean }) {
+  const caps = monitor.capabilities;
+  const showBrightness = !!caps?.brightness && visible(monitor, "brightness");
+  if (!showBrightness && !showVolume) return null;
+
+  return (
+    <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
+      {showBrightness && <BrightnessRow edid={monitor.edid} brightness={monitor.brightness ?? -1} />}
+      {showVolume && <VolumeRow />}
     </div>
   );
 }
@@ -264,21 +264,16 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
     useMonitorPower(monitor.edid, initialPowerOn);
   const showPower = !!monitor.capabilities?.power && visible(monitor, "power");
 
-  // TV volume goes in a vertical rail on the right of the card (only when the TV
-  // is paired). A rail-bearing card carries the most controls, so give it two
-  // grid columns' width to keep the header/details from cramping — decided by
-  // the rail's *potential* presence (not `editing`) so the card doesn't resize
-  // when the settings form is opened.
-  const hasVolumeRail =
+  // TV volume is a horizontal slider in the card body, under brightness (only
+  // when the TV is paired), so the card keeps a normal single-column width.
+  const showVolume =
     !!monitor.capabilities?.volume && visible(monitor, "volume") && !!tv?.paired;
-  const showVolume = !editing && hasVolumeRail;
 
   return (
-    <div className={`rounded-xl border p-5 flex gap-4 ${hasVolumeRail ? "sm:col-span-2 lg:col-span-2" : ""} ${a
+    <div className={`rounded-xl border p-5 flex flex-col gap-3 min-w-0 ${a
       ? "border-zinc-700/50 bg-zinc-800/50"
       : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
       }`}>
-      <div className="flex-1 min-w-0 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
             {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
@@ -333,11 +328,8 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
         {editing ? (
           <MonitorSettingsEditor monitor={monitor} onClose={() => setEditing(false)} />
         ) : (
-          <MonitorControls monitor={monitor} />
+          <MonitorControls monitor={monitor} showVolume={showVolume} />
         )}
-      </div>
-
-      {showVolume && <VolumeRail />}
     </div>
   );
 }
