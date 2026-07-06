@@ -23,11 +23,11 @@ func (c *Controller) Boot(ctx context.Context, request api.BootRequestObject) (a
 			}
 			return api.Boot200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.Boot400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.Boot400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.Boot401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.Boot500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.Boot500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.Boot502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}

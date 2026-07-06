@@ -239,6 +239,17 @@ func proxyRequest[T any](ctx context.Context, c *Controller, method, path string
 	return handler(resp)
 }
 
+// agentErrorMessage extracts the error message from a proxied agent error
+// response so callers see the real failure (e.g. a TV or DDC error) instead of
+// a generic status string. Falls back when the body carries no message.
+func agentErrorMessage(resp *http.Response, fallback string) string {
+	var e api.ErrorResponse
+	if json.NewDecoder(resp.Body).Decode(&e) == nil && e.Error != "" {
+		return e.Error
+	}
+	return fallback
+}
+
 // Wake implements api.StrictServerInterface
 func (c *Controller) Wake(ctx context.Context, request api.WakeRequestObject) (api.WakeResponseObject, error) {
 	c.mu.RLock()
@@ -312,13 +323,13 @@ func (c *Controller) SwitchLayout(ctx context.Context, request api.SwitchLayoutR
 			}
 			return api.SwitchLayout200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SwitchLayout400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SwitchLayout400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SwitchLayout401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusNotFound:
 			return api.SwitchLayout404JSONResponse{Code: resp.StatusCode, Error: "Layout not found"}, nil
 		case http.StatusInternalServerError:
-			return api.SwitchLayout500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SwitchLayout500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SwitchLayout502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -373,11 +384,11 @@ func (c *Controller) SaveCurrentLayout(ctx context.Context, request api.SaveCurr
 			}
 			return api.SaveCurrentLayout200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SaveCurrentLayout400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SaveCurrentLayout400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SaveCurrentLayout401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.SaveCurrentLayout500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SaveCurrentLayout500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SaveCurrentLayout502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -396,13 +407,13 @@ func (c *Controller) RemoveLayout(ctx context.Context, request api.RemoveLayoutR
 			}
 			return api.RemoveLayout200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.RemoveLayout400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.RemoveLayout400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.RemoveLayout401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusNotFound:
 			return api.RemoveLayout404JSONResponse{Code: resp.StatusCode, Error: "Layout not found"}, nil
 		case http.StatusInternalServerError:
-			return api.RemoveLayout500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.RemoveLayout500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.RemoveLayout502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -423,18 +434,13 @@ func (c *Controller) UpdateLayout(ctx context.Context, request api.UpdateLayoutR
 		case http.StatusBadRequest:
 			// Preserve the agent's message (e.g. an alias conflict) so the UI can
 			// tell the user why the update was rejected.
-			msg := "Bad Request"
-			var e api.ErrorResponse
-			if json.NewDecoder(resp.Body).Decode(&e) == nil && e.Error != "" {
-				msg = e.Error
-			}
-			return api.UpdateLayout400JSONResponse{Code: resp.StatusCode, Error: msg}, nil
+			return api.UpdateLayout400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.UpdateLayout401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusNotFound:
 			return api.UpdateLayout404JSONResponse{Code: resp.StatusCode, Error: "Layout not found"}, nil
 		case http.StatusInternalServerError:
-			return api.UpdateLayout500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.UpdateLayout500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.UpdateLayout502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}

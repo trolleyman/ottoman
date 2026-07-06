@@ -39,7 +39,7 @@ func (c *Controller) PairTV(ctx context.Context, request api.PairTVRequestObject
 		case http.StatusUnauthorized:
 			return api.PairTV401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.PairTV500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.PairTV500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.PairTV502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -58,11 +58,11 @@ func (c *Controller) SetTVPower(ctx context.Context, request api.SetTVPowerReque
 			}
 			return api.SetTVPower200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SetTVPower400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SetTVPower400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SetTVPower401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.SetTVPower500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SetTVPower500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SetTVPower502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -81,11 +81,11 @@ func (c *Controller) SetTVVolume(ctx context.Context, request api.SetTVVolumeReq
 			}
 			return api.SetTVVolume200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SetTVVolume400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SetTVVolume400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SetTVVolume401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.SetTVVolume500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SetTVVolume500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SetTVVolume502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -104,11 +104,11 @@ func (c *Controller) SetTVInput(ctx context.Context, request api.SetTVInputReque
 			}
 			return api.SetTVInput200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SetTVInput400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SetTVInput400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SetTVInput401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.SetTVInput500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SetTVInput500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SetTVInput502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}

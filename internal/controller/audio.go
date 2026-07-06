@@ -21,7 +21,7 @@ func (c *Controller) GetAudioSinks(ctx context.Context, request api.GetAudioSink
 		case http.StatusUnauthorized:
 			return api.GetAudioSinks401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.GetAudioSinks500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.GetAudioSinks500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.GetAudioSinks502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
@@ -40,11 +40,11 @@ func (c *Controller) SetAudioVolume(ctx context.Context, request api.SetAudioVol
 			}
 			return api.SetAudioVolume200JSONResponse(result), nil
 		case http.StatusBadRequest:
-			return api.SetAudioVolume400JSONResponse{Code: resp.StatusCode, Error: "Bad Request"}, nil
+			return api.SetAudioVolume400JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Bad Request")}, nil
 		case http.StatusUnauthorized:
 			return api.SetAudioVolume401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		case http.StatusInternalServerError:
-			return api.SetAudioVolume500JSONResponse{Code: resp.StatusCode, Error: "Internal Server Error"}, nil
+			return api.SetAudioVolume500JSONResponse{Code: resp.StatusCode, Error: agentErrorMessage(resp, "Internal Server Error")}, nil
 		default:
 			return api.SetAudioVolume502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
