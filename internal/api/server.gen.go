@@ -373,6 +373,7 @@ type TVStateResponse struct {
 	Muted      bool    `json:"muted"`
 	Paired     bool    `json:"paired"`
 	Pairing    bool    `json:"pairing"`
+	Reachable  bool    `json:"reachable"`
 	Volume     int     `json:"volume"`
 }
 

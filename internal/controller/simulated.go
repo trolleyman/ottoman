@@ -458,7 +458,7 @@ func (s *SimulatedController) Boot(ctx context.Context, request api.BootRequestO
 
 func (s *SimulatedController) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
 	return api.GetTVState200JSONResponse{
-		Configured: true, Paired: true, Pairing: false,
+		Configured: true, Paired: true, Pairing: false, Reachable: true,
 		Host: "10.0.0.50", Volume: 12, Muted: false,
 	}, nil
 }

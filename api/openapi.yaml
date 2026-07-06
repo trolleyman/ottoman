@@ -1273,7 +1273,7 @@ components:
     # --- TV Types ---
     TVStateResponse:
       type: object
-      required: [configured, paired, pairing, host, volume, muted]
+      required: [configured, paired, pairing, host, volume, muted, reachable]
       properties:
         configured: { type: boolean }
         paired: { type: boolean }
@@ -1281,6 +1281,10 @@ components:
         host: { type: string }
         volume: { type: integer }
         muted: { type: boolean }
+        # reachable ≈ "powered on": the TV answered a lightweight request. A TV
+        # that's off drops its network connection, so this distinguishes an
+        # on-but-inactive TV (on, not in any layout) from one that's truly off.
+        reachable: { type: boolean }
         error: { type: string }
 
     TVPowerRequest:

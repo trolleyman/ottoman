@@ -25,6 +25,15 @@ export function useMonitorPower(edid: string, initialOn: boolean) {
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
+  // Re-sync to the caller's power state when it changes — e.g. a TV's
+  // `reachable` arrives after the first render, or a poll flips `active`. Skip
+  // while a toggle is in flight so we don't clobber the optimistic switch.
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  useEffect(() => {
+    if (!loadingRef.current) setOn(initialOn);
+  }, [initialOn]);
+
   const toggle = async (target: boolean) => {
     const id = ++runId.current; // supersedes any in-flight poll
     setOn(target);
