@@ -7,7 +7,7 @@ export type MonitorSettingsRequest = {
     edid: string;
     friendly_name?: string;
     /**
-     * ddc | tv | none
+     * ddc | i2c | tv | none
      */
     backend?: string;
     visibility?: Record<string, boolean>;

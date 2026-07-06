@@ -107,7 +107,8 @@ function VolumeRail() {
 
 const BACKENDS: { value: string; label: string }[] = [
   { value: "", label: "Auto-detect" },
-  { value: "ddc", label: "Monitor (DDC/CI)" },
+  { value: "ddc", label: "Monitor (DDC/CI via ddcutil)" },
+  { value: "i2c", label: "Monitor (direct I2C — faster)" },
   { value: "tv", label: "Network TV (webOS)" },
   { value: "none", label: "None" },
 ];
@@ -127,7 +128,7 @@ function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose
   const controls =
     backend === "tv"
       ? ["brightness", "power", "volume"]
-      : backend === "ddc"
+      : backend === "ddc" || backend === "i2c"
         ? ["brightness", "power"]
         : [];
 

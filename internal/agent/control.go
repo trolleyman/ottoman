@@ -92,10 +92,35 @@ func (c *monitorControl) backendFor(edid string) string {
 	return store.BackendNone
 }
 
+// ddcGetBrightness/ddcSetBrightness/ddcSetPower dispatch a DDC-family operation
+// to either the ddcutil CLI (BackendDDC) or the direct-I2C transport
+// (BackendI2C). Both drive the same monitors over the same i2c bus; direct I2C
+// just skips the per-call ddcutil process spawn that makes dragging laggy.
+func ddcGetBrightness(backend string, bus int) (int, error) {
+	if backend == store.BackendI2C {
+		return ddc.GetBrightnessDirect(bus)
+	}
+	return ddc.GetBrightness(bus)
+}
+
+func ddcSetBrightness(backend string, bus, percent int) error {
+	if backend == store.BackendI2C {
+		return ddc.SetBrightnessDirect(bus, percent)
+	}
+	return ddc.SetBrightness(bus, percent)
+}
+
+func ddcSetPower(backend string, bus int, on bool) error {
+	if backend == store.BackendI2C {
+		return ddc.SetPowerDirect(bus, on)
+	}
+	return ddc.SetPower(bus, on)
+}
+
 // capabilities reports which controls a monitor supports, based on its backend.
 func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 	switch c.backendFor(edid) {
-	case store.BackendDDC:
+	case store.BackendDDC, store.BackendI2C:
 		// A DDC monitor that isn't currently on an i2c bus is disconnected (e.g.
 		// a remembered layout monitor that's unplugged) — it can't be controlled
 		// over DDC, so advertise no controls rather than switches that error.
@@ -116,7 +141,7 @@ func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 // or the firmware doesn't support it, falls back to the last value we set.
 func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	backend := c.backendFor(edid)
-	if backend != store.BackendDDC && backend != store.BackendTV {
+	if backend != store.BackendDDC && backend != store.BackendI2C && backend != store.BackendTV {
 		return 0, false
 	}
 
@@ -129,12 +154,12 @@ func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	}
 
 	switch backend {
-	case store.BackendDDC:
+	case store.BackendDDC, store.BackendI2C:
 		bus, ok := c.ddcBusFor(edid)
 		if !ok {
 			return 0, false
 		}
-		v, err := ddc.GetBrightness(bus)
+		v, err := ddcGetBrightness(backend, bus)
 		if err != nil {
 			log.Printf("ddc GetBrightness(%s) failed: %v", edid, err)
 			if cached {
@@ -172,13 +197,14 @@ func (c *monitorControl) setBrightnessSample(edid string, v int) {
 // setBrightness sets brightness (0-100) on a monitor. For a TV-backed monitor
 // this drives the OLED backlight.
 func (c *monitorControl) setBrightness(edid string, percent int) error {
-	switch c.backendFor(edid) {
-	case store.BackendDDC:
+	backend := c.backendFor(edid)
+	switch backend {
+	case store.BackendDDC, store.BackendI2C:
 		bus, ok := c.ddcBusFor(edid)
 		if !ok {
 			return errors.Errorf("no DDC display matches monitor %q", edid)
 		}
-		if err := ddc.SetBrightness(bus, percent); err != nil {
+		if err := ddcSetBrightness(backend, bus, percent); err != nil {
 			return err
 		}
 		c.setBrightnessSample(edid, percent)
@@ -199,13 +225,14 @@ func (c *monitorControl) setBrightness(edid string, percent int) error {
 
 // setPower turns a monitor on or off (standby / TV power).
 func (c *monitorControl) setPower(edid string, on bool) error {
-	switch c.backendFor(edid) {
-	case store.BackendDDC:
+	backend := c.backendFor(edid)
+	switch backend {
+	case store.BackendDDC, store.BackendI2C:
 		bus, ok := c.ddcBusFor(edid)
 		if !ok {
 			return errors.Errorf("no DDC display matches monitor %q", edid)
 		}
-		return ddc.SetPower(bus, on)
+		return ddcSetPower(backend, bus, on)
 	case store.BackendTV:
 		if c.tv == nil {
 			return errors.New("no TV controller configured")
@@ -225,13 +252,14 @@ func (c *monitorControl) setPower(edid string, on bool) error {
 // to confirm a power toggle by polling until the state flips (there's no direct
 // power-state read). The probe can block for the backend's own timeout.
 func (c *monitorControl) responding(edid string) bool {
-	switch c.backendFor(edid) {
-	case store.BackendDDC:
+	backend := c.backendFor(edid)
+	switch backend {
+	case store.BackendDDC, store.BackendI2C:
 		bus, ok := c.ddcBusFor(edid)
 		if !ok {
 			return false
 		}
-		v, err := ddc.GetBrightness(bus)
+		v, err := ddcGetBrightness(backend, bus)
 		if err != nil {
 			return false
 		}
