@@ -111,6 +111,12 @@ func parseVCPValue(out string) (cur, max int, err error) {
 }
 
 // SetBrightness sets brightness as a 0-100 percentage.
+//
+// `--noverify` skips ddcutil's default post-write read-back, which otherwise
+// doubles the DDC/CI traffic (a full getvcp after every setvcp) and its
+// spec-mandated inter-operation sleeps — the main source of drag lag. We don't
+// need the confirmation: the UI polls brightness separately, and a dropped
+// write is corrected by the next drag tick.
 func SetBrightness(bus, percent int) error {
 	if percent < 0 {
 		percent = 0
@@ -118,7 +124,7 @@ func SetBrightness(bus, percent int) error {
 	if percent > 100 {
 		percent = 100
 	}
-	if err := common.RunCmd("ddcutil", "--bus", strconv.Itoa(bus), "setvcp", vcpBrightness, strconv.Itoa(percent)); err != nil {
+	if err := common.RunCmd("ddcutil", "--bus", strconv.Itoa(bus), "--noverify", "setvcp", vcpBrightness, strconv.Itoa(percent)); err != nil {
 		return errors.Wrap(err, "ddcutil setvcp brightness failed")
 	}
 	return nil
