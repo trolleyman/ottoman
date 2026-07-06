@@ -117,10 +117,10 @@ export function LayoutCard({
   const enabled = sortedLayoutMonitors(layout.monitors ?? []);
   const aliasList = layout.aliases ?? [];
 
-  // Cards share the row's free space equally: an equal flex-basis plus flex-grow
-  // means every card on a row ends up the same width, stretching to fill the row.
-  // No max cap, so a few layouts expand to use the whole width.
-  const wrapperClass = "relative group mb-auto flex-grow basis-72";
+  // The parent lays cards out in a 2-column grid, so each card fills its grid
+  // cell. mb-auto keeps the card top-aligned within a cell that stretches to
+  // match a taller neighbour on the same row.
+  const wrapperClass = "relative group mb-auto";
 
   if (editing && onUpdate) {
     return (

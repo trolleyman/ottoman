@@ -83,7 +83,7 @@ export function Layouts() {
       ) : (() => {
         const layoutScale = computeUniformScale(layouts, 500, 300);
         return (
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {layouts.map((l) => (
               <LayoutCard
                 key={l.id}
