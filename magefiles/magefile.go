@@ -173,7 +173,7 @@ func run(cmd string, args ...string) error {
 
 // runRemote runs a command WITHOUT mage/sh's local $VAR expansion. mage's sh
 // package calls os.Expand on every argument against the LOCAL environment
-// (sh/cmd.go), so a literal "$HOME" in an ssh/scp remote path would be rewritten
+// (sh/cmd.go), so a literal "$HOME" in an ssh/rsync remote path would be rewritten
 // to the local user's home before the command is even sent — hardcoding the
 // wrong user on the remote. exec.Command passes arguments through untouched, so
 // "$HOME" reaches the remote shell and is expanded there instead. stderr/stdout
@@ -813,13 +813,11 @@ func DeployController() error {
 	// Stop service if running (ignore errors as it might not exist yet)
 	_ = runRemote("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
 
-	// Remove binary if it exists
-	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`rm -f "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
-		return fmt.Errorf("failed to remove existing binary: %w", err)
-	}
-
-	// Copy binary (use scpPath to handle ~ properly)
-	if err := runRemote("scp", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.DeployPath))); err != nil {
+	// Copy binary. rsync writes a temp file and renames, so unlike scp it can't
+	// hit ETXTBSY overwriting a previously running binary (no rm needed first),
+	// and leaving the old file in place lets its delta transfer skip unchanged
+	// blocks — much faster to a Pi over wifi.
+	if err := runRemote("rsync", "-az", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, remotePath(cfg.Controller.DeployPath))); err != nil {
 		return fmt.Errorf("failed to copy binary: %w", err)
 	}
 
@@ -834,7 +832,7 @@ func DeployController() error {
 	configExists := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`test -f "%s"`, remoteConfig)) == nil
 	if configExists {
 		fmt.Printf("Remote config already exists at %s - leaving it untouched.\n", cfg.Controller.ConfigPath)
-	} else if err := runRemote("scp", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, scpPath(cfg.Controller.ConfigPath))); err != nil {
+	} else if err := runRemote("rsync", "-az", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, remotePath(cfg.Controller.ConfigPath))); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
@@ -864,10 +862,11 @@ func expandPath(path string) string {
 	return path
 }
 
-// scpPath converts ~/path to relative path for scp (scp defaults to home dir)
-func scpPath(path string) string {
+// remotePath converts ~/path to a home-relative path for rsync/scp remote
+// arguments (both resolve a relative remote path against the remote home dir).
+func remotePath(path string) string {
 	if strings.HasPrefix(path, "~/") {
-		return path[2:] // Remove "~/" - scp uses home dir by default
+		return path[2:]
 	}
 	return path
 }
