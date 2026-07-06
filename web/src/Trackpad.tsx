@@ -511,8 +511,6 @@ export function Trackpad({
   const layouts = useStore((s) => s.layouts);
   const currentLayout = useStore((s) => s.currentLayout);
   const loading = useStore((s) => s.layoutsLoading);
-  const status = useStore((s) => s.status);
-
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<TrackpadSettings>({
     cursorSensitivity: 1.5,
@@ -534,32 +532,6 @@ export function Trackpad({
       return () => document.removeEventListener("mousedown", onClick);
     }
   }, [showSettings]);
-
-  // Check for local network connection and redirect if possible
-  useEffect(() => {
-    if (!status?.ip_address || !status?.port) return;
-    if (window.location.hostname === status.ip_address) return;
-
-    const checkLocalConnection = async () => {
-      try {
-        const protocol = window.location.protocol;
-        const localUrl = `${protocol}//${status.ip_address}:${status.port}`;
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
-        const resp = await fetch(`${localUrl}/health`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (resp.ok) {
-          window.location.href = localUrl;
-        }
-      } catch {
-        // Ignore errors (e.g. not on same network)
-      }
-    };
-
-    void checkLocalConnection();
-  }, [status?.ip_address, status?.port]);
 
   return (
     <section>

@@ -273,9 +273,17 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 	uptime := time.Since(a.startTime).Round(time.Second).String()
 	_, port, _ := net.SplitHostPort(a.config.ListenAddress)
 
+	ip := getOutboundIP()
 	var ipAddr api.StatusResponse_IpAddress
-	if err := ipAddr.FromStatusResponseIpAddress0(getOutboundIP()); err != nil {
+	if err := ipAddr.FromStatusResponseIpAddress0(ip); err != nil {
 		return api.GetStatus200JSONResponse{}, err
+	}
+
+	// The agent is itself the best endpoint — a SPA already served from here
+	// has nowhere better to hop to.
+	endpoints := make([]string, 0, 1)
+	if ip != "" && port != "" {
+		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", ip, port))
 	}
 
 	return api.GetStatus200JSONResponse{
@@ -286,6 +294,7 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		IpAddress: ipAddr,
 		Port:      port,
 		Secret:    "",
+		Endpoints: &endpoints,
 	}, nil
 }
 

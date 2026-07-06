@@ -37,6 +37,8 @@ type Controller struct {
 	mu      sync.RWMutex
 	secret  string
 	localIP string
+
+	endpoints endpointState
 }
 
 // Ensure Controller implements StrictServerInterface
@@ -120,14 +122,29 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 		return nil, err
 	}
 
+	// Reachable UI origins, best first: the agent served directly (skips this
+	// proxy hop; only advertised while it answers /health), then this
+	// controller on the LAN. The SPA hops to the best one it can reach.
+	agentOK, publicIP := c.refreshEndpointState()
+	endpoints := make([]string, 0, 2)
+	if agentOK {
+		endpoints = append(endpoints, "http://"+c.getAgentAddr())
+	}
+	if c.localIP != "" {
+		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", c.localIP, port))
+	}
+	local := clientIsLocal(ctx, publicIP)
+
 	return api.GetStatus200JSONResponse{
-		Status:    "ok",
-		Version:   "dev",
-		Uptime:    uptime,
-		Hostname:  "",
-		IpAddress: ipAddr,
-		Port:      port,
-		Secret:    c.secret,
+		Status:        "ok",
+		Version:       "dev",
+		Uptime:        uptime,
+		Hostname:      "",
+		IpAddress:     ipAddr,
+		Port:          port,
+		Secret:        c.secret,
+		Endpoints:     &endpoints,
+		ClientIsLocal: &local,
 	}, nil
 }
 
@@ -562,7 +579,7 @@ func Run(config *config.ControllerConfig) error {
 func (c *Controller) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(c.router)),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(withClientInfo(c.router))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

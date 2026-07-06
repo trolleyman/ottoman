@@ -303,13 +303,15 @@ type SimStateResponse struct {
 
 // StatusResponse defines model for StatusResponse.
 type StatusResponse struct {
-	Hostname  string                   `json:"hostname"`
-	IpAddress StatusResponse_IpAddress `json:"ip_address"`
-	Port      string                   `json:"port"`
-	Secret    string                   `json:"secret"`
-	Status    string                   `json:"status"`
-	Uptime    string                   `json:"uptime"`
-	Version   string                   `json:"version"`
+	ClientIsLocal *bool                    `json:"client_is_local,omitempty"`
+	Endpoints     *[]string                `json:"endpoints,omitempty"`
+	Hostname      string                   `json:"hostname"`
+	IpAddress     StatusResponse_IpAddress `json:"ip_address"`
+	Port          string                   `json:"port"`
+	Secret        string                   `json:"secret"`
+	Status        string                   `json:"status"`
+	Uptime        string                   `json:"uptime"`
+	Version       string                   `json:"version"`
 }
 
 // StatusResponseIpAddress0 defines model for .

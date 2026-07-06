@@ -9,9 +9,11 @@ import { Audio } from "./Audio";
 import { ClientStatus } from "./ClientStatus";
 import { Layouts } from "./Layouts";
 import { useStore } from "./store";
+import { useEndpointRedirect } from "./useEndpointRedirect";
 
 export default function App() {
   const authed = useStore((s) => s.authed);
+  const status = useStore((s) => s.status);
   const checkAuth = useStore((s) => s.checkAuth);
   const refreshAll = useStore((s) => s.refreshAll);
   const startPolling = useStore((s) => s.startPolling);
@@ -20,6 +22,9 @@ export default function App() {
   const refreshKey = useStore((s) => s.refreshKey);
 
   const { connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
+
+  // Hop to a better endpoint (direct agent > controller) when one is reachable.
+  useEndpointRedirect(status);
 
   // Check auth on mount
   useEffect(() => {

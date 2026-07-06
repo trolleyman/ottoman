@@ -975,6 +975,18 @@ components:
               format: ipv6
         port: { type: string, format: uint16 }
         secret: { type: string }
+        # Reachable UI origins in priority order, best first (agent direct
+        # beats controller proxy), so the SPA can hop to the lowest-latency
+        # endpoint. The controller only lists the agent while it answers
+        # /health.
+        endpoints:
+          type: array
+          items: { type: string, format: uri }
+        # Whether the requesting client appears to be on the server's own
+        # network (direct LAN request, or a tunnelled request whose forwarded
+        # IP matches the network's public IP). Lets the SPA redirect from an
+        # https tunnel, where mixed-content rules forbid probing http targets.
+        client_is_local: { type: boolean }
 
     Monitor:
       type: object
