@@ -103,13 +103,43 @@ func (c *Client) SwitchInput(ctx context.Context, inputID string) error {
 	return err
 }
 
+// lunaRequest invokes an internal luna:// service method. webOS does not
+// expose luna services over the SSAP websocket (requesting one directly gets
+// "404 no such service or method"), so this uses the established workaround
+// (as in bscpylgtv / Home Assistant): create a blank system alert whose
+// button and close handlers point at the luna call, then immediately close
+// it — closing fires the handler, which executes the call with system
+// privileges. Fire-and-forget: the luna call's own result is not observable,
+// only the createAlert/closeAlert round-trips.
+func (c *Client) lunaRequest(ctx context.Context, uri string, params any) error {
+	call := map[string]any{"uri": uri, "params": params}
+	payload := map[string]any{
+		"message": " ",
+		"buttons": []map[string]any{{"label": "", "onClick": uri, "params": params}},
+		"onclose": call,
+		"onfail":  call,
+	}
+	raw, err := c.request(ctx, "ssap://system.notifications/createAlert", payload)
+	if err != nil {
+		return err
+	}
+	var p struct {
+		AlertID string `json:"alertId"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return err
+	}
+	if p.AlertID == "" {
+		return errors.Errorf("createAlert for %s returned no alertId", uri)
+	}
+	_, err = c.request(ctx, "ssap://system.notifications/closeAlert", map[string]string{"alertId": p.AlertID})
+	return err
+}
+
 // SetBacklight sets the OLED panel backlight (0-100) via the picture Luna
 // settings — the control that actually governs OLED panel brightness, distinct
-// from the "brightness" picture control.
-//
-// NOTE: this drives a luna:// system-settings call over SSAP, which is the
-// least portable command here; it's proven on webOS 6 (Home Assistant's
-// webostv / bscpylgtv) but may need adjustment on other firmwares.
+// from the "brightness" picture control. Writes have no SSAP endpoint, so this
+// goes through the lunaRequest alert workaround.
 func (c *Client) SetBacklight(ctx context.Context, value int) error {
 	if value < 0 {
 		value = 0
@@ -121,21 +151,20 @@ func (c *Client) SetBacklight(ctx context.Context, value int) error {
 		"category": "picture",
 		"settings": map[string]any{"backlight": value},
 	}
-	_, err := c.request(ctx, "luna://com.webos.settingsservice/setSystemSettings", payload)
-	return err
+	return c.lunaRequest(ctx, "luna://com.webos.settingsservice/setSystemSettings", payload)
 }
 
 // GetBacklight reads the OLED panel backlight (0-100) — the read mirror of
-// SetBacklight, via getSystemSettings (the pairing manifest requests
-// READ_SETTINGS). Same portability caveat as SetBacklight: proven on webOS 6,
-// but some firmwares don't expose the picture category, so callers should treat
-// an error as "unknown" and fall back to the last value they set.
+// SetBacklight. Unlike writes, reads have a real SSAP endpoint
+// (ssap://settings/getSystemSettings, gated by the manifest's READ_SETTINGS).
+// Some firmwares don't expose the picture category, so callers should treat an
+// error as "unknown" and fall back to the last value they set.
 func (c *Client) GetBacklight(ctx context.Context) (int, error) {
 	payload := map[string]any{
 		"category": "picture",
 		"keys":     []string{"backlight"},
 	}
-	raw, err := c.request(ctx, "luna://com.webos.settingsservice/getSystemSettings", payload)
+	raw, err := c.request(ctx, "ssap://settings/getSystemSettings", payload)
 	if err != nil {
 		return 0, err
 	}
