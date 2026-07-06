@@ -41,7 +41,7 @@ function LayoutEditor({
     "w-full rounded-md border border-zinc-600 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-blue-500";
 
   return (
-    <div className="relative overflow-hidden rounded-xl p-4 flex flex-col gap-3 w-full min-w-[180px] bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 border border-zinc-600">
+    <div className="relative overflow-hidden rounded-xl p-4 flex flex-col gap-3 w-full min-w-[280px] bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 border border-zinc-600">
       <div className="flex gap-2">
         <input
           value={emoji}
@@ -117,9 +117,10 @@ export function LayoutCard({
   const enabled = sortedLayoutMonitors(layout.monitors ?? []);
   const aliasList = layout.aliases ?? [];
 
-  // Cap the card width (max-w-xs) so a small number of layouts don't stretch to
-  // fill the whole row; they still grow to share space evenly up to that cap.
-  const wrapperClass = "relative group mb-auto flex-grow basis-56 max-w-xs";
+  // Cards share the row's free space equally: an equal flex-basis plus flex-grow
+  // means every card on a row ends up the same width, stretching to fill the row.
+  // No max cap, so a few layouts expand to use the whole width.
+  const wrapperClass = "relative group mb-auto flex-grow basis-72";
 
   if (editing && onUpdate) {
     return (
@@ -168,7 +169,7 @@ export function LayoutCard({
         onClick={onClick}
         disabled={disabled}
         className={`
-          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-[180px] text-left
+          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-[280px] text-left
           ${isCurrent
             ? "bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-indigo-500/20 text-blue-400 border border-blue-500/40 ring-1 ring-blue-500/20"
             : "bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 text-zinc-300 border border-zinc-700/50 hover:border-zinc-600 hover:from-zinc-800 hover:to-zinc-800/80"
