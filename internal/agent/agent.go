@@ -974,7 +974,13 @@ func (a *Agent) mirrorToGreeter() {
 		return
 	}
 	if _, err := os.Stat(greeterDataDir); err != nil {
-		return // greeter agent not installed
+		// Only absence means "not installed" — anything else (e.g. a
+		// permission-denied traversal) would silently strand the greeter on
+		// stale layouts, so say so.
+		if !os.IsNotExist(err) {
+			log.Printf("Warning: cannot access greeter data dir: %v", err)
+		}
+		return
 	}
 	for _, name := range []string{"layouts.json", "current-layout"} {
 		if err := copyFileInto(filepath.Join(store.DataDir(), name), filepath.Join(greeterDataDir, name)); err != nil {

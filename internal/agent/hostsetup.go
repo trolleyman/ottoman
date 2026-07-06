@@ -80,6 +80,14 @@ func installGreeter(username string) (bool, error) {
 	if err := os.MkdirAll(dataDst, 0750); err != nil {
 		return false, errors.Wrapf(err, "failed to create %s", dataDst)
 	}
+	// MkdirAll runs as root and creates any missing parents 0750 root-owned,
+	// which would block the user from even traversing into greeterRoot — the
+	// user-level binary refresh, staleness check, and layout mirroring all
+	// need that. The parent holds nothing sensitive (protection lives on
+	// greeterRoot itself, 2750 <user>:gdm), so open it up.
+	if err := os.Chmod(filepath.Dir(greeterRoot), 0755); err != nil {
+		return false, errors.Wrapf(err, "failed to chmod %s", filepath.Dir(greeterRoot))
+	}
 	copyTreeInto(filepath.Join(u.HomeDir, ".config", "ottoman"), cfgDst)
 	copyTreeInto(filepath.Join(u.HomeDir, ".local", "share", "ottoman"), dataDst)
 
