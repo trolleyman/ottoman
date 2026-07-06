@@ -3,6 +3,7 @@
 package ddc
 
 import (
+	stderrors "errors"
 	"fmt"
 	"os"
 	"sync"
@@ -20,8 +21,10 @@ import (
 // write to a single ~1-3ms bus transaction with no process spawn.
 //
 // The protocol's own timing constraints remain: DDC/CI mandates a pause between
-// operations so the monitor's firmware can keep up, so we serialize per bus and
-// pace ourselves (see busGate). Bus discovery still goes through ddcutil detect
+// operations so the monitor's firmware can keep up. Rather than a fixed sleep we
+// adapt the spacing per bus (like ddcutil's dynamic sleep): start spec-safe,
+// creep faster while operations succeed, and back off exponentially with retries
+// when the panel starts erroring. Bus discovery still goes through ddcutil detect
 // (cached upstream) — only the hot get/set path is direct.
 
 // i2cSlaveForce is the <linux/i2c-dev.h> I2C_SLAVE_FORCE ioctl — sets the
@@ -38,22 +41,36 @@ const (
 	// checksum even though the kernel, not us, puts it on the wire.
 	ddcWriteAddr = ddcAddr << 1
 
-	// ddcMinInterval is the minimum spacing between DDC/CI operations on a bus.
-	// The spec calls for ~40-50ms between commands; going faster drops writes on
-	// many panels. This also caps drag writes at a safe ~22/sec, still smooth.
-	ddcMinInterval = 45 * time.Millisecond
+	// Adaptive inter-operation spacing. We start at ddcSpacingInit (spec-safe),
+	// shave ddcSpacingStep toward ddcSpacingMin after a run of clean operations,
+	// and double toward ddcSpacingMax on any failure. 45ms is the well-worn safe
+	// default; a happy panel settles near the floor, a fussy one near the ceiling.
+	ddcSpacingInit  = 45 * time.Millisecond  // starting / default spacing
+	ddcSpacingMin   = 25 * time.Millisecond  // floor once the panel proves reliable
+	ddcSpacingMax   = 120 * time.Millisecond // ceiling when it's struggling
+	ddcSpacingStep  = 5 * time.Millisecond   // shaved off per speedup
+	ddcSpeedupAfter = 8                      // consecutive OKs before speeding up
+	ddcMaxAttempts  = 4                      // tries for one op before giving up
+
 	// ddcReadDelay is how long to wait after sending a getvcp request before
 	// reading the reply, per the DDC/CI spec.
 	ddcReadDelay = 40 * time.Millisecond
 )
 
-// i2cBus serializes DDC/CI operations on one bus and remembers when the last one
-// finished, so we can honour the inter-operation spacing without a fixed sleep
-// on every call.
+// errUnsupportedFeature marks a clean "feature not supported" reply from the
+// monitor (as opposed to a timing/I2C failure), so do() returns it immediately
+// instead of retrying and backing off.
+var errUnsupportedFeature = stderrors.New("DDC feature unsupported")
+
+// i2cBus serializes DDC/CI operations on one bus and carries the adaptive
+// spacing state: when the last op finished, the current spacing, and how many
+// operations have succeeded in a row since the last speedup.
 type i2cBus struct {
-	bus    int
-	mu     sync.Mutex
-	lastOp time.Time
+	bus     int
+	mu      sync.Mutex
+	lastOp  time.Time
+	spacing time.Duration
+	oks     int
 }
 
 var (
@@ -66,23 +83,43 @@ func getBus(bus int) *i2cBus {
 	defer busesMu.Unlock()
 	b := buses[bus]
 	if b == nil {
-		b = &i2cBus{bus: bus}
+		b = &i2cBus{bus: bus, spacing: ddcSpacingInit}
 		buses[bus] = b
 	}
 	return b
 }
 
-// do runs fn against an open handle to the bus, holding the bus lock and
-// enforcing the minimum inter-operation spacing before starting.
+// do runs fn against an open handle to the bus, holding the bus lock. It waits
+// the current adaptive spacing before each attempt, and on a transient failure
+// widens the spacing and retries; a permanent error (unsupported feature) is
+// returned at once without backoff.
 func (b *i2cBus) do(fn func(f *os.File) error) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if wait := ddcMinInterval - time.Since(b.lastOp); wait > 0 {
-		time.Sleep(wait)
-	}
-	defer func() { b.lastOp = time.Now() }()
+	var lastErr error
+	for range ddcMaxAttempts {
+		if wait := b.spacing - time.Since(b.lastOp); wait > 0 {
+			time.Sleep(wait)
+		}
+		err := b.attempt(fn)
+		b.lastOp = time.Now()
 
+		if err == nil {
+			b.faster()
+			return nil
+		}
+		if stderrors.Is(err, errUnsupportedFeature) {
+			return err
+		}
+		lastErr = err
+		b.slower() // widen spacing; the next attempt waits longer
+	}
+	return errors.Wrapf(lastErr, "DDC op failed after %d attempts", ddcMaxAttempts)
+}
+
+// attempt opens the bus, targets the DDC/CI address, and runs one operation.
+func (b *i2cBus) attempt(fn func(f *os.File) error) error {
 	f, err := os.OpenFile(fmt.Sprintf("/dev/i2c-%d", b.bus), os.O_RDWR, 0)
 	if err != nil {
 		return errors.Wrapf(err, "open /dev/i2c-%d", b.bus)
@@ -95,6 +132,27 @@ func (b *i2cBus) do(fn func(f *os.File) error) error {
 		return errors.Wrap(err, "set i2c slave address")
 	}
 	return fn(f)
+}
+
+// faster shaves the spacing toward the floor after a run of clean operations.
+func (b *i2cBus) faster() {
+	b.oks++
+	if b.oks >= ddcSpeedupAfter && b.spacing > ddcSpacingMin {
+		b.spacing -= ddcSpacingStep
+		if b.spacing < ddcSpacingMin {
+			b.spacing = ddcSpacingMin
+		}
+		b.oks = 0
+	}
+}
+
+// slower doubles the spacing toward the ceiling after a failure.
+func (b *i2cBus) slower() {
+	b.oks = 0
+	b.spacing *= 2
+	if b.spacing > ddcSpacingMax {
+		b.spacing = ddcSpacingMax
+	}
 }
 
 // ddcChecksum is the running XOR of the framing address and every payload byte.
@@ -152,7 +210,7 @@ func getVCP(f *os.File, code byte) (cur, max int, err error) {
 		return 0, 0, errors.Errorf("unexpected DDC reply op 0x%02x", buf[2])
 	}
 	if buf[3] != 0x00 {
-		return 0, 0, errors.Errorf("DDC feature 0x%02x unsupported (result 0x%02x)", code, buf[3])
+		return 0, 0, errors.Wrapf(errUnsupportedFeature, "feature 0x%02x (result 0x%02x)", code, buf[3])
 	}
 	max = int(buf[6])<<8 | int(buf[7])
 	cur = int(buf[8])<<8 | int(buf[9])
