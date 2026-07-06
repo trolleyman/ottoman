@@ -34,9 +34,16 @@ const (
 	// The login-screen agent runs as gdm (which can't read the user's home), so
 	// its HOME/XDG point here. Owned <user>:gdm, group-readable, setgid dirs so
 	// the user's agent can keep it in sync and gdm can still read it.
-	greeterRoot    = "/var/lib/ottoman/greeter"
-	greeterBin     = "/usr/local/bin/ottoman"
-	greeterDesktop = "/usr/share/gdm/greeter/autostart/ottoman-greeter.desktop"
+	greeterRoot = "/var/lib/ottoman/greeter"
+	// greeterBin is the greeter's copy of the ottoman binary. It lives inside
+	// greeterRoot (owned <user>:gdm) rather than a root-owned path so a redeploy
+	// can refresh it without sudo; it is deliberately not on anyone's $PATH.
+	greeterBin = greeterRoot + "/bin/ottoman"
+	// legacyGreeterBin is where pre-migration installs put the binary. Being
+	// root-owned, it forced a sudo prompt on every redeploy just to refresh the
+	// copy; a one-time `host-setup --greeter` re-run migrates away from it.
+	legacyGreeterBin = "/usr/local/bin/ottoman"
+	greeterDesktop   = "/usr/share/gdm/greeter/autostart/ottoman-greeter.desktop"
 )
 
 // greeterDesktopContent is the greeter autostart entry. Exec overrides
@@ -63,16 +70,6 @@ func installGreeter(username string) (bool, error) {
 	if _, err := user.LookupGroup("gdm"); err != nil {
 		return false, errors.New("no 'gdm' group found — is GDM installed?")
 	}
-
-	// System copy of the binary (gdm can't exec the user's ~/.local/bin).
-	self, err := os.Executable()
-	if err != nil {
-		return false, errors.Wrap(err, "failed to find own executable")
-	}
-	if err := run("install", "-Dm0755", self, greeterBin); err != nil {
-		return false, errors.Wrap(err, "failed to install greeter binary")
-	}
-	fmt.Printf("  installed %s\n", greeterBin)
 
 	// gdm-readable copy of config + layouts.
 	cfgDst := filepath.Join(greeterRoot, ".config", "ottoman")
@@ -108,6 +105,25 @@ func installGreeter(username string) (bool, error) {
 		return false, errors.Wrap(err, "failed to chmod greeter files")
 	}
 	fmt.Printf("  populated %s (owner %s, group gdm)\n", greeterRoot, username)
+
+	// The binary copy (gdm can't exec the user's ~/.local/bin) is a user-owned
+	// file inside greeterRoot — installed after the blanket chmods above so it
+	// keeps its exec bit — letting a redeploy refresh it without root. Drop the
+	// legacy root-owned copy, which forced a sudo prompt on every deploy.
+	self, err := os.Executable()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to find own executable")
+	}
+	if err := run("install", "-d", "-m", "2750", "-o", username, "-g", "gdm", filepath.Dir(greeterBin)); err != nil {
+		return false, errors.Wrap(err, "failed to create greeter bin dir")
+	}
+	if err := run("install", "-m", "0750", "-o", username, "-g", "gdm", self, greeterBin); err != nil {
+		return false, errors.Wrap(err, "failed to install greeter binary")
+	}
+	fmt.Printf("  installed %s\n", greeterBin)
+	if err := os.Remove(legacyGreeterBin); err == nil {
+		fmt.Printf("  removed legacy %s\n", legacyGreeterBin)
+	}
 
 	// Greeter autostart entry.
 	changed, err := writeFileIfChanged(greeterDesktop, []byte(greeterDesktopContent()), 0644)
@@ -258,8 +274,7 @@ func applyHostSetup(username string, greeter bool) error {
 		}
 		if greeter {
 			fmt.Println("Login-screen layout agent installed. Log out to test it on the GDM")
-			fmt.Println("greeter. Re-run with --greeter after updating ottoman to refresh the")
-			fmt.Println("system binary copy.")
+			fmt.Println("greeter. Future deploys refresh its binary copy automatically, no sudo.")
 		}
 	}
 	return nil
@@ -472,17 +487,36 @@ func setUpLinuxHost() {
 	}
 
 	greeterInstalled := fileExists(greeterDesktop)
-	greeterStale := greeterInstalled && greeterBinaryOutdated()
-	greeterMark := "needs setup"
-	if greeterInstalled {
-		greeterMark = "ok"
-	}
+	// Pre-migration installs keep the binary at legacyGreeterBin (root-owned);
+	// one more sudo run moves it under greeterRoot, after which redeploys can
+	// refresh the copy without root.
+	greeterNeedsMigration := greeterInstalled && !greeterDesktopCurrent()
+	greeterStale := greeterInstalled && !greeterNeedsMigration && greeterBinaryOutdated()
+
+	// A stale binary in the current layout is user-writable — refresh it in
+	// place, no root needed.
 	if greeterStale {
+		if err := refreshGreeterBinary(); err != nil {
+			fmt.Printf("  note: could not refresh the login-screen agent binary: %v\n", err)
+			fmt.Println("        retry with:  sudo ottoman agent host-setup --greeter")
+		} else {
+			fmt.Println("  refreshed the login-screen layout agent binary (no root needed)")
+			greeterStale = false
+		}
+	}
+
+	greeterMark := "needs setup"
+	switch {
+	case greeterNeedsMigration:
+		greeterMark = "migrate"
+	case greeterStale:
 		greeterMark = "stale"
+	case greeterInstalled:
+		greeterMark = "ok"
 	}
 	fmt.Printf("  [%-11s] %s  (%s)\n", greeterMark, "GDM login-screen layout agent", "switch layouts on the login screen (opt-in)")
 
-	if pending == 0 && greeterInstalled && !greeterStale {
+	if pending == 0 && greeterInstalled && !greeterStale && !greeterNeedsMigration {
 		fmt.Println("\nEverything is already configured. Nothing to do.")
 		return
 	}
@@ -495,8 +529,8 @@ func setUpLinuxHost() {
 		if !greeterInstalled {
 			fmt.Println("  Login-screen layouts:  sudo ottoman agent host-setup --greeter")
 		}
-		if greeterStale {
-			fmt.Println("  Greeter binary is out of date:  sudo ottoman agent host-setup --greeter")
+		if greeterNeedsMigration {
+			fmt.Println("  Migrate the login-screen agent (one-time):  sudo ottoman agent host-setup --greeter")
 		}
 		return
 	}
@@ -507,17 +541,21 @@ func setUpLinuxHost() {
 		applyBase = promptYesNo(fmt.Sprintf("\nApply host setup now with sudo? (%d item(s) pending) [y/N] ", pending))
 	}
 
-	// Login-screen layout agent. Offer it as an opt-in when it isn't installed;
-	// once installed, refresh it automatically when the deployed binary has
-	// changed (and do nothing when it already matches).
+	// Login-screen layout agent. Offer it as an opt-in when it isn't installed.
+	// Binary staleness is handled above without root; sudo is only needed here
+	// for a fresh install, the one-time migration, or a failed refresh.
 	greeterWanted := false
 	if !greeterInstalled {
 		fmt.Println("\nOptional: a GDM login-screen agent lets you switch display layouts on")
 		fmt.Println("the login screen and mirrors your session's layout there (runs as gdm).")
 		greeterWanted = promptYesNo("Install the login-screen layout agent? [y/N] ")
+	} else if greeterNeedsMigration {
+		fmt.Println("\nThe login-screen layout agent needs a one-time migration: its binary")
+		fmt.Println("moves into " + greeterRoot + " so future deploys can refresh")
+		fmt.Println("it without sudo.")
+		greeterWanted = promptYesNo("Migrate now with sudo? [y/N] ")
 	} else if greeterStale {
-		fmt.Println("\nThe login-screen layout agent's binary is out of date; refreshing it.")
-		greeterWanted = true
+		greeterWanted = promptYesNo("Refresh the login-screen agent binary with sudo? [y/N] ")
 	}
 
 	if !applyBase && !greeterWanted {
@@ -529,6 +567,30 @@ func setUpLinuxHost() {
 		fmt.Printf("\nHost setup did not complete: %v\n", err)
 		fmt.Println("You can retry with:  sudo ottoman agent host-setup")
 	}
+}
+
+// greeterDesktopCurrent reports whether the installed greeter autostart entry
+// matches what we would write today; a mismatch means the install predates a
+// layout change (e.g. the binary moving under greeterRoot) and needs a root
+// re-run to migrate.
+func greeterDesktopCurrent() bool {
+	data, err := os.ReadFile(greeterDesktop)
+	return err == nil && string(data) == greeterDesktopContent()
+}
+
+// refreshGreeterBinary copies the running (freshly deployed) binary over the
+// greeter's copy. The copy is a user-owned file inside greeterRoot precisely
+// so this needs no root; the setgid bin dir keeps the new file group-gdm.
+func refreshGreeterBinary() error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(greeterBin, data, 0750)
 }
 
 // greeterBinaryOutdated reports whether the installed greeter binary copy differs
