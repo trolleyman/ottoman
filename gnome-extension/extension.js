@@ -184,7 +184,14 @@ class OttomanControls {
     }
 
     _addItem(item, colSpan = 2) {
-        this._qs._addItems([item], colSpan);
+        try {
+            this._qs.menu.addItem(item, colSpan);
+        } catch (e) {
+            // An actor that was created but never parented must be destroyed,
+            // or gnome-shell leaks it on every refresh.
+            item.destroy();
+            throw e;
+        }
         this._items.push(item);
     }
 
