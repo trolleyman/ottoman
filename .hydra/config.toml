@@ -74,11 +74,8 @@ icon = "web/public/ottoman_logo.png"
 # pre_exit_script = ""
 
 [sandbox.network]
-## egress posture: "off" (no network), "unrestricted" (network, no host filtering), "advisory" (proxy-only host filtering - every honest client is filtered, but escapable), or "hard" (inescapable pasta+nft netns, failing closed when the tooling is unavailable unless strict=false; "on" is a synonym for "hard"). Default "hard". Supersedes the legacy enabled/filter_enabled booleans.
+## egress posture: "off" (no network), "unrestricted" (network, no host filtering), "advisory" (proxy-only host filtering - every honest client is filtered, but escapable), or "hard" (inescapable pasta+nft netns, failing closed - no network - when the boundary can't be built; "on" is a synonym for "hard"). Default "hard". Supersedes the legacy enabled/filter_enabled booleans.
 # mode = "hard"
-
-## with mode = "hard", fail closed (block all egress) when the inescapable boundary can't be built, instead of degrading to advisory filtering (default true).
-# strict = true
 
 ## LEGACY (use mode): allow outbound network access from the sandbox. Honoured only when mode is unset.
 # enabled = true
@@ -86,6 +83,7 @@ icon = "web/public/ottoman_logo.png"
 ## LEGACY (use mode): enforce the allowed_hosts list (deny-by-default egress). Honoured only when mode is unset. Unset = on when allowed_hosts is non-empty; true = only allowed_hosts reachable; false = allow every host.
 # filter_enabled = false
 
+# strict = true
 ## extra outbound hosts (exact host or *.suffix) allowed when filtering is on,
 ## unioned on top of the built-in default allow-list below. Leaving this empty
 ## does NOT disable the defaults - to remove one, list it in blocked_hosts.
@@ -343,7 +341,6 @@ type = "stdout"
 # [review]
 # provider = "auto"            # auto | github | gitlab (auto detects from the remote URL)
 # remote = "origin"
-# target_branch = "main"       # default MR target; per-head editable
 # auth = "cli"                 # cli (shell out to gh/glab) | token (REST)
 # default_action = "merge"     # merge (local, as today) | create_mr
 # push_branch_template = "{id}" # e.g. "feat/{ticket}-{id}"; {id} {ticket} {base}
