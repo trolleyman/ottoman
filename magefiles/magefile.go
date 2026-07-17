@@ -656,7 +656,8 @@ func DeployAgent() error {
 	}
 
 	// Run install command to register service. On Linux this also installs the
-	// embedded GNOME Quick Settings extension (see agent.installGnomeExtension).
+	// GNOME Quick Settings extension embedded in the binary (see
+	// internal/agent/gnomeext.go), so no repo checkout is needed on the target.
 	if err := runV(cfg.Agent.BinaryPath, "agent", "install"); err != nil {
 		return fmt.Errorf("failed to register service: %w", err)
 	}
@@ -678,42 +679,6 @@ func DeployAgent() error {
 	}
 
 	fmt.Println("\n=== Agent deployment complete! ===")
-	return nil
-}
-
-// installGnomeExtension copies the in-repo GNOME Shell extension into the user's
-// extensions directory. The shell must be restarted (log out/in on Wayland) and
-// the extension enabled before it appears in Quick Settings.
-func installGnomeExtension() error {
-	src := "gnome-extension"
-	if !fileExists(filepath.Join(src, "metadata.json")) {
-		return fmt.Errorf("extension source %q not found", src)
-	}
-	home := os.Getenv("HOME")
-	if home == "" {
-		return fmt.Errorf("HOME not set")
-	}
-	dst := filepath.Join(home, ".local", "share", "gnome-shell", "extensions", "ottoman@trolleyman")
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if err := copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
-			return fmt.Errorf("copy %s: %w", e.Name(), err)
-		}
-	}
-
-	fmt.Printf("Installed GNOME extension to %s\n", dst)
-	fmt.Println("  Enable it with: gnome-extensions enable ottoman@trolleyman")
-	fmt.Println("  (log out and back in first on Wayland so the shell picks it up)")
 	return nil
 }
 
