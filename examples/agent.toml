@@ -9,15 +9,12 @@
 listen_addr = ':17294'
 auth_token = 'your-secret-token-here'
 
-# Network-controlled TV (LG webOS). When set, the agent exposes /api/tv/* and
-# the web UI shows a TV card. The pairing key is NOT stored here — it's kept in
-# the data dir (~/.local/share/ottoman/tv.json) so redeploying config can't drop
-# it. After configuring, pair once via the web UI "Pair" button (accept the
-# on-screen prompt on the TV).
-# [agent.tv]
-# type = 'webos'
-# host = '10.0.0.50'            # give the TV a DHCP reservation for a stable IP
-# mac  = '8C:19:B5:72:FE:62'    # for Wake-on-LAN power-on (needs "TV On With Mobile")
+# Network-controlled TVs (LG webOS) are configured per monitor, not here: open
+# the monitor's settings (cog) in the web UI, set the backend to "tv", and fill
+# in the TV's host + MAC (give the TV a DHCP reservation for a stable IP; WoL
+# power-on needs "TV On With Mobile"). Then pair once via the card's "Pair"
+# button. Pairing keys are kept in the data dir
+# (~/.local/share/ottoman/tv.json) so redeploying config can't drop them.
 
 # Dual-boot OS selection (plan §7). Set GRUB_DEFAULT=saved (keep GRUB_TIMEOUT=5),
 # then run `ottoman agent install` to get the grub-reboot sudoers rule. The
