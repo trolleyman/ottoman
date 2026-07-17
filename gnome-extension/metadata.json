@@ -4,5 +4,5 @@
   "description": "Quick Settings controls for Ottoman: per-monitor brightness and power, TV volume, and layout switching, driven by the local Ottoman agent's REST API.",
   "shell-version": ["45", "46", "47"],
   "url": "https://github.com/trolleyman/ottoman",
-  "version": 1
+  "version": 2
 }

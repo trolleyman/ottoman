@@ -300,18 +300,45 @@ export default class OttomanExtension extends Extension {
         this._api = new Api(readConfig());
         this._controls = new OttomanControls(this._api);
 
+        // Build the controls once so they exist before the menu is first
+        // opened, then only poll while the Quick Settings menu is actually
+        // open. Polling while closed kept the agent probing DDC and dialling
+        // the (often off) TV around the clock for data nobody was looking at.
         this._controls.refresh().catch(logError);
+        this._menu = Main.panel.statusArea.quickSettings.menu;
+        this._openId = this._menu.connect('open-state-changed', (_menu, open) => {
+            if (open) {
+                this._controls.refresh().catch(logError);
+                this._startTimer();
+            } else {
+                this._stopTimer();
+            }
+        });
+    }
+
+    _startTimer() {
+        if (this._timer)
+            return;
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, REFRESH_SECONDS, () => {
             this._controls.refresh().catch(logError);
             return GLib.SOURCE_CONTINUE;
         });
     }
 
-    disable() {
+    _stopTimer() {
         if (this._timer) {
             GLib.source_remove(this._timer);
             this._timer = null;
         }
+    }
+
+    disable() {
+        this._stopTimer();
+        if (this._openId) {
+            this._menu.disconnect(this._openId);
+            this._openId = null;
+        }
+        this._menu = null;
         this._controls?.destroy();
         this._controls = null;
         this._api = null;
