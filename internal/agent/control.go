@@ -25,7 +25,7 @@ const brightnessCacheTTL = 60 * time.Second
 // bus via ddcutil; the TV backend is wired in separately.
 type monitorControl struct {
 	registry *store.Registry
-	tv       *tvController
+	tv       *tvManager
 
 	mu         sync.Mutex
 	ddcCache   []ddc.Display
@@ -173,7 +173,7 @@ func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 		if c.tv == nil {
 			return 0, false
 		}
-		v, live := c.tv.Backlight(context.Background())
+		v, live := c.tv.Backlight(context.Background(), edid)
 		if !live {
 			// TV off/unreachable or firmware doesn't support the read — fall
 			// back to the last value we set (if any).
@@ -213,7 +213,7 @@ func (c *monitorControl) setBrightness(edid string, percent int) error {
 		if c.tv == nil {
 			return errors.New("no TV controller configured")
 		}
-		if err := c.tv.SetBacklight(context.Background(), percent); err != nil {
+		if err := c.tv.SetBacklight(context.Background(), edid, percent); err != nil {
 			return err
 		}
 		c.setBrightnessSample(edid, percent) // remember it — the read may not be supported
@@ -238,9 +238,9 @@ func (c *monitorControl) setPower(edid string, on bool) error {
 			return errors.New("no TV controller configured")
 		}
 		if on {
-			return c.tv.PowerOn()
+			return c.tv.PowerOn(edid)
 		}
-		return c.tv.PowerOff(context.Background())
+		return c.tv.PowerOff(context.Background(), edid)
 	default:
 		return errors.Errorf("power control not available for monitor %q", edid)
 	}
@@ -269,14 +269,14 @@ func (c *monitorControl) responding(edid string) bool {
 		if c.tv == nil {
 			return false
 		}
-		return c.tv.Reachable(context.Background())
+		return c.tv.Reachable(context.Background(), edid)
 	default:
 		return false
 	}
 }
 
 // enrich augments monitor entries with registry + control metadata for the UI.
-func (c *monitorControl) enrich(monitors []api.Monitor) []api.Monitor {
+func (c *monitorControl) enrich(ctx context.Context, monitors []api.Monitor) []api.Monitor {
 	for i := range monitors {
 		edid := monitors[i].Edid
 		if edid == "" {
@@ -313,6 +313,13 @@ func (c *monitorControl) enrich(monitors []api.Monitor) []api.Monitor {
 				monitors[i].Brightness = intPtr(v)
 			} else {
 				monitors[i].Brightness = intPtr(-1)
+			}
+		}
+		// Live TV integration state (pairing, volume, panel power), so TV
+		// control needs no separate endpoint.
+		if backend == store.BackendTV && c.tv != nil {
+			if st, ok := c.tv.StateFor(ctx, edid); ok {
+				monitors[i].TvState = &st
 			}
 		}
 	}

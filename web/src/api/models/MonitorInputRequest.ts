@@ -2,8 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type TVVolumeRequest = {
-    volume?: number;
-    muted?: boolean;
+export type MonitorInputRequest = {
+    edid: string;
+    input: string;
 };
 

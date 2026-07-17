@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -160,18 +161,19 @@ func (r *Registry) Update(edid string, fn func(*MonitorEntry)) (MonitorEntry, er
 	return e, nil
 }
 
-// TVEntry returns the registry entry configured as a network TV (backend "tv"
-// with a reachable host), if any. Only one TV is expected; the first match
-// wins. This is how the TV controller resolves which monitor is the TV.
-func (r *Registry) TVEntry() (MonitorEntry, bool) {
+// TVEntries returns the registry entries configured as network TVs (backend
+// "tv" with a host), sorted by EDID for a stable order.
+func (r *Registry) TVEntries() []MonitorEntry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	var out []MonitorEntry
 	for _, e := range r.entries {
 		if e.Backend == BackendTV && e.TV != nil && e.TV.Host != "" {
-			return e, true
+			out = append(out, e)
 		}
 	}
-	return MonitorEntry{}, false
+	sort.Slice(out, func(i, j int) bool { return out[i].Edid < out[j].Edid })
+	return out
 }
 
 // List returns all entries.

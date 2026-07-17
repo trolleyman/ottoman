@@ -660,76 +660,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/tv/state:
-    get:
-      summary: Get TV integration state
-      operationId: getTVState
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TVStateResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '502':
-          description: Bad Gateway (Agent unreachable)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/tv/pair:
+  /api/monitors/volume:
     post:
-      summary: Start TV on-screen pairing
-      operationId: pairTV
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TVResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '502':
-          description: Bad Gateway (Agent unreachable)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/tv/power:
-    post:
-      summary: Turn the TV on (Wake-on-LAN) or off (SSAP)
-      operationId: setTVPower
+      summary: Set a monitor's volume and/or mute (TV-backed monitors)
+      operationId: setMonitorVolume
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TVPowerRequest'
+              $ref: '#/components/schemas/MonitorVolumeRequest'
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TVResponse'
+                $ref: '#/components/schemas/MonitorControlResponse'
         '400':
           description: Bad Request
           content:
@@ -755,22 +701,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/tv/volume:
+  /api/monitors/pair:
     post:
-      summary: Set the TV volume and/or mute
-      operationId: setTVVolume
+      summary: Start on-screen pairing for a TV-backed monitor
+      operationId: pairMonitor
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TVVolumeRequest'
+              $ref: '#/components/schemas/MonitorPairRequest'
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TVResponse'
+                $ref: '#/components/schemas/MonitorControlResponse'
         '400':
           description: Bad Request
           content:
@@ -796,22 +742,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/tv/input:
+  /api/monitors/input:
     post:
-      summary: Switch the TV's external input
-      operationId: setTVInput
+      summary: Switch a TV-backed monitor's external input
+      operationId: setMonitorInput
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TVInputRequest'
+              $ref: '#/components/schemas/MonitorInputRequest'
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TVResponse'
+                $ref: '#/components/schemas/MonitorControlResponse'
         '400':
           description: Bad Request
           content:
@@ -1006,6 +952,8 @@ components:
           type: object
           additionalProperties: { type: boolean }
         tv: { $ref: '#/components/schemas/TVConn' }
+        # Live TV integration state (tv-backend monitors only).
+        tv_state: { $ref: '#/components/schemas/MonitorTVState' }
 
     # Network-TV transport for a monitor controlled as a TV (backend "tv").
     TVConn:
@@ -1270,47 +1218,41 @@ components:
           type: boolean
           description: "true if the monitor answered the probe (i.e. powered on)"
 
-    # --- TV Types ---
-    TVStateResponse:
+    MonitorVolumeRequest:
       type: object
-      required: [configured, paired, pairing, host, volume, muted, reachable]
+      required: [edid]
       properties:
-        configured: { type: boolean }
-        paired: { type: boolean }
-        pairing: { type: boolean }
-        host: { type: string }
-        volume: { type: integer }
-        muted: { type: boolean }
-        # reachable ≈ "powered on": the TV answered a lightweight request. A TV
-        # that's off drops its network connection, so this distinguishes an
-        # on-but-inactive TV (on, not in any layout) from one that's truly off.
-        reachable: { type: boolean }
-        error: { type: string }
-
-    TVPowerRequest:
-      type: object
-      required: [on]
-      properties:
-        on: { type: boolean }
-
-    TVVolumeRequest:
-      type: object
-      properties:
+        edid: { type: string }
         volume: { type: integer }
         muted: { type: boolean }
 
-    TVInputRequest:
+    MonitorPairRequest:
       type: object
-      required: [input]
+      required: [edid]
       properties:
+        edid: { type: string }
+
+    MonitorInputRequest:
+      type: object
+      required: [edid, input]
+      properties:
+        edid: { type: string }
         input: { type: string }
 
-    TVResponse:
+    # Live state of a tv-backend monitor's network-TV integration.
+    MonitorTVState:
       type: object
-      required: [success]
+      required: [paired, pairing, on, volume, muted]
       properties:
-        success: { type: boolean }
-        message: { type: string }
+        paired: { type: boolean }
+        pairing: { type: boolean }
+        # The panel is actually on (asked of the TV's power service) — a TV
+        # with Quick Start+ answers the network in standby, so mere
+        # connectivity doesn't mean "on".
+        on: { type: boolean }
+        volume: { type: integer }
+        muted: { type: boolean }
+        error: { type: string }
 
     SimStateResponse:
       type: object

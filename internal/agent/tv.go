@@ -8,24 +8,175 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
-	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/store"
 	"github.com/trolleyman/ottoman/internal/tv/webos"
 )
 
-// tvController manages the connection to a network-controlled TV (LG webOS).
+const (
+	// tvDialTimeout bounds a single connection attempt. A powered-off TV drops
+	// packets rather than refusing, so an unbounded dial would block on the OS
+	// TCP timeout (tens of seconds) — long enough to trip the controller's 10s
+	// proxy timeout and 500 the request.
+	tvDialTimeout = 5 * time.Second
+	// tvDialBackoff suppresses re-dialing after a recent failure, so repeated
+	// polls of /api/monitors fail fast instead of each queuing behind another
+	// full dial while holding the shared mutex.
+	tvDialBackoff = 15 * time.Second
+)
+
+// tvManager hands out one tvController per TV-backed monitor (keyed by EDID),
+// so multiple network TVs can be driven independently, each with its own SSAP
+// connection and pairing key. A TV's transport (host/mac/type) lives on its
+// monitor registry entry (backend "tv"), alongside the rest of that monitor's
+// settings.
+type tvManager struct {
+	reg   *store.Registry
+	store *store.TVStore
+
+	mu          sync.Mutex
+	controllers map[string]*tvController
+}
+
+func newTVManager(reg *store.Registry, st *store.TVStore) *tvManager {
+	return &tvManager{reg: reg, store: st, controllers: make(map[string]*tvController)}
+}
+
+// conn resolves a TV monitor's transport from its registry entry.
+func (m *tvManager) conn(edid string) (store.TVConn, bool) {
+	e, ok := m.reg.Get(edid)
+	if !ok || e.Backend != store.BackendTV || e.TV == nil || e.TV.Host == "" {
+		return store.TVConn{}, false
+	}
+	return *e.TV, true
+}
+
+// controller returns the controller for a TV-backed monitor, creating it on
+// first use. Fails if the monitor isn't a configured network TV.
+func (m *tvManager) controller(edid string) (*tvController, error) {
+	if _, ok := m.conn(edid); !ok {
+		return nil, errors.Errorf("monitor %q is not a configured network TV", edid)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.controllers[edid]
+	if !ok {
+		key, _ := m.store.LoadPairingKey(edid)
+		c = &tvController{edid: edid, manager: m, key: key}
+		m.controllers[edid] = c
+	}
+	return c, nil
+}
+
+// StateFor reports the live TV integration state of a TV-backed monitor, for
+// embedding in its /api/monitors entry. ok is false for non-TV monitors.
+func (m *tvManager) StateFor(ctx context.Context, edid string) (api.MonitorTVState, bool) {
+	c, err := m.controller(edid)
+	if err != nil {
+		return api.MonitorTVState{}, false
+	}
+	return c.State(ctx), true
+}
+
+// StartPairing kicks off the on-screen pairing flow for a TV-backed monitor.
+func (m *tvManager) StartPairing(edid string) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.StartPairing()
+}
+
+// PowerOn wakes a TV via Wake-on-LAN.
+func (m *tvManager) PowerOn(edid string) error {
+	conn, ok := m.conn(edid)
+	if !ok {
+		return errors.Errorf("monitor %q is not a configured network TV", edid)
+	}
+	if conn.Mac == "" {
+		return errors.New("no TV MAC configured for Wake-on-LAN")
+	}
+	return webos.PowerOn(conn.Mac, conn.Host)
+}
+
+// PowerOff turns a TV off via SSAP.
+func (m *tvManager) PowerOff(ctx context.Context, edid string) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.withClient(ctx, func(cl *webos.Client) error { return cl.TurnOff(ctx) })
+}
+
+// Reachable reports whether a TV's panel is actually on.
+func (m *tvManager) Reachable(ctx context.Context, edid string) bool {
+	c, err := m.controller(edid)
+	if err != nil {
+		return false
+	}
+	return c.Reachable(ctx)
+}
+
+// SetVolume sets a TV's absolute volume (0-100).
+func (m *tvManager) SetVolume(ctx context.Context, edid string, v int) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.withClient(ctx, func(cl *webos.Client) error { return cl.SetVolume(ctx, v) })
+}
+
+// SetMute sets a TV's mute state.
+func (m *tvManager) SetMute(ctx context.Context, edid string, muted bool) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.withClient(ctx, func(cl *webos.Client) error { return cl.SetMute(ctx, muted) })
+}
+
+// SetBacklight sets a TV's OLED backlight (0-100).
+func (m *tvManager) SetBacklight(ctx context.Context, edid string, v int) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.withClient(ctx, func(cl *webos.Client) error { return cl.SetBacklight(ctx, v) })
+}
+
+// Backlight reads a TV's current panel backlight (0-100). ok is false if the
+// TV is unreachable or the firmware doesn't support the read, so the caller
+// can fall back to the last value it set.
+func (m *tvManager) Backlight(ctx context.Context, edid string) (int, bool) {
+	c, err := m.controller(edid)
+	if err != nil {
+		return 0, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	var v int
+	err = c.withClient(ctx, func(cl *webos.Client) error {
+		got, e := cl.GetBacklight(ctx)
+		v = got
+		return e
+	})
+	return v, err == nil
+}
+
+// SwitchInput switches a TV's external input.
+func (m *tvManager) SwitchInput(ctx context.Context, edid, input string) error {
+	c, err := m.controller(edid)
+	if err != nil {
+		return err
+	}
+	return c.withClient(ctx, func(cl *webos.Client) error { return cl.SwitchInput(ctx, input) })
+}
+
+// tvController manages the connection to one network-controlled TV (LG webOS).
 // The SSAP connection is established lazily and reused; power-on uses
 // Wake-on-LAN and needs no connection.
-//
-// The TV's transport (host/mac/type) is resolved from the monitor registry
-// entry whose backend is "tv" — so a TV's config lives alongside the rest of
-// that monitor's settings. A legacy top-level [agent.tv] config, if present, is
-// used as a fallback so existing installs keep working until the TV is
-// configured on its monitor.
 type tvController struct {
-	reg    *store.Registry
-	legacy config.TVConfig
-	store  *store.TVStore
+	edid    string
+	manager *tvManager
 
 	mu         sync.Mutex
 	client     *webos.Client
@@ -37,49 +188,13 @@ type tvController struct {
 	dialAt     time.Time // when dialErr was recorded
 }
 
-const (
-	// tvDialTimeout bounds a single connection attempt. A powered-off TV drops
-	// packets rather than refusing, so an unbounded dial would block on the OS
-	// TCP timeout (tens of seconds) — long enough to trip the controller's 10s
-	// proxy timeout and 500 the request.
-	tvDialTimeout = 5 * time.Second
-	// tvDialBackoff suppresses re-dialing after a recent failure, so repeated
-	// polls of /api/tv/state and /api/monitors fail fast instead of each queuing
-	// behind another full dial while holding the shared mutex.
-	tvDialBackoff = 15 * time.Second
-)
-
-func newTVController(reg *store.Registry, legacy config.TVConfig, st *store.TVStore) *tvController {
-	key, _ := st.LoadPairingKey()
-	return &tvController{reg: reg, legacy: legacy, store: st, key: key}
-}
-
-// conn resolves the current TV transport: the registry entry first, then the
-// legacy [agent.tv] config as a migration fallback.
-func (t *tvController) conn() (store.TVConn, bool) {
-	if e, ok := t.reg.TVEntry(); ok {
-		return *e.TV, true
-	}
-	if t.legacy.Host != "" {
-		return store.TVConn{Type: t.legacy.Type, Host: t.legacy.Host, Mac: t.legacy.Mac}, true
-	}
-	return store.TVConn{}, false
-}
-
-// Configured reports whether a network TV is configured (on a monitor or via
-// the legacy config).
-func (t *tvController) Configured() bool {
-	_, ok := t.conn()
-	return ok
-}
-
 // ensure returns a connected client, dialing (and reusing) as needed. It fails
 // if the TV isn't paired yet.
-func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
+func (t *tvController) ensure() (*webos.Client, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	conn, ok := t.conn()
+	conn, ok := t.manager.conn(t.edid)
 	if !ok {
 		return nil, errors.New("no TV configured")
 	}
@@ -92,7 +207,7 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 		return t.client, nil
 	}
 	if t.key == "" {
-		return nil, errors.New("TV is not paired yet — pair it first (POST /api/tv/pair)")
+		return nil, errors.New("TV is not paired yet — pair it first (POST /api/monitors/pair)")
 	}
 	// Negative cache: after a recent failed dial, fail fast rather than block
 	// this (and every other) caller behind another full dial timeout.
@@ -116,7 +231,7 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 	t.dialErr = nil
 	if newKey != "" && newKey != t.key {
 		t.key = newKey
-		_ = t.store.SavePairingKey(newKey)
+		_ = t.manager.store.SavePairingKey(t.edid, newKey)
 	}
 	t.client = c
 	t.clientHost = conn.Host
@@ -126,7 +241,7 @@ func (t *tvController) ensure(ctx context.Context) (*webos.Client, error) {
 // withClient runs fn against a connected client, reconnecting once if the
 // connection has gone stale.
 func (t *tvController) withClient(ctx context.Context, fn func(*webos.Client) error) error {
-	c, err := t.ensure(ctx)
+	c, err := t.ensure()
 	if err != nil {
 		return err
 	}
@@ -139,7 +254,7 @@ func (t *tvController) withClient(ctx context.Context, fn func(*webos.Client) er
 		}
 		t.mu.Unlock()
 
-		c2, err2 := t.ensure(ctx)
+		c2, err2 := t.ensure()
 		if err2 != nil {
 			return err
 		}
@@ -153,7 +268,7 @@ func (t *tvController) withClient(ctx context.Context, fn func(*webos.Client) er
 // reported via State().
 func (t *tvController) StartPairing() error {
 	t.mu.Lock()
-	conn, ok := t.conn()
+	conn, ok := t.manager.conn(t.edid)
 	if !ok {
 		t.mu.Unlock()
 		return errors.New("no TV configured")
@@ -187,24 +302,12 @@ func (t *tvController) StartPairing() error {
 		t.key = newKey
 		t.client = c
 		t.clientHost = host
-		if err := t.store.SavePairingKey(newKey); err != nil {
+		if err := t.manager.store.SavePairingKey(t.edid, newKey); err != nil {
 			log.Printf("Failed to persist TV pairing key: %v", err)
 		}
 		log.Printf("TV paired successfully")
 	}()
 	return nil
-}
-
-// TVState is the reported state of the TV integration.
-type TVState struct {
-	Configured bool   `json:"configured"`
-	Paired     bool   `json:"paired"`
-	Pairing    bool   `json:"pairing"`
-	Host       string `json:"host"`
-	Volume     int    `json:"volume"`
-	Muted      bool   `json:"muted"`
-	Reachable  bool   `json:"reachable"` // the TV's panel is actually on
-	Error      string `json:"error,omitempty"`
 }
 
 // screenOn maps a webOS power state to "the panel is on". Standby states count
@@ -220,58 +323,41 @@ func screenOn(state string) bool {
 	return true
 }
 
-// State returns the current TV integration state, querying live volume if
-// connected.
-func (t *tvController) State(ctx context.Context) TVState {
-	conn, configured := t.conn()
+// State returns the TV's live integration state, querying volume and power
+// state if connected.
+func (t *tvController) State(ctx context.Context) api.MonitorTVState {
 	t.mu.Lock()
-	st := TVState{
-		Configured: configured,
-		Paired:     t.key != "",
-		Pairing:    t.pairing,
-		Host:       conn.Host,
-		Error:      t.pairErr,
+	st := api.MonitorTVState{Paired: t.key != "", Pairing: t.pairing}
+	if t.pairErr != "" {
+		st.Error = strPtr(t.pairErr)
 	}
 	t.mu.Unlock()
 
-	if st.Configured && st.Paired && !st.Pairing {
-		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		defer cancel()
-		if err := t.withClient(ctx, func(c *webos.Client) error {
-			vol, err := c.GetVolume(ctx)
-			if err != nil {
-				return err
-			}
-			st.Volume = vol.Volume
-			st.Muted = vol.Muted
-			// The volume read answering only proves the network stack is up —
-			// Quick Start+ keeps it answering in standby. Ask the power
-			// service whether the panel is actually on; firmwares without the
-			// endpoint fall back to answered == on.
-			st.Reachable = true
-			if state, perr := c.GetPowerState(ctx); perr == nil {
-				st.Reachable = screenOn(state)
-			}
-			return nil
-		}); err != nil {
-			st.Error = err.Error()
+	if !st.Paired || st.Pairing {
+		return st
+	}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	if err := t.withClient(ctx, func(c *webos.Client) error {
+		vol, err := c.GetVolume(ctx)
+		if err != nil {
+			return err
 		}
+		st.Volume = vol.Volume
+		st.Muted = vol.Muted
+		// The volume read answering only proves the network stack is up —
+		// Quick Start+ keeps it answering in standby. Ask the power service
+		// whether the panel is actually on; firmwares without the endpoint
+		// fall back to answered == on.
+		st.On = true
+		if state, perr := c.GetPowerState(ctx); perr == nil {
+			st.On = screenOn(state)
+		}
+		return nil
+	}); err != nil {
+		st.Error = strPtr(err.Error())
 	}
 	return st
-}
-
-// PowerOn wakes the TV via Wake-on-LAN.
-func (t *tvController) PowerOn() error {
-	conn, ok := t.conn()
-	if !ok || conn.Mac == "" {
-		return errors.New("no TV MAC configured for Wake-on-LAN")
-	}
-	return webos.PowerOn(conn.Mac, conn.Host)
-}
-
-// PowerOff turns the TV off via SSAP.
-func (t *tvController) PowerOff(ctx context.Context) error {
-	return t.withClient(ctx, func(c *webos.Client) error { return c.TurnOff(ctx) })
 }
 
 // Reachable reports whether the TV's panel is actually on. It asks the power
@@ -297,115 +383,51 @@ func (t *tvController) Reachable(ctx context.Context) bool {
 	return err == nil && on
 }
 
-// SetVolume sets the TV's absolute volume (0-100).
-func (t *tvController) SetVolume(ctx context.Context, v int) error {
-	return t.withClient(ctx, func(c *webos.Client) error { return c.SetVolume(ctx, v) })
-}
-
-// SetMute sets the TV mute state.
-func (t *tvController) SetMute(ctx context.Context, muted bool) error {
-	return t.withClient(ctx, func(c *webos.Client) error { return c.SetMute(ctx, muted) })
-}
-
-// SetBacklight sets the OLED backlight (0-100).
-func (t *tvController) SetBacklight(ctx context.Context, v int) error {
-	return t.withClient(ctx, func(c *webos.Client) error { return c.SetBacklight(ctx, v) })
-}
-
-// Backlight reads the TV's current panel backlight (0-100). ok is false if the
-// TV is unreachable or the firmware doesn't support the read, so the caller can
-// fall back to the last value it set.
-func (t *tvController) Backlight(ctx context.Context) (int, bool) {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	var v int
-	err := t.withClient(ctx, func(c *webos.Client) error {
-		got, e := c.GetBacklight(ctx)
-		v = got
-		return e
-	})
-	return v, err == nil
-}
-
-// SwitchInput switches the TV's external input.
-func (t *tvController) SwitchInput(ctx context.Context, input string) error {
-	return t.withClient(ctx, func(c *webos.Client) error { return c.SwitchInput(ctx, input) })
-}
-
 // --- API handlers ---
 
-// GetTVState implements api.StrictServerInterface.
-func (a *Agent) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
-	st := a.tv.State(ctx)
-	resp := api.GetTVState200JSONResponse{
-		Configured: st.Configured,
-		Paired:     st.Paired,
-		Pairing:    st.Pairing,
-		Host:       st.Host,
-		Volume:     st.Volume,
-		Muted:      st.Muted,
-		Reachable:  st.Reachable,
+// PairMonitor implements api.StrictServerInterface. It starts on-screen
+// pairing for a TV-backed monitor.
+func (a *Agent) PairMonitor(ctx context.Context, request api.PairMonitorRequestObject) (api.PairMonitorResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.PairMonitor400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
-	if st.Error != "" {
-		resp.Error = &st.Error
-	}
-	return resp, nil
-}
-
-// PairTV implements api.StrictServerInterface.
-func (a *Agent) PairTV(ctx context.Context, request api.PairTVRequestObject) (api.PairTVResponseObject, error) {
-	if err := a.tv.StartPairing(); err != nil {
-		return api.PairTV500JSONResponse{Code: 500, Error: err.Error()}, nil
+	if err := a.tv.StartPairing(request.Body.Edid); err != nil {
+		return api.PairMonitor500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}
 	msg := "Pairing started — accept the prompt on the TV"
-	return api.PairTV200JSONResponse{Success: true, Message: &msg}, nil
+	return api.PairMonitor200JSONResponse{Success: true, Message: &msg}, nil
 }
 
-// SetTVPower implements api.StrictServerInterface.
-func (a *Agent) SetTVPower(ctx context.Context, request api.SetTVPowerRequestObject) (api.SetTVPowerResponseObject, error) {
-	if request.Body == nil {
-		return api.SetTVPower400JSONResponse{Code: 400, Error: "body required"}, nil
+// SetMonitorVolume implements api.StrictServerInterface. Volume control is
+// only available on TV-backed monitors.
+func (a *Agent) SetMonitorVolume(ctx context.Context, request api.SetMonitorVolumeRequestObject) (api.SetMonitorVolumeResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorVolume400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
-	var err error
-	if request.Body.On {
-		err = a.tv.PowerOn()
-	} else {
-		err = a.tv.PowerOff(ctx)
-	}
-	if err != nil {
-		return api.SetTVPower500JSONResponse{Code: 500, Error: err.Error()}, nil
-	}
-	msg := "TV power updated"
-	return api.SetTVPower200JSONResponse{Success: true, Message: &msg}, nil
-}
-
-// SetTVVolume implements api.StrictServerInterface.
-func (a *Agent) SetTVVolume(ctx context.Context, request api.SetTVVolumeRequestObject) (api.SetTVVolumeResponseObject, error) {
-	if request.Body == nil {
-		return api.SetTVVolume400JSONResponse{Code: 400, Error: "body required"}, nil
-	}
+	edid := request.Body.Edid
 	if request.Body.Volume != nil {
-		if err := a.tv.SetVolume(ctx, *request.Body.Volume); err != nil {
-			return api.SetTVVolume500JSONResponse{Code: 500, Error: err.Error()}, nil
+		if err := a.tv.SetVolume(ctx, edid, *request.Body.Volume); err != nil {
+			return api.SetMonitorVolume500JSONResponse{Code: 500, Error: err.Error()}, nil
 		}
 	}
 	if request.Body.Muted != nil {
-		if err := a.tv.SetMute(ctx, *request.Body.Muted); err != nil {
-			return api.SetTVVolume500JSONResponse{Code: 500, Error: err.Error()}, nil
+		if err := a.tv.SetMute(ctx, edid, *request.Body.Muted); err != nil {
+			return api.SetMonitorVolume500JSONResponse{Code: 500, Error: err.Error()}, nil
 		}
 	}
-	msg := "TV volume updated"
-	return api.SetTVVolume200JSONResponse{Success: true, Message: &msg}, nil
+	msg := "volume updated"
+	return api.SetMonitorVolume200JSONResponse{Success: true, Message: &msg}, nil
 }
 
-// SetTVInput implements api.StrictServerInterface.
-func (a *Agent) SetTVInput(ctx context.Context, request api.SetTVInputRequestObject) (api.SetTVInputResponseObject, error) {
-	if request.Body == nil || request.Body.Input == "" {
-		return api.SetTVInput400JSONResponse{Code: 400, Error: "input is required"}, nil
+// SetMonitorInput implements api.StrictServerInterface. It switches a
+// TV-backed monitor's external input.
+func (a *Agent) SetMonitorInput(ctx context.Context, request api.SetMonitorInputRequestObject) (api.SetMonitorInputResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" || request.Body.Input == "" {
+		return api.SetMonitorInput400JSONResponse{Code: 400, Error: "edid and input are required"}, nil
 	}
-	if err := a.tv.SwitchInput(ctx, request.Body.Input); err != nil {
-		return api.SetTVInput500JSONResponse{Code: 500, Error: err.Error()}, nil
+	if err := a.tv.SwitchInput(ctx, request.Body.Edid, request.Body.Input); err != nil {
+		return api.SetMonitorInput500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}
-	msg := "TV input switched"
-	return api.SetTVInput200JSONResponse{Success: true, Message: &msg}, nil
+	msg := "input switched"
+	return api.SetMonitorInput200JSONResponse{Success: true, Message: &msg}, nil
 }

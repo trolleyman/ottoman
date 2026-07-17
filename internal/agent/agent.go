@@ -42,7 +42,7 @@ type Agent struct {
 	layoutStore   *store.LayoutStore
 	registry      *store.Registry
 	control       *monitorControl
-	tv            *tvController
+	tv            *tvManager
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
@@ -124,11 +124,10 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to load monitor registry")
 	}
 
-	// TV controller (LG webOS). Its transport is resolved from the monitor
-	// registry (the "tv"-backend entry); cfg.TV is a legacy fallback. The
-	// pairing key lives in the data dir, not the config, so a config redeploy
-	// can't drop it.
-	tv := newTVController(registry, cfg.TV, store.NewTVStore(""))
+	// TV manager (LG webOS). Each TV's transport is resolved from its monitor
+	// registry entry (backend "tv"); pairing keys live in the data dir, not
+	// the config, so a config redeploy can't drop them.
+	tv := newTVManager(registry, store.NewTVStore(""))
 	control := newMonitorControl(registry)
 	control.tv = tv
 
@@ -609,8 +608,8 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 		apiMonitors = append(apiMonitors, api.Monitor{Edid: edid, Name: name})
 	}
 
-	// The configured TV (still controllable over the network when off).
-	if tvEntry, ok := a.control.registry.TVEntry(); ok {
+	// The configured TVs (still controllable over the network when off).
+	for _, tvEntry := range a.control.registry.TVEntries() {
 		name := tvEntry.FriendlyName
 		if name == "" {
 			name = "TV"
@@ -626,7 +625,7 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 
 	// Add registry + control metadata (friendly name, backend, capabilities,
 	// current brightness, visibility) so any frontend renders the right controls.
-	apiMonitors = a.control.enrich(apiMonitors)
+	apiMonitors = a.control.enrich(ctx, apiMonitors)
 
 	return api.GetMonitors200JSONResponse(apiMonitors), nil
 }

@@ -57,17 +57,19 @@ function BrightnessRow({ edid, brightness }: { edid: string; brightness: number 
 
 // VolumeRow is the horizontal TV-volume control, sitting in the card body under
 // brightness. The leading speaker icon doubles as the mute toggle.
-function VolumeRow() {
-  const tv = useStore((s) => s.tv);
-  const setTVVolume = useStore((s) => s.setTVVolume);
-  const setTVMute = useStore((s) => s.setTVMute);
-  const { value, set, dragProps } = useCoalescedSlider(tv?.volume ?? 0, setTVVolume);
+function VolumeRow({ monitor }: { monitor: Monitor }) {
+  const tv = monitor.tv_state;
+  const setMonitorVolume = useStore((s) => s.setMonitorVolume);
+  const setMonitorMute = useStore((s) => s.setMonitorMute);
+  const { value, set, dragProps } = useCoalescedSlider(tv?.volume ?? 0, (v) =>
+    setMonitorVolume(monitor.edid, v),
+  );
   if (!tv) return null;
 
   return (
     <div className="flex items-center gap-3">
       <button
-        onClick={() => void setTVMute(!tv.muted)}
+        onClick={() => void setMonitorMute(monitor.edid, !tv.muted)}
         className="shrink-0 text-blue-400/90 hover:text-blue-300 transition-colors cursor-pointer"
         title={tv.muted ? "Unmute" : "Mute"}
         aria-label={tv.muted ? "Unmute" : "Mute"}
@@ -100,7 +102,7 @@ function MonitorControls({ monitor, showVolume }: { monitor: Monitor; showVolume
   return (
     <div className="flex flex-col gap-3 pt-3 border-t border-zinc-700/40">
       {showBrightness && <BrightnessRow edid={monitor.edid} brightness={monitor.brightness ?? -1} />}
-      {showVolume && <VolumeRow />}
+      {showVolume && <VolumeRow monitor={monitor} />}
     </div>
   );
 }
@@ -217,11 +219,11 @@ function MonitorSettingsEditor({ monitor, onClose }: { monitor: Monitor; onClose
   );
 }
 
-// TVPairPill shows the network TV's pairing status (or a Pair button) in a
-// TV-backed monitor card's header. Pairing state lives in the shared tv store.
-function TVPairPill() {
-  const tv = useStore((s) => s.tv);
-  const pairTV = useStore((s) => s.pairTV);
+// TVPairPill shows a network TV's pairing status (or a Pair button) in a
+// TV-backed monitor card's header, driven by the monitor's own tv_state.
+function TVPairPill({ monitor }: { monitor: Monitor }) {
+  const tv = monitor.tv_state;
+  const pairMonitor = useStore((s) => s.pairMonitor);
   if (tv?.pairing) {
     return (
       <span className="text-xs font-medium bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
@@ -238,7 +240,7 @@ function TVPairPill() {
   }
   return (
     <button
-      onClick={() => void pairTV()}
+      onClick={() => void pairMonitor(monitor.edid)}
       className="text-xs font-medium bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
     >
       Pair
@@ -249,14 +251,14 @@ function TVPairPill() {
 function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   const [editing, setEditing] = useState(false);
-  const tv = useStore((s) => s.tv);
+  const tv = monitor.tv_state;
 
   // Seed the power switch from real power state, not layout-activeness. A TV
-  // reports it directly (`reachable` ≈ powered on), so an on-but-inactive TV
-  // shows as on; other backends fall back to whether they're in the layout.
-  // The hook re-syncs when this value arrives (tv state loads asynchronously).
+  // reports it directly (tv_state.on: the panel is actually on), so an
+  // on-but-inactive TV shows as on; other backends fall back to whether
+  // they're in the layout. The hook re-syncs when this value arrives.
   const isTV = monitor.control_backend === "tv";
-  const initialPowerOn = isTV ? !!tv?.reachable : !!a;
+  const initialPowerOn = isTV ? !!tv?.on : !!a;
 
   // Power switch (with confirmation poll) lives in the header; the hook runs
   // unconditionally.
@@ -279,7 +281,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
             {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
           </h3>
           <div className="flex items-center gap-2">
-            {monitor.control_backend === "tv" && <TVPairPill />}
+            {monitor.control_backend === "tv" && <TVPairPill monitor={monitor} />}
             {!a && (
               <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
                 Inactive

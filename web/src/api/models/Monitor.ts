@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { ActiveMonitor } from './ActiveMonitor';
 import type { MonitorCapabilities } from './MonitorCapabilities';
+import type { MonitorTVState } from './MonitorTVState';
 import type { TVConn } from './TVConn';
 export type Monitor = {
     edid: string;
@@ -23,5 +24,6 @@ export type Monitor = {
     capabilities?: MonitorCapabilities;
     visibility?: Record<string, boolean>;
     tv?: TVConn;
+    tv_state?: MonitorTVState;
 };
 

@@ -2,8 +2,9 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type TVResponse = {
-    success: boolean;
-    message?: string;
+export type MonitorVolumeRequest = {
+    edid: string;
+    volume?: number;
+    muted?: boolean;
 };
 

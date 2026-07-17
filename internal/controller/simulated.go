@@ -456,40 +456,31 @@ func (s *SimulatedController) Boot(ctx context.Context, request api.BootRequestO
 	return api.Boot200JSONResponse{Success: true, Message: &msg}, nil
 }
 
-func (s *SimulatedController) GetTVState(ctx context.Context, request api.GetTVStateRequestObject) (api.GetTVStateResponseObject, error) {
-	return api.GetTVState200JSONResponse{
-		Configured: true, Paired: true, Pairing: false, Reachable: true,
-		Host: "10.0.0.50", Volume: 12, Muted: false,
-	}, nil
-}
-
-func (s *SimulatedController) PairTV(ctx context.Context, request api.PairTVRequestObject) (api.PairTVResponseObject, error) {
+func (s *SimulatedController) PairMonitor(ctx context.Context, request api.PairMonitorRequestObject) (api.PairMonitorResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.PairMonitor400JSONResponse{Code: 400, Error: "edid is required"}, nil
+	}
+	log.Printf("[SIM] TV pairing started for %s", request.Body.Edid)
 	msg := "Pairing started — accept the prompt on the TV"
-	return api.PairTV200JSONResponse{Success: true, Message: &msg}, nil
+	return api.PairMonitor200JSONResponse{Success: true, Message: &msg}, nil
 }
 
-func (s *SimulatedController) SetTVPower(ctx context.Context, request api.SetTVPowerRequestObject) (api.SetTVPowerResponseObject, error) {
-	if request.Body == nil {
-		return api.SetTVPower400JSONResponse{Code: 400, Error: "body required"}, nil
+func (s *SimulatedController) SetMonitorVolume(ctx context.Context, request api.SetMonitorVolumeRequestObject) (api.SetMonitorVolumeResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" {
+		return api.SetMonitorVolume400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
-	log.Printf("[SIM] TV power on=%v", request.Body.On)
-	msg := "TV power updated"
-	return api.SetTVPower200JSONResponse{Success: true, Message: &msg}, nil
+	log.Printf("[SIM] Volume updated for %s", request.Body.Edid)
+	msg := "volume updated"
+	return api.SetMonitorVolume200JSONResponse{Success: true, Message: &msg}, nil
 }
 
-func (s *SimulatedController) SetTVVolume(ctx context.Context, request api.SetTVVolumeRequestObject) (api.SetTVVolumeResponseObject, error) {
-	log.Printf("[SIM] TV volume updated")
-	msg := "TV volume updated"
-	return api.SetTVVolume200JSONResponse{Success: true, Message: &msg}, nil
-}
-
-func (s *SimulatedController) SetTVInput(ctx context.Context, request api.SetTVInputRequestObject) (api.SetTVInputResponseObject, error) {
-	if request.Body == nil || request.Body.Input == "" {
-		return api.SetTVInput400JSONResponse{Code: 400, Error: "input is required"}, nil
+func (s *SimulatedController) SetMonitorInput(ctx context.Context, request api.SetMonitorInputRequestObject) (api.SetMonitorInputResponseObject, error) {
+	if request.Body == nil || request.Body.Edid == "" || request.Body.Input == "" {
+		return api.SetMonitorInput400JSONResponse{Code: 400, Error: "edid and input are required"}, nil
 	}
-	log.Printf("[SIM] TV input -> %s", request.Body.Input)
-	msg := "TV input switched"
-	return api.SetTVInput200JSONResponse{Success: true, Message: &msg}, nil
+	log.Printf("[SIM] TV input for %s -> %s", request.Body.Edid, request.Body.Input)
+	msg := "input switched"
+	return api.SetMonitorInput200JSONResponse{Success: true, Message: &msg}, nil
 }
 
 func (s *SimulatedController) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
@@ -748,7 +739,7 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 	}
 
 	// A network TV, shown in the Monitors grid as a tv-backed card (pairing pill,
-	// brightness, volume, and a power switch). GetTVState reports it paired.
+	// brightness, volume, and a power switch). Its tv_state reports it paired.
 	tvBackend := "tv"
 	tvBright := 80
 	apiMonitors = append(apiMonitors, api.Monitor{
@@ -758,6 +749,7 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 		ControlBackend: &tvBackend,
 		Brightness:     &tvBright,
 		Capabilities:   &api.MonitorCapabilities{Brightness: true, Power: true, Volume: true},
+		TvState:        &api.MonitorTVState{Paired: true, On: true, Volume: 12},
 		Active: &api.ActiveMonitor{
 			Width: 3840, Height: 2160, RefreshRate: 120, Primary: false, Model: "OLED65C1",
 		},

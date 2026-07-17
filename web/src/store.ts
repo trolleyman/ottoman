@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type TVStateResponse, type MonitorSettingsRequest } from "./api";
+import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type MonitorSettingsRequest } from "./api";
 import { sortedLayouts, sortedMonitors } from "./utils";
 
 export const client = new OttomanClient({
@@ -41,9 +41,6 @@ interface OttomanStore {
   audioLoading: boolean;
   audioError: string | null;
 
-  // ── TV ────────────────────────────────────────────────
-  tv: TVStateResponse | null;
-
   // ── Refresh key (for WebSocket reconnect) ─────────────
   refreshKey: number;
 
@@ -65,13 +62,9 @@ interface OttomanStore {
   setMonitorPower: (edid: string, on: boolean) => Promise<void>;
   probeMonitorPower: (edid: string) => Promise<boolean>;
   saveMonitorSettings: (settings: MonitorSettingsRequest) => Promise<boolean>;
-
-  // ── TV Actions ────────────────────────────────────────
-  fetchTVState: (silent: boolean) => Promise<void>;
-  pairTV: () => Promise<void>;
-  setTVPower: (on: boolean) => Promise<void>;
-  setTVVolume: (volume: number) => Promise<void>;
-  setTVMute: (muted: boolean) => Promise<void>;
+  setMonitorVolume: (edid: string, volume: number) => Promise<void>;
+  setMonitorMute: (edid: string, muted: boolean) => Promise<void>;
+  pairMonitor: (edid: string) => Promise<void>;
 
   // ── Layout Actions ────────────────────────────────────
   switchLayout: (id: string) => Promise<void>;
@@ -163,9 +156,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
   audioSinks: [],
   audioLoading: false,
   audioError: null,
-
-  // ── TV ────────────────────────────────────────────────
-  tv: null,
 
   // ── Refresh key ───────────────────────────────────────
   refreshKey: 0,
@@ -312,7 +302,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
       get().fetchLayouts(silent),
       get().fetchMonitors(silent),
       get().fetchAudioSinks(silent),
-      get().fetchTVState(silent),
     ]);
   },
 
@@ -535,8 +524,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
       await client.default.setMonitorSettings(settings);
       // Re-fetch so capabilities/backend/tv reflect the saved change.
       await get().fetchMonitors(true);
-      // The TV section is driven by a monitor's tv backend; refresh it too.
-      void get().fetchTVState(true);
       return true;
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save monitor settings");
@@ -544,24 +531,30 @@ export const useStore = create<OttomanStore>((set, get) => ({
     }
   },
 
-  // ── TV Actions ────────────────────────────────────────
-
-  fetchTVState: async (silent: boolean) => {
-    void silent;
+  setMonitorVolume: async (edid: string, volume: number) => {
+    patchTVState(set, edid, { volume });
     try {
-      const data = await client.default.getTvState();
-      set({ tv: data });
+      await client.default.setMonitorVolume({ edid, volume });
     } catch {
-      // Ignore — TV endpoints only exist when the agent is reachable.
+      void get().fetchMonitors(true);
     }
   },
 
-  pairTV: async () => {
+  setMonitorMute: async (edid: string, muted: boolean) => {
+    patchTVState(set, edid, { muted });
     try {
-      const data = await client.default.pairTv();
+      await client.default.setMonitorVolume({ edid, muted });
+    } catch {
+      void get().fetchMonitors(true);
+    }
+  },
+
+  pairMonitor: async (edid: string) => {
+    try {
+      const data = await client.default.pairMonitor({ edid });
       if (data.success) {
         alert(data.message || "Pairing started — accept the prompt on the TV.");
-        void get().fetchTVState(true);
+        void get().fetchMonitors(true);
       } else {
         alert(data.message || "Pairing failed");
       }
@@ -569,31 +562,18 @@ export const useStore = create<OttomanStore>((set, get) => ({
       alert(e instanceof Error ? e.message : "Failed to start pairing");
     }
   },
-
-  setTVPower: async (on: boolean) => {
-    try {
-      await client.default.setTvPower({ on });
-      void get().fetchTVState(true);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to set TV power");
-    }
-  },
-
-  setTVVolume: async (volume: number) => {
-    set((s) => (s.tv ? { tv: { ...s.tv, volume } } : {}));
-    try {
-      await client.default.setTvVolume({ volume });
-    } catch {
-      void get().fetchTVState(true);
-    }
-  },
-
-  setTVMute: async (muted: boolean) => {
-    set((s) => (s.tv ? { tv: { ...s.tv, muted } } : {}));
-    try {
-      await client.default.setTvVolume({ muted });
-    } catch {
-      void get().fetchTVState(true);
-    }
-  },
 }));
+
+// patchTVState optimistically merges fields into one monitor's tv_state, so
+// sliders track the pointer without waiting for the next poll.
+function patchTVState(
+  set: (fn: (s: { monitors: Monitor[] }) => { monitors: Monitor[] }) => void,
+  edid: string,
+  patch: Partial<NonNullable<Monitor["tv_state"]>>,
+) {
+  set((s) => ({
+    monitors: s.monitors.map((m) =>
+      m.edid === edid && m.tv_state ? { ...m, tv_state: { ...m.tv_state, ...patch } } : m,
+    ),
+  }));
+}

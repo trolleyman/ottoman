@@ -9,16 +9,20 @@ import (
 )
 
 // TVStatePath returns the path to the TV runtime-state file (holds the pairing
-// key, which must survive config redeploys — hence data dir, not config).
+// keys, which must survive config redeploys — hence data dir, not config).
 func TVStatePath() string {
 	return filepath.Join(DataDir(), "tv.json")
 }
 
 type tvState struct {
-	PairingKey string `json:"pairing_key"`
+	// PairingKey is the legacy single-TV key from before TVs were keyed by
+	// monitor EDID. It is kept as a fallback so an existing install's TV stays
+	// paired, and is superseded by a PairingKeys entry once one is saved.
+	PairingKey  string            `json:"pairing_key,omitempty"`
+	PairingKeys map[string]string `json:"pairing_keys,omitempty"` // by monitor EDID
 }
 
-// TVStore persists TV runtime state (the SSAP client/pairing key).
+// TVStore persists TV runtime state (the SSAP client/pairing keys).
 type TVStore struct {
 	path string
 }
@@ -31,27 +35,48 @@ func NewTVStore(path string) *TVStore {
 	return &TVStore{path: path}
 }
 
-// LoadPairingKey reads the stored SSAP pairing key ("" if none).
-func (s *TVStore) LoadPairingKey() (string, error) {
+func (s *TVStore) load() (tvState, error) {
+	var st tvState
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return st, nil
 		}
-		return "", errors.Wrap(err, "failed to read TV state")
+		return st, errors.Wrap(err, "failed to read TV state")
 	}
-	var st tvState
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &st); err != nil {
-			return "", errors.Wrap(err, "failed to parse TV state")
+			return st, errors.Wrap(err, "failed to parse TV state")
 		}
+	}
+	return st, nil
+}
+
+// LoadPairingKey reads the stored SSAP pairing key for a TV monitor ("" if
+// none). A monitor without its own key falls back to the legacy single-TV key.
+func (s *TVStore) LoadPairingKey(edid string) (string, error) {
+	st, err := s.load()
+	if err != nil {
+		return "", err
+	}
+	if key, ok := st.PairingKeys[edid]; ok && key != "" {
+		return key, nil
 	}
 	return st.PairingKey, nil
 }
 
-// SavePairingKey persists the SSAP pairing key atomically.
-func (s *TVStore) SavePairingKey(key string) error {
-	data, err := json.MarshalIndent(tvState{PairingKey: key}, "", "  ")
+// SavePairingKey persists a TV monitor's SSAP pairing key atomically,
+// preserving other monitors' keys.
+func (s *TVStore) SavePairingKey(edid, key string) error {
+	st, err := s.load()
+	if err != nil {
+		return err
+	}
+	if st.PairingKeys == nil {
+		st.PairingKeys = make(map[string]string)
+	}
+	st.PairingKeys[edid] = key
+	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal TV state")
 	}

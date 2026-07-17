@@ -78,11 +78,10 @@ class Api {
 
     getMonitors() { return this._request('GET', '/api/monitors'); }
     getLayouts() { return this._request('GET', '/api/layouts'); }
-    getTVState() { return this._request('GET', '/api/tv/state'); }
     setBrightness(edid, brightness) { return this._request('POST', '/api/monitors/brightness', {edid, brightness}); }
     setPower(edid, on) { return this._request('POST', '/api/monitors/power', {edid, on}); }
     switchLayout(layout) { return this._request('POST', '/api/layouts/switch', {layout}); }
-    setTVVolume(volume) { return this._request('POST', '/api/tv/volume', {volume}); }
+    setVolume(edid, volume) { return this._request('POST', '/api/monitors/volume', {edid, volume}); }
 }
 
 // visible honours the registry's per-control visibility overrides.
@@ -140,17 +139,16 @@ class OttomanControls {
         this._qs = Main.panel.statusArea.quickSettings;
         this._items = [];
         this._brightnessSliders = new Map(); // edid -> OttomanSlider
-        this._tvSlider = null;
+        this._volumeSliders = new Map(); // edid -> OttomanSlider (TV-backed monitors)
         this._layoutToggle = null;
         this._layoutItems = [];
         this._signature = '';
     }
 
     async refresh() {
-        const [monitors, layouts, tv] = await Promise.all([
+        const [monitors, layouts] = await Promise.all([
             this._api.getMonitors().catch(() => null),
             this._api.getLayouts().catch(() => null),
-            this._api.getTVState().catch(() => null),
         ]);
 
         // Agent unreachable: grey out existing controls, keep them in place.
@@ -160,22 +158,21 @@ class OttomanControls {
         }
         this._setReactive(true);
 
-        const sig = this._computeSignature(monitors, layouts, tv);
+        const sig = this._computeSignature(monitors, layouts);
         if (sig !== this._signature) {
-            this._rebuild(monitors || [], layouts, tv);
+            this._rebuild(monitors || [], layouts);
             this._signature = sig;
         } else {
-            this._updateValues(monitors || [], layouts, tv);
+            this._updateValues(monitors || [], layouts);
         }
     }
 
-    _computeSignature(monitors, layouts, tv) {
+    _computeSignature(monitors, layouts) {
         const mparts = (monitors || [])
             .filter(m => m.capabilities)
-            .map(m => `${m.edid}:${m.capabilities.brightness && visible(m, 'brightness')}:${m.capabilities.power && visible(m, 'power')}`);
+            .map(m => `${m.edid}:${m.capabilities.brightness && visible(m, 'brightness')}:${m.capabilities.power && visible(m, 'power')}:${m.tv_state ? 'tv' : ''}`);
         const lparts = (layouts?.layouts || []).map(l => l.id);
-        const tvpart = tv?.configured ? 'tv' : '';
-        return [...mparts, '|', ...lparts, '|', tvpart].join(',');
+        return [...mparts, '|', ...lparts].join(',');
     }
 
     _setReactive(reactive) {
@@ -200,12 +197,12 @@ class OttomanControls {
             item.destroy();
         this._items = [];
         this._brightnessSliders.clear();
-        this._tvSlider = null;
+        this._volumeSliders.clear();
         this._layoutToggle = null;
         this._layoutItems = [];
     }
 
-    _rebuild(monitors, layouts, tv) {
+    _rebuild(monitors, layouts) {
         this._clear();
 
         for (const m of monitors) {
@@ -224,13 +221,15 @@ class OttomanControls {
 
             if (m.capabilities.power && visible(m, 'power'))
                 this._addPowerToggle(m, name);
-        }
 
-        if (tv?.configured) {
-            this._tvSlider = new OttomanSlider(
-                'audio-volume-high-symbolic', 'TV volume', Math.max(0, tv.volume ?? 0) / 100,
-                val => this._api.setTVVolume(val).catch(logError));
-            this._addItem(this._tvSlider);
+            if (m.tv_state && m.capabilities.volume && visible(m, 'volume')) {
+                const slider = new OttomanSlider(
+                    'audio-volume-high-symbolic', `${name} volume`,
+                    Math.max(0, m.tv_state.volume ?? 0) / 100,
+                    val => this._api.setVolume(m.edid, val).catch(logError));
+                this._volumeSliders.set(m.edid, slider);
+                this._addItem(slider);
+            }
         }
 
         if (layouts?.layouts?.length)
@@ -275,14 +274,15 @@ class OttomanControls {
         this._addItem(toggle);
     }
 
-    _updateValues(monitors, layouts, tv) {
+    _updateValues(monitors, layouts) {
         for (const m of monitors) {
             const slider = this._brightnessSliders.get(m.edid);
             if (slider && typeof m.brightness === 'number' && m.brightness >= 0)
                 slider.setValueQuiet(m.brightness / 100);
+            const vol = this._volumeSliders.get(m.edid);
+            if (vol && typeof m.tv_state?.volume === 'number')
+                vol.setValueQuiet(Math.max(0, m.tv_state.volume) / 100);
         }
-        if (this._tvSlider && tv && typeof tv.volume === 'number')
-            this._tvSlider.setValueQuiet(Math.max(0, tv.volume) / 100);
         if (this._layoutToggle && layouts) {
             this._layoutToggle.subtitle = layouts.current_layout || 'Switch layout';
             for (const {id, item} of this._layoutItems)

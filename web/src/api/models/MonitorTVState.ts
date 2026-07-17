@@ -2,14 +2,12 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type TVStateResponse = {
-    configured: boolean;
+export type MonitorTVState = {
     paired: boolean;
     pairing: boolean;
-    host: string;
+    on: boolean;
     volume: number;
     muted: boolean;
-    reachable: boolean;
     error?: string;
 };
 

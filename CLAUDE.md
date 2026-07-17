@@ -112,22 +112,20 @@ ottoman config init      # Create default config file
 | `/api/layouts/save-current` | `POST` | Save the current layout as a new layout |
 | `/api/layouts/remove` | `POST` | Remove the specified layout |
 | `/api/layouts/update` | `POST` | Update a layout's name, emoji, and aliases |
-| `/api/monitors` | `GET` | Get all monitors (with control backend, capabilities, brightness, visibility) |
+| `/api/monitors` | `GET` | Get all monitors (control backend, capabilities, brightness, visibility, live TV state) |
 | `/api/monitors/brightness` | `POST` | Set a monitor's brightness (DDC or TV backend) |
-| `/api/monitors/power` | `POST` | Turn a monitor on/off (DDC standby or TV power) |
+| `/api/monitors/power` | `POST` | Turn a monitor on/off (DDC standby, or TV WoL/SSAP) |
+| `/api/monitors/volume` | `POST` | Set a monitor's volume/mute (TV backend) |
+| `/api/monitors/pair` | `POST` | Start on-screen pairing for a TV-backed monitor |
+| `/api/monitors/input` | `POST` | Switch a TV-backed monitor's external input |
 | `/api/monitors/settings` | `POST` | Update a monitor's registry entry (name, backend, visibility) |
 | `/api/audio/sinks` | `GET` | List PipeWire output sinks |
 | `/api/audio/volume` | `POST` | Set a sink's volume/mute/default |
-| `/api/tv/state` | `GET` | Get TV integration state |
-| `/api/tv/pair` | `POST` | Start on-screen TV pairing |
-| `/api/tv/power` | `POST` | Turn the TV on (WoL) or off (SSAP) |
-| `/api/tv/volume` | `POST` | Set TV volume/mute |
-| `/api/tv/input` | `POST` | Switch the TV's external input |
 | `/api/boot` | `POST` | Reboot into a specific OS (GRUB dual-boot) |
 | `/api/shutdown` | `POST` | Shut down agent |
 | `/api/trackpad` | `GET` | Open mouse / keyboard WebSocket controller |
 
-Runtime data (layouts, monitor registry, TV pairing key) lives in the XDG data
+Runtime data (layouts, monitor registry, TV pairing keys) lives in the XDG data
 dir (`~/.local/share/ottoman/`), separate from the config file, so redeploying
 config never clobbers it. Linux backends: displays via GNOME Mutter D-Bus
 (Wayland) with an xrandr fallback; input via `/dev/uinput`; audio via `wpctl`;

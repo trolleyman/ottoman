@@ -10,10 +10,13 @@ import type { BootRequest } from '../models/BootRequest';
 import type { BootResponse } from '../models/BootResponse';
 import type { LayoutsResponse } from '../models/LayoutsResponse';
 import type { MonitorControlResponse } from '../models/MonitorControlResponse';
+import type { MonitorInputRequest } from '../models/MonitorInputRequest';
+import type { MonitorPairRequest } from '../models/MonitorPairRequest';
 import type { MonitorPowerStateRequest } from '../models/MonitorPowerStateRequest';
 import type { MonitorPowerStateResponse } from '../models/MonitorPowerStateResponse';
 import type { MonitorSettingsRequest } from '../models/MonitorSettingsRequest';
 import type { MonitorsResponse } from '../models/MonitorsResponse';
+import type { MonitorVolumeRequest } from '../models/MonitorVolumeRequest';
 import type { RemoveLayoutRequest } from '../models/RemoveLayoutRequest';
 import type { RemoveLayoutResponse } from '../models/RemoveLayoutResponse';
 import type { SaveLayoutRequest } from '../models/SaveLayoutRequest';
@@ -27,11 +30,6 @@ import type { SimStateResponse } from '../models/SimStateResponse';
 import type { StatusResponse } from '../models/StatusResponse';
 import type { SwitchLayoutRequest } from '../models/SwitchLayoutRequest';
 import type { SwitchLayoutResponse } from '../models/SwitchLayoutResponse';
-import type { TVInputRequest } from '../models/TVInputRequest';
-import type { TVPowerRequest } from '../models/TVPowerRequest';
-import type { TVResponse } from '../models/TVResponse';
-import type { TVStateResponse } from '../models/TVStateResponse';
-import type { TVVolumeRequest } from '../models/TVVolumeRequest';
 import type { UpdateLayoutRequest } from '../models/UpdateLayoutRequest';
 import type { UpdateLayoutResponse } from '../models/UpdateLayoutResponse';
 import type { WakeRequest } from '../models/WakeRequest';
@@ -425,48 +423,17 @@ export class DefaultService {
         });
     }
     /**
-     * Get TV integration state
-     * @returns TVStateResponse Success
-     * @throws ApiError
-     */
-    public getTvState(): CancelablePromise<TVStateResponse> {
-        return this.httpRequest.request({
-            method: 'GET',
-            url: '/api/tv/state',
-            errors: {
-                401: `Unauthorized`,
-                502: `Bad Gateway (Agent unreachable)`,
-            },
-        });
-    }
-    /**
-     * Start TV on-screen pairing
-     * @returns TVResponse Success
-     * @throws ApiError
-     */
-    public pairTv(): CancelablePromise<TVResponse> {
-        return this.httpRequest.request({
-            method: 'POST',
-            url: '/api/tv/pair',
-            errors: {
-                401: `Unauthorized`,
-                500: `Internal Server Error`,
-                502: `Bad Gateway (Agent unreachable)`,
-            },
-        });
-    }
-    /**
-     * Turn the TV on (Wake-on-LAN) or off (SSAP)
+     * Set a monitor's volume and/or mute (TV-backed monitors)
      * @param requestBody
-     * @returns TVResponse Success
+     * @returns MonitorControlResponse Success
      * @throws ApiError
      */
-    public setTvPower(
-        requestBody?: TVPowerRequest,
-    ): CancelablePromise<TVResponse> {
+    public setMonitorVolume(
+        requestBody?: MonitorVolumeRequest,
+    ): CancelablePromise<MonitorControlResponse> {
         return this.httpRequest.request({
             method: 'POST',
-            url: '/api/tv/power',
+            url: '/api/monitors/volume',
             body: requestBody,
             mediaType: 'application/json',
             errors: {
@@ -478,17 +445,17 @@ export class DefaultService {
         });
     }
     /**
-     * Set the TV volume and/or mute
+     * Start on-screen pairing for a TV-backed monitor
      * @param requestBody
-     * @returns TVResponse Success
+     * @returns MonitorControlResponse Success
      * @throws ApiError
      */
-    public setTvVolume(
-        requestBody?: TVVolumeRequest,
-    ): CancelablePromise<TVResponse> {
+    public pairMonitor(
+        requestBody?: MonitorPairRequest,
+    ): CancelablePromise<MonitorControlResponse> {
         return this.httpRequest.request({
             method: 'POST',
-            url: '/api/tv/volume',
+            url: '/api/monitors/pair',
             body: requestBody,
             mediaType: 'application/json',
             errors: {
@@ -500,17 +467,17 @@ export class DefaultService {
         });
     }
     /**
-     * Switch the TV's external input
+     * Switch a TV-backed monitor's external input
      * @param requestBody
-     * @returns TVResponse Success
+     * @returns MonitorControlResponse Success
      * @throws ApiError
      */
-    public setTvInput(
-        requestBody?: TVInputRequest,
-    ): CancelablePromise<TVResponse> {
+    public setMonitorInput(
+        requestBody?: MonitorInputRequest,
+    ): CancelablePromise<MonitorControlResponse> {
         return this.httpRequest.request({
             method: 'POST',
-            url: '/api/tv/input',
+            url: '/api/monitors/input',
             body: requestBody,
             mediaType: 'application/json',
             errors: {

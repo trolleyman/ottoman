@@ -2,7 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type TVInputRequest = {
-    input: string;
+export type MonitorPairRequest = {
+    edid: string;
 };
 
