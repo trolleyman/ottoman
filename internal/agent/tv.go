@@ -203,8 +203,21 @@ type TVState struct {
 	Host       string `json:"host"`
 	Volume     int    `json:"volume"`
 	Muted      bool   `json:"muted"`
-	Reachable  bool   `json:"reachable"` // TV answered a request ≈ powered on
+	Reachable  bool   `json:"reachable"` // the TV's panel is actually on
 	Error      string `json:"error,omitempty"`
+}
+
+// screenOn maps a webOS power state to "the panel is on". Standby states count
+// as off — with Quick Start+ the TV keeps its network stack up and answers
+// SSAP while the screen is dark. Unknown states count as on (mirroring Home
+// Assistant's mapping): an answering TV in an unrecognised state is more
+// likely on than not.
+func screenOn(state string) bool {
+	switch state {
+	case "Suspend", "Active Standby", "Power Off":
+		return false
+	}
+	return true
 }
 
 // State returns the current TV integration state, querying live volume if
@@ -231,7 +244,14 @@ func (t *tvController) State(ctx context.Context) TVState {
 			}
 			st.Volume = vol.Volume
 			st.Muted = vol.Muted
-			st.Reachable = true // the volume read succeeded, so the TV is on
+			// The volume read answering only proves the network stack is up —
+			// Quick Start+ keeps it answering in standby. Ask the power
+			// service whether the panel is actually on; firmwares without the
+			// endpoint fall back to answered == on.
+			st.Reachable = true
+			if state, perr := c.GetPowerState(ctx); perr == nil {
+				st.Reachable = screenOn(state)
+			}
 			return nil
 		}); err != nil {
 			st.Error = err.Error()
@@ -254,15 +274,27 @@ func (t *tvController) PowerOff(ctx context.Context) error {
 	return t.withClient(ctx, func(c *webos.Client) error { return c.TurnOff(ctx) })
 }
 
-// Reachable reports whether the TV currently answers a lightweight request — a
-// proxy for "powered on", since a TV that's off drops its network connection.
+// Reachable reports whether the TV's panel is actually on. It asks the power
+// service for the real state (a Quick Start+ TV answers SSAP in standby, so
+// merely connecting proves nothing); firmwares without that endpoint fall back
+// to "answers a lightweight request == on".
 func (t *tvController) Reachable(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	return t.withClient(ctx, func(c *webos.Client) error {
-		_, err := c.GetVolume(ctx)
-		return err
-	}) == nil
+	on := false
+	err := t.withClient(ctx, func(c *webos.Client) error {
+		state, perr := c.GetPowerState(ctx)
+		if perr != nil {
+			if _, verr := c.GetVolume(ctx); verr != nil {
+				return verr
+			}
+			on = true
+			return nil
+		}
+		on = screenOn(state)
+		return nil
+	})
+	return err == nil && on
 }
 
 // SetVolume sets the TV's absolute volume (0-100).

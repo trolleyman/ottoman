@@ -52,6 +52,32 @@ func parseVolume(raw json.RawMessage) (VolumeState, error) {
 	return st, nil
 }
 
+// GetPowerState reports the TV's power state (e.g. "Active", "Active Standby",
+// "Suspend"). A TV with Quick Start+ keeps answering SSAP in standby, so this
+// is the only way to tell "panel is on" from "network stack is awake". Errors
+// on firmwares without the endpoint; callers should fall back to treating an
+// answering TV as on.
+func (c *Client) GetPowerState(ctx context.Context) (string, error) {
+	raw, err := c.request(ctx, "ssap://com.webos.service.tvpower/power/getPowerState", nil)
+	if err != nil {
+		return "", err
+	}
+	return parsePowerState(raw)
+}
+
+func parsePowerState(raw json.RawMessage) (string, error) {
+	var p struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return "", err
+	}
+	if p.State == "" {
+		return "", errors.New("no state in power state response")
+	}
+	return p.State, nil
+}
+
 // SetVolume sets the absolute volume (0-100).
 func (c *Client) SetVolume(ctx context.Context, volume int) error {
 	if volume < 0 {

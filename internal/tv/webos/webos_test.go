@@ -69,3 +69,16 @@ func TestRegistrationPayloadIncludesKey(t *testing.T) {
 		t.Fatal("client-key should be absent when empty")
 	}
 }
+
+func TestParsePowerState(t *testing.T) {
+	state, err := parsePowerState([]byte(`{"returnValue":true,"state":"Active Standby"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != "Active Standby" {
+		t.Errorf("state = %q, want %q", state, "Active Standby")
+	}
+	if _, err := parsePowerState([]byte(`{"returnValue":true}`)); err == nil {
+		t.Error("expected error for missing state")
+	}
+}
