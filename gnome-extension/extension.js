@@ -22,7 +22,23 @@ import {
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 
 const REFRESH_SECONDS = 15;
-const SLIDER_DEBOUNCE_MS = 250;
+
+// How long to trust an optimistic power toggle before letting the poll's real
+// state win again — a TV wakes over Wake-on-LAN slowly, a DDC panel less so.
+// Mirrors the web UI's confirmation caps (see useMonitorPower.ts).
+const POWER_GRACE_ON_US = 20 * 1000 * 1000;
+const POWER_GRACE_OFF_US = 15 * 1000 * 1000;
+
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+// powerOn reports a monitor's real power state, the same way the web card seeds
+// its switch: a TV reports the panel state directly (tv_state.on), other
+// backends fall back to whether they're active in the current layout.
+function powerOn(monitor) {
+    if (monitor.control_backend === 'tv')
+        return !!monitor.tv_state?.on;
+    return !!monitor.active;
+}
 
 // readConfig extracts the agent's port and auth token from the Ottoman config
 // file, so the extension needs no separate setup after `mage deployAgent`.
@@ -90,43 +106,57 @@ function visible(monitor, control) {
     return v === undefined ? true : v;
 }
 
-// A brightness/volume slider bound to a setter.
+// A brightness/volume slider bound to a setter. It commits live on every drag
+// step — coalescing to at most one in-flight write, always sending the latest
+// value — so the monitor tracks the thumb exactly like the web slider, instead
+// of only updating once the drag stops. This mirrors web/src/useCoalescedSlider.
 const OttomanSlider = GObject.registerClass(
 class OttomanSlider extends QuickSlider {
     _init(iconName, accessibleName, value, onChange) {
         super._init({iconName});
         this.slider.accessible_name = accessibleName;
-        this.slider.value = Math.max(0, Math.min(1, value));
-        this._onChange = onChange;
-        this._debounceId = 0;
-        this._changedId = this.slider.connect('notify::value', () => this._debounce());
+        this.slider.value = clamp01(value);
+        this._onChange = onChange; // (percent) => Promise
+        this._pending = null;      // latest percent awaiting a commit
+        this._inflight = false;    // a commit is currently in progress
+        this._lastSent = null;     // last percent handed to the backend
+        this._changedId = this.slider.connect('notify::value',
+            () => this._set(Math.round(this.slider.value * 100)));
     }
 
-    _debounce() {
-        if (this._debounceId)
-            GLib.source_remove(this._debounceId);
-        this._debounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SLIDER_DEBOUNCE_MS, () => {
-            this._debounceId = 0;
-            this._onChange(Math.round(this.slider.value * 100));
-            return GLib.SOURCE_REMOVE;
-        });
+    _set(percent) {
+        this._pending = percent;
+        this._flush();
     }
 
-    // setValueQuiet updates the displayed value without triggering the setter.
-    setValueQuiet(value) {
-        if (this._debounceId)
-            return; // a local edit is pending; don't fight it
-        this.slider.block_signal_handler(this._changedId);
-        this.slider.value = Math.max(0, Math.min(1, value));
-        this.slider.unblock_signal_handler(this._changedId);
-    }
-
-    destroy() {
-        if (this._debounceId) {
-            GLib.source_remove(this._debounceId);
-            this._debounceId = 0;
+    async _flush() {
+        if (this._inflight || this._pending === null)
+            return;
+        this._inflight = true;
+        const v = this._pending;
+        this._pending = null;
+        this._lastSent = v;
+        try {
+            await this._onChange(v);
+        } finally {
+            this._inflight = false;
+            this._flush(); // a newer value may have queued while we were writing
         }
-        super.destroy();
+    }
+
+    // setValueQuiet adopts a server value without firing the setter, but only
+    // when idle and the server has caught up to our last write — otherwise a
+    // lagging poll would snap the thumb backward mid- or post-drag.
+    setValueQuiet(value) {
+        if (this._pending !== null || this._inflight)
+            return; // a local edit is in flight; don't fight it
+        const percent = Math.round(clamp01(value) * 100);
+        if (this._lastSent !== null && percent !== this._lastSent)
+            return; // stale echo of a value older than our last write
+        this._lastSent = null;
+        this.slider.block_signal_handler(this._changedId);
+        this.slider.value = clamp01(value);
+        this.slider.unblock_signal_handler(this._changedId);
     }
 });
 
@@ -140,6 +170,8 @@ class OttomanControls {
         this._items = [];
         this._brightnessSliders = new Map(); // edid -> OttomanSlider
         this._volumeSliders = new Map(); // edid -> OttomanSlider (TV-backed monitors)
+        this._powerToggles = new Map(); // edid -> QuickMenuToggle
+        this._powerPending = new Map(); // edid -> monotonic deadline (µs) for an optimistic toggle
         this._layoutToggle = null;
         this._layoutItems = [];
         this._signature = '';
@@ -198,6 +230,7 @@ class OttomanControls {
         this._items = [];
         this._brightnessSliders.clear();
         this._volumeSliders.clear();
+        this._powerToggles.clear();
         this._layoutToggle = null;
         this._layoutItems = [];
     }
@@ -242,12 +275,31 @@ class OttomanControls {
             subtitle: 'Display power',
             iconName: 'video-display-symbolic',
             toggleMode: true,
-            checked: true,
+            checked: powerOn(monitor),
         });
         toggle.connect('clicked', () => {
+            // `checked` has already flipped to the target here. Trust it
+            // optimistically for a grace window so the confirmation poll (a TV
+            // takes seconds to wake) doesn't snap the switch back meanwhile.
+            const grace = toggle.checked ? POWER_GRACE_ON_US : POWER_GRACE_OFF_US;
+            this._powerPending.set(monitor.edid, GLib.get_monotonic_time() + grace);
             this._api.setPower(monitor.edid, toggle.checked).catch(logError);
         });
+        this._powerToggles.set(monitor.edid, toggle);
         this._addItem(toggle);
+    }
+
+    // _powerPendingActive reports whether an optimistic toggle for a monitor is
+    // still within its grace window, expiring the entry once it lapses.
+    _powerPendingActive(edid) {
+        const deadline = this._powerPending.get(edid);
+        if (deadline === undefined)
+            return false;
+        if (GLib.get_monotonic_time() >= deadline) {
+            this._powerPending.delete(edid);
+            return false;
+        }
+        return true;
     }
 
     _addLayoutToggle(layouts) {
@@ -282,6 +334,9 @@ class OttomanControls {
             const vol = this._volumeSliders.get(m.edid);
             if (vol && typeof m.tv_state?.volume === 'number')
                 vol.setValueQuiet(Math.max(0, m.tv_state.volume) / 100);
+            const power = this._powerToggles.get(m.edid);
+            if (power && !this._powerPendingActive(m.edid))
+                power.checked = powerOn(m);
         }
         if (this._layoutToggle && layouts) {
             this._layoutToggle.subtitle = layouts.current_layout || 'Switch layout';
