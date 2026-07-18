@@ -12,15 +12,29 @@ import (
 	"github.com/trolleyman/ottoman/internal/common"
 )
 
-// Available reports whether the ddcutil CLI is installed.
+// Available reports whether DDC display control is possible: either we can see
+// GPU display i2c buses to read directly, or the ddcutil CLI is installed as a
+// fallback.
 func Available() bool {
+	if len(displayBuses()) > 0 {
+		return true
+	}
 	_, err := exec.LookPath("ddcutil")
 	return err == nil
 }
 
-// Detect lists DDC/CI-capable displays. It is comparatively slow (probes each
-// i2c bus), so callers should cache the result.
+// Detect lists DDC-capable displays and their i2c buses. It reads EDIDs
+// directly over i2c (see DetectDirect) — no ddcutil, no DDC/CI probe — and only
+// falls back to `ddcutil detect` if the direct path finds nothing (e.g. a GPU
+// whose display buses we don't recognise). Callers should still cache the
+// result; the direct path is fast but not free.
 func Detect() ([]Display, error) {
+	if displays := DetectDirect(); len(displays) > 0 {
+		return displays, nil
+	}
+	if _, err := exec.LookPath("ddcutil"); err != nil {
+		return nil, nil // nothing detected, and no ddcutil to fall back to
+	}
 	out, err := common.RunCmdOutput("ddcutil", "detect")
 	if err != nil {
 		return nil, errors.Wrap(err, "ddcutil detect failed")

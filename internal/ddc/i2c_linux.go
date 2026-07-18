@@ -24,8 +24,9 @@ import (
 // operations so the monitor's firmware can keep up. Rather than a fixed sleep we
 // adapt the spacing per bus (like ddcutil's dynamic sleep): start spec-safe,
 // creep faster while operations succeed, and back off exponentially with retries
-// when the panel starts erroring. Bus discovery still goes through ddcutil detect
-// (cached upstream) — only the hot get/set path is direct.
+// when the panel starts erroring. Bus discovery is likewise direct — EDIDs are
+// read over i2c (see edid_linux.go), so ddcutil is no longer needed at all on a
+// setup like this; it remains only as a detection fallback.
 
 // i2cSlaveForce is the <linux/i2c-dev.h> I2C_SLAVE_FORCE ioctl — sets the
 // target slave address even if a kernel driver holds it. x/sys/unix doesn't

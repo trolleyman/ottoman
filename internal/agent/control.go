@@ -13,12 +13,18 @@ import (
 	"github.com/trolleyman/ottoman/internal/store"
 )
 
-// ddcCacheTTL bounds how often we run the (slow) `ddcutil detect`.
-const ddcCacheTTL = 60 * time.Second
+// ddcCacheTTL bounds how often we run display detection (native EDID reads over
+// i2c, see ddc.DetectDirect). It's long because the display topology rarely
+// changes (a DDC power-off keeps the monitor on the bus) and probing still does
+// some bus i/o. Stale refreshes run in the background, off the request path, so
+// a poll never waits on — or is gated behind — a detect.
+const ddcCacheTTL = 10 * time.Minute
 
-// brightnessCacheTTL bounds how often we probe a monitor's brightness, so that
-// polling GetMonitors doesn't spawn a ddcutil getvcp on every request.
-const brightnessCacheTTL = 60 * time.Second
+// brightnessCacheTTL bounds how often we probe a monitor's brightness. Live DDC
+// getvcp / TV reads jitter the display bus and stutter the compositor, so this
+// is long: our own writes keep the sample authoritative (see setBrightnessSample),
+// and this cache only lags an external change made via the monitor's own OSD.
+const brightnessCacheTTL = 1 * time.Hour
 
 // monitorControl maps physical monitors (by EDID) to their control backend and
 // dispatches brightness/power operations. DDC monitors are matched to an i2c
@@ -27,21 +33,25 @@ type monitorControl struct {
 	registry *store.Registry
 	tv       *tvManager
 
-	mu         sync.Mutex
-	ddcCache   []ddc.Display
-	ddcFetched time.Time
-	brightness map[string]brightnessSample
+	mu                   sync.Mutex
+	ddcCache             []ddc.Display
+	ddcFetched           time.Time
+	ddcRefreshing        bool // a background `ddcutil detect` is in flight
+	brightness           map[string]brightnessSample
+	brightnessRefreshing map[string]bool // per-EDID background read in flight
 }
 
 type brightnessSample struct {
 	value int
 	at    time.Time
+	ok    bool // whether the last read succeeded (false = negative-cached failure)
 }
 
 func newMonitorControl(reg *store.Registry) *monitorControl {
 	return &monitorControl{
-		registry:   reg,
-		brightness: make(map[string]brightnessSample),
+		registry:             reg,
+		brightness:           make(map[string]brightnessSample),
+		brightnessRefreshing: make(map[string]bool),
 	}
 }
 
@@ -51,22 +61,42 @@ func (c *monitorControl) ddcDisplays() []ddc.Display {
 		return nil
 	}
 	c.mu.Lock()
-	fresh := c.ddcCache != nil && time.Since(c.ddcFetched) < ddcCacheTTL
 	cached := c.ddcCache
-	c.mu.Unlock()
+	fresh := cached != nil && time.Since(c.ddcFetched) < ddcCacheTTL
 	if fresh {
+		c.mu.Unlock()
 		return cached
 	}
+	if cached == nil {
+		// Nothing known yet: detect once synchronously so the first poll after
+		// startup has real topology. Recurring refreshes go to the background.
+		c.mu.Unlock()
+		return c.detectAndStore()
+	}
+	// Stale but known: refresh off the request path (detect churns the i2c bus
+	// and stutters the compositor, and can take a while) and serve the
+	// last-known topology now.
+	if !c.ddcRefreshing {
+		c.ddcRefreshing = true
+		go c.detectAndStore()
+	}
+	c.mu.Unlock()
+	return cached
+}
 
+// detectAndStore runs `ddcutil detect` and updates the cache. Safe to call in a
+// background goroutine; it clears the in-flight guard on the way out.
+func (c *monitorControl) detectAndStore() []ddc.Display {
 	displays, err := ddc.Detect()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ddcRefreshing = false
 	if err != nil {
 		log.Printf("ddcutil detect failed: %v", err)
-		return cached
+		return c.ddcCache
 	}
-	c.mu.Lock()
 	c.ddcCache = displays
 	c.ddcFetched = time.Now()
-	c.mu.Unlock()
 	return displays
 }
 
@@ -135,10 +165,12 @@ func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 	}
 }
 
-// currentBrightness returns a monitor's brightness (0-100), using a throttled
-// cache to avoid hammering the backend during polling. It live-reads DDC
-// (getvcp) or the TV (getSystemSettings) once per TTL and, if that read fails
-// or the firmware doesn't support it, falls back to the last value we set.
+// currentBrightness returns a monitor's brightness (0-100). It serves a cached
+// value and never touches the bus on the request path once warm: a stale entry
+// is refreshed in the background (see refreshBrightness) while the last-known
+// value is served, so polling GetMonitors never blocks on — or stutters the
+// display with — a live read. Only the very first read per monitor is
+// synchronous. Returns ok=false when nothing is known yet or the read failed.
 func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	backend := c.backendFor(edid)
 	if backend != store.BackendDDC && backend != store.BackendI2C && backend != store.BackendTV {
@@ -146,13 +178,35 @@ func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	}
 
 	c.mu.Lock()
-	sample, cached := c.brightness[edid]
-	fresh := cached && time.Since(sample.at) < brightnessCacheTTL
-	c.mu.Unlock()
+	sample, have := c.brightness[edid]
+	fresh := have && time.Since(sample.at) < brightnessCacheTTL
 	if fresh {
-		return sample.value, true
+		c.mu.Unlock()
+		return sample.value, sample.ok
 	}
+	if have {
+		// Stale: refresh in the background so the live DDC/TV read never runs on
+		// the poll's goroutine (it jitters the display bus and stutters the
+		// compositor), and serve the last-known value now.
+		if !c.brightnessRefreshing[edid] {
+			c.brightnessRefreshing[edid] = true
+			go c.refreshBrightness(edid, backend)
+		}
+		c.mu.Unlock()
+		return sample.value, sample.ok
+	}
+	c.mu.Unlock()
+	// Cold: read once synchronously so the first poll has a value, then cache
+	// it (including a failure, so an unanswering monitor isn't re-probed every
+	// poll — the failed i2c read is itself a source of stutter).
+	v, ok := c.readBrightnessLive(edid, backend)
+	c.storeBrightness(edid, v, ok)
+	return v, ok
+}
 
+// readBrightnessLive performs the actual (bus-touching) brightness read for a
+// monitor. It does no caching; callers cache the result via storeBrightness.
+func (c *monitorControl) readBrightnessLive(edid, backend string) (int, bool) {
 	switch backend {
 	case store.BackendDDC, store.BackendI2C:
 		bus, ok := c.ddcBusFor(edid)
@@ -162,35 +216,48 @@ func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 		v, err := ddcGetBrightness(backend, bus)
 		if err != nil {
 			log.Printf("ddc GetBrightness(%s) failed: %v", edid, err)
-			if cached {
-				return sample.value, true // fall back to last-known
-			}
 			return 0, false
 		}
-		c.setBrightnessSample(edid, v)
 		return v, true
 	case store.BackendTV:
 		if c.tv == nil {
 			return 0, false
 		}
-		v, live := c.tv.Backlight(context.Background(), edid)
-		if !live {
-			// TV off/unreachable or firmware doesn't support the read — fall
-			// back to the last value we set (if any).
-			if cached {
-				return sample.value, true
-			}
-			return 0, false
-		}
-		c.setBrightnessSample(edid, v)
-		return v, true
+		return c.tv.Backlight(context.Background(), edid)
 	}
 	return 0, false
 }
 
+// refreshBrightness reads brightness in the background and updates the cache,
+// clearing the per-EDID in-flight guard when done.
+func (c *monitorControl) refreshBrightness(edid, backend string) {
+	v, ok := c.readBrightnessLive(edid, backend)
+	c.mu.Lock()
+	c.brightnessRefreshing[edid] = false
+	c.mu.Unlock()
+	c.storeBrightness(edid, v, ok)
+}
+
+// storeBrightness records a read result. A failed read keeps the last-known
+// value (so a transient hiccup doesn't blank the UI) but still refreshes the
+// timestamp, so the failure is negative-cached and won't be retried until the
+// TTL lapses.
+func (c *monitorControl) storeBrightness(edid string, v int, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !ok {
+		if prev, had := c.brightness[edid]; had {
+			v, ok = prev.value, prev.ok
+		}
+	}
+	c.brightness[edid] = brightnessSample{value: v, at: time.Now(), ok: ok}
+}
+
+// setBrightnessSample records a brightness we just wrote, as an authoritative
+// (ok) sample — so a subsequent poll serves it without a bus-touching read.
 func (c *monitorControl) setBrightnessSample(edid string, v int) {
 	c.mu.Lock()
-	c.brightness[edid] = brightnessSample{value: v, at: time.Now()}
+	c.brightness[edid] = brightnessSample{value: v, at: time.Now(), ok: true}
 	c.mu.Unlock()
 }
 
