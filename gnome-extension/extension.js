@@ -243,6 +243,13 @@ class OttomanControls {
                 continue;
             const name = m.friendly_name || m.name || m.port || 'Monitor';
 
+            // Lead each monitor with its named power toggle, then its sliders
+            // beneath it, so the group reads top-down (name -> brightness ->
+            // volume). The sliders are icon-only, so a slider above the name
+            // would look like it belongs to the monitor before it.
+            if (m.capabilities.power && visible(m, 'power'))
+                this._addPowerToggle(m, name);
+
             if (m.capabilities.brightness && visible(m, 'brightness')) {
                 const b = (typeof m.brightness === 'number' && m.brightness >= 0) ? m.brightness : 50;
                 const slider = new OttomanSlider(
@@ -251,9 +258,6 @@ class OttomanControls {
                 this._brightnessSliders.set(m.edid, slider);
                 this._addItem(slider);
             }
-
-            if (m.capabilities.power && visible(m, 'power'))
-                this._addPowerToggle(m, name);
 
             if (m.tv_state && m.capabilities.volume && visible(m, 'volume')) {
                 const slider = new OttomanSlider(
