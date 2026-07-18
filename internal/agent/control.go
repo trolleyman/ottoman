@@ -26,6 +26,13 @@ const ddcCacheTTL = 10 * time.Minute
 // and this cache only lags an external change made via the monitor's own OSD.
 const brightnessCacheTTL = 1 * time.Hour
 
+// tvStateCacheTTL bounds how often we query a webOS TV's live state (power,
+// volume) over the network. Like the brightness cache it keeps that I/O off the
+// request path: a powered-off TV takes up to tvDialTimeout (5s) to fail a dial,
+// which must never block a /api/monitors poll — so we refresh in the background
+// and serve the last-known state meanwhile.
+const tvStateCacheTTL = 10 * time.Second
+
 // monitorControl maps physical monitors (by EDID) to their control backend and
 // dispatches brightness/power operations. DDC monitors are matched to an i2c
 // bus via ddcutil; the TV backend is wired in separately.
@@ -39,6 +46,8 @@ type monitorControl struct {
 	ddcRefreshing        bool // a background `ddcutil detect` is in flight
 	brightness           map[string]brightnessSample
 	brightnessRefreshing map[string]bool // per-EDID background read in flight
+	tvState              map[string]tvStateSample
+	tvStateRefreshing    map[string]bool // per-EDID background TV query in flight
 }
 
 type brightnessSample struct {
@@ -47,11 +56,18 @@ type brightnessSample struct {
 	ok    bool // whether the last read succeeded (false = negative-cached failure)
 }
 
+type tvStateSample struct {
+	state api.MonitorTVState
+	at    time.Time
+}
+
 func newMonitorControl(reg *store.Registry) *monitorControl {
 	return &monitorControl{
 		registry:             reg,
 		brightness:           make(map[string]brightnessSample),
 		brightnessRefreshing: make(map[string]bool),
+		tvState:              make(map[string]tvStateSample),
+		tvStateRefreshing:    make(map[string]bool),
 	}
 }
 
@@ -165,12 +181,13 @@ func (c *monitorControl) capabilities(edid string) api.MonitorCapabilities {
 	}
 }
 
-// currentBrightness returns a monitor's brightness (0-100). It serves a cached
-// value and never touches the bus on the request path once warm: a stale entry
-// is refreshed in the background (see refreshBrightness) while the last-known
-// value is served, so polling GetMonitors never blocks on — or stutters the
-// display with — a live read. Only the very first read per monitor is
-// synchronous. Returns ok=false when nothing is known yet or the read failed.
+// currentBrightness returns a monitor's brightness (0-100) from a cache, never
+// touching the bus or network on the request path: whenever the entry isn't
+// fresh it kicks a single background read (see refreshBrightness) and serves the
+// last-known value immediately. A live DDC getvcp jitters the display bus and a
+// TV backlight read goes over the network, so neither must block (or stutter) a
+// poll. Returns ok=false only until the first read has populated the cache (or
+// when it permanently fails — negative-cached so it isn't re-probed each poll).
 func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	backend := c.backendFor(edid)
 	if backend != store.BackendDDC && backend != store.BackendI2C && backend != store.BackendTV {
@@ -180,28 +197,15 @@ func (c *monitorControl) currentBrightness(edid string) (int, bool) {
 	c.mu.Lock()
 	sample, have := c.brightness[edid]
 	fresh := have && time.Since(sample.at) < brightnessCacheTTL
-	if fresh {
-		c.mu.Unlock()
-		return sample.value, sample.ok
-	}
-	if have {
-		// Stale: refresh in the background so the live DDC/TV read never runs on
-		// the poll's goroutine (it jitters the display bus and stutters the
-		// compositor), and serve the last-known value now.
-		if !c.brightnessRefreshing[edid] {
-			c.brightnessRefreshing[edid] = true
-			go c.refreshBrightness(edid, backend)
-		}
-		c.mu.Unlock()
-		return sample.value, sample.ok
+	if !fresh && !c.brightnessRefreshing[edid] {
+		c.brightnessRefreshing[edid] = true
+		go c.refreshBrightness(edid, backend)
 	}
 	c.mu.Unlock()
-	// Cold: read once synchronously so the first poll has a value, then cache
-	// it (including a failure, so an unanswering monitor isn't re-probed every
-	// poll — the failed i2c read is itself a source of stutter).
-	v, ok := c.readBrightnessLive(edid, backend)
-	c.storeBrightness(edid, v, ok)
-	return v, ok
+	if have {
+		return sample.value, sample.ok
+	}
+	return 0, false // cold: nothing known yet; the background read will populate it
 }
 
 // readBrightnessLive performs the actual (bus-touching) brightness read for a
@@ -258,6 +262,39 @@ func (c *monitorControl) storeBrightness(edid string, v int, ok bool) {
 func (c *monitorControl) setBrightnessSample(edid string, v int) {
 	c.mu.Lock()
 	c.brightness[edid] = brightnessSample{value: v, at: time.Now(), ok: true}
+	c.mu.Unlock()
+}
+
+// tvStateFor returns a TV-backed monitor's live state (power, volume, pairing)
+// from a background-refreshed cache. Querying it dials the TV over the network,
+// which for a powered-off set can take several seconds, so — like brightness —
+// it never runs on the request path: a non-fresh entry triggers a single
+// background refresh and the last-known state is served immediately. ok is false
+// only until the first refresh has populated the cache.
+func (c *monitorControl) tvStateFor(edid string) (api.MonitorTVState, bool) {
+	if c.tv == nil {
+		return api.MonitorTVState{}, false
+	}
+	c.mu.Lock()
+	sample, have := c.tvState[edid]
+	fresh := have && time.Since(sample.at) < tvStateCacheTTL
+	if !fresh && !c.tvStateRefreshing[edid] {
+		c.tvStateRefreshing[edid] = true
+		go c.refreshTVState(edid)
+	}
+	c.mu.Unlock()
+	return sample.state, have
+}
+
+// refreshTVState queries a TV's live state in the background and caches it,
+// clearing the per-EDID in-flight guard when done.
+func (c *monitorControl) refreshTVState(edid string) {
+	st, ok := c.tv.StateFor(context.Background(), edid)
+	c.mu.Lock()
+	c.tvStateRefreshing[edid] = false
+	if ok {
+		c.tvState[edid] = tvStateSample{state: st, at: time.Now()}
+	}
 	c.mu.Unlock()
 }
 
@@ -343,7 +380,7 @@ func (c *monitorControl) responding(edid string) bool {
 }
 
 // enrich augments monitor entries with registry + control metadata for the UI.
-func (c *monitorControl) enrich(ctx context.Context, monitors []api.Monitor) []api.Monitor {
+func (c *monitorControl) enrich(monitors []api.Monitor) []api.Monitor {
 	for i := range monitors {
 		edid := monitors[i].Edid
 		if edid == "" {
@@ -383,9 +420,10 @@ func (c *monitorControl) enrich(ctx context.Context, monitors []api.Monitor) []a
 			}
 		}
 		// Live TV integration state (pairing, volume, panel power), so TV
-		// control needs no separate endpoint.
+		// control needs no separate endpoint. Served from a background-refreshed
+		// cache so a poll never blocks on a TV network dial.
 		if backend == store.BackendTV && c.tv != nil {
-			if st, ok := c.tv.StateFor(ctx, edid); ok {
+			if st, ok := c.tvStateFor(edid); ok {
 				monitors[i].TvState = &st
 			}
 		}

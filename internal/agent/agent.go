@@ -625,7 +625,7 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 
 	// Add registry + control metadata (friendly name, backend, capabilities,
 	// current brightness, visibility) so any frontend renders the right controls.
-	apiMonitors = a.control.enrich(ctx, apiMonitors)
+	apiMonitors = a.control.enrich(apiMonitors)
 
 	return api.GetMonitors200JSONResponse(apiMonitors), nil
 }
