@@ -813,6 +813,22 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	// Track what the client is currently holding down so we can release it if the
+	// connection drops or a key-up never arrives (mobile keyboards are unreliable
+	// about firing key-up). Without this, a held key stays pressed on the virtual
+	// device and wedges input until the user logs out.
+	heldKeys := make(map[string]bool)
+	heldButtons := make(map[input.MouseButton]bool)
+	defer func() {
+		for key := range heldKeys {
+			a.keyboard.KeyUp(key, nil)
+		}
+		for btn := range heldButtons {
+			a.mouse.ButtonUp(btn)
+		}
+		updateModifiers(nil) // release any held modifier keys
+	}()
+
 	// Read loop
 	for {
 		_, data, err := conn.Read(ctx)
@@ -838,23 +854,62 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			a.mouse.Click(input.ParseMouseButton(string(v.Btn)))
 		case api.TrackpadMessageMouseDown:
 			updateModifiers(v.Modifiers)
-			a.mouse.ButtonDown(input.ParseMouseButton(string(v.Btn)))
+			btn := input.ParseMouseButton(string(v.Btn))
+			a.mouse.ButtonDown(btn)
+			heldButtons[btn] = true
 		case api.TrackpadMessageMouseUp:
 			updateModifiers(v.Modifiers)
-			a.mouse.ButtonUp(input.ParseMouseButton(string(v.Btn)))
+			btn := input.ParseMouseButton(string(v.Btn))
+			a.mouse.ButtonUp(btn)
+			delete(heldButtons, btn)
 		case api.TrackpadMessageMouseScroll:
 			precise := v.Precise != nil && *v.Precise
 			a.mouse.Scroll(int(v.Dx), int(v.Dy), precise)
 		case api.TrackpadMessageKeyDown:
 			updateModifiers(v.Modifiers)
 			a.keyboard.KeyDown(v.Key, nil)
+			heldKeys[v.Key] = true
 		case api.TrackpadMessageKeyUp:
 			updateModifiers(v.Modifiers)
 			a.keyboard.KeyUp(v.Key, nil)
+			delete(heldKeys, v.Key)
+		case api.TrackpadMessageText:
+			a.typeText(v.Text)
 		case api.TrackpadMessageMouseMoveTo:
 			a.mouse.MoveTo(v.X, v.Y)
 		}
 	}
+}
+
+// typeText types a run of text (from a mobile keyboard's input event, where the
+// individual keydown/keyup events are unreliable) as a sequence of discrete
+// key presses. Each character is pressed and released immediately so nothing is
+// left held. Shift is applied for characters that need it on a US layout.
+func (a *Agent) typeText(text string) {
+	for _, r := range text {
+		var mods []string
+		if charNeedsShift(r) {
+			mods = []string{"shift"}
+		}
+		key := string(r)
+		a.keyboard.KeyDown(key, mods)
+		a.keyboard.KeyUp(key, mods)
+	}
+}
+
+// charNeedsShift reports whether typing r on a US keyboard layout requires the
+// Shift modifier. The backends map a character and its shifted glyph to the same
+// physical key, so Shift must be supplied out of band.
+func charNeedsShift(r rune) bool {
+	if r >= 'A' && r <= 'Z' {
+		return true
+	}
+	switch r {
+	case '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+		'_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?':
+		return true
+	}
+	return false
 }
 
 // Run starts the agent

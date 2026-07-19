@@ -76,6 +76,33 @@ function TouchArea({
     send({ type: "keydown", key: e.key, modifiers: getModifiers(e) });
   }, [send]);
 
+  // Release keys pressed via handleKeyDown (physical keyboard). Without a keyup
+  // the key stays held on the host's virtual device and wedges input.
+  const handleKeyUp = useCallback((e: React.KeyboardEvent | KeyboardEvent) => {
+    if (e.key === "Unidentified" || e.key === "Process") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    send({ type: "keyup", key: e.key, modifiers: getModifiers(e) });
+  }, [send]);
+
+  // The hidden input handles the mobile on-screen keyboard. Character keys report
+  // "Unidentified" and go through handleInput (the "text" message); identified
+  // keys (Enter, Backspace, arrows, …) are sent here as a self-contained
+  // press+release, because mobile keyboards don't reliably fire keyup — which
+  // previously left those keys stuck down until the user logged out.
+  const handleInputKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Unidentified" || e.key === "Process") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const modifiers = getModifiers(e);
+    send({ type: "keydown", key: e.key, modifiers });
+    send({ type: "keyup", key: e.key, modifiers });
+  }, [send]);
+
   // Fallback for characters that don't produce proper keydown events (mobile symbol keyboards)
   const handleInput = useCallback(() => {
     const input = inputRef.current;
@@ -410,8 +437,12 @@ function TouchArea({
     if (!el || !connected) return;
 
     el.addEventListener("keydown", handleKeyDown);
-    return () => el.removeEventListener("keydown", handleKeyDown);
-  }, [connected, handleKeyDown]);
+    el.addEventListener("keyup", handleKeyUp);
+    return () => {
+      el.removeEventListener("keydown", handleKeyDown);
+      el.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [connected, handleKeyDown, handleKeyUp]);
 
   // Wheel scroll handler (passive: false to allow preventDefault)
   useEffect(() => {
@@ -495,7 +526,10 @@ function TouchArea({
         type="text"
         className="opacity-0 fixed top-0 left-0 h-0 w-0 pointer-events-none"
         autoComplete="off"
-        onKeyDown={handleKeyDown}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        onKeyDown={handleInputKeyDown}
         onInput={handleInput}
       />
       {!connected && (

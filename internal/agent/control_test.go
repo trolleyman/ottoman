@@ -40,3 +40,19 @@ func TestSplitEDID(t *testing.T) {
 		t.Fatalf("split single = %q/%q/%q", v, p, s)
 	}
 }
+
+func TestCharNeedsShift(t *testing.T) {
+	shift := []rune{'A', 'Z', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+		'_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?'}
+	for _, r := range shift {
+		if !charNeedsShift(r) {
+			t.Errorf("charNeedsShift(%q) = false, want true", r)
+		}
+	}
+	noShift := []rune{'a', 'z', '1', '0', '-', '=', '[', ']', ';', '\'', ',', '.', '/', ' '}
+	for _, r := range noShift {
+		if charNeedsShift(r) {
+			t.Errorf("charNeedsShift(%q) = true, want false", r)
+		}
+	}
+}
