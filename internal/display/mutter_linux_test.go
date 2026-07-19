@@ -9,6 +9,32 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 )
 
+func TestLogicalCoordRoundTrip(t *testing.T) {
+	cases := []struct {
+		name       string
+		physical   int32
+		scale      float64
+		mode       uint32
+		wantLogic  int
+		wantBackTo int32
+	}{
+		{"origin", 0, 2.0, layoutModePhysical, 0, 0},
+		{"physical 200%", 3840, 2.0, layoutModePhysical, 1920, 3840},
+		{"physical 100%", 2560, 1.0, layoutModePhysical, 2560, 2560},
+		{"logical mode passthrough", 1920, 2.0, layoutModeLogical, 1920, 1920},
+	}
+	for _, c := range cases {
+		gotLogic := toLogicalCoord(c.physical, c.scale, c.mode)
+		if gotLogic != c.wantLogic {
+			t.Errorf("%s: toLogicalCoord = %d, want %d", c.name, gotLogic, c.wantLogic)
+		}
+		gotBack := fromLogicalCoord(gotLogic, c.scale, c.mode)
+		if gotBack != c.wantBackTo {
+			t.Errorf("%s: fromLogicalCoord = %d, want %d", c.name, gotBack, c.wantBackTo)
+		}
+	}
+}
+
 func TestIsFractionalScale(t *testing.T) {
 	cases := []struct {
 		scale float64

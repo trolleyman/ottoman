@@ -102,7 +102,7 @@ func newMutterManager(store *Layouts) (*MutterManager, error) {
 	m := &MutterManager{store: store, conn: conn}
 
 	// Sanity check: make sure GetCurrentState actually responds.
-	if _, _, _, err := m.getCurrentState(); err != nil {
+	if _, _, _, _, err := m.getCurrentState(); err != nil {
 		conn.Close()
 		return nil, errors.Wrap(err, "mutter DisplayConfig not available")
 	}
@@ -110,13 +110,14 @@ func newMutterManager(store *Layouts) (*MutterManager, error) {
 	return m, nil
 }
 
-// getCurrentState calls GetCurrentState and returns the serial plus decoded
-// monitors and logical monitors.
-func (m *MutterManager) getCurrentState() (uint32, []mutterMonitor, []mutterLogicalMonitor, error) {
+// getCurrentState calls GetCurrentState and returns the serial, the decoded
+// monitors and logical monitors, and the layout mode (which tells us whether the
+// logical monitors' positions are in logical or physical pixels).
+func (m *MutterManager) getCurrentState() (uint32, []mutterMonitor, []mutterLogicalMonitor, uint32, error) {
 	obj := m.conn.Object(mutterBusName, dbus.ObjectPath(mutterObjectPath))
 	call := obj.Call(mutterInterface+".GetCurrentState", 0)
 	if call.Err != nil {
-		return 0, nil, nil, errors.Wrap(call.Err, "GetCurrentState failed")
+		return 0, nil, nil, 0, errors.Wrap(call.Err, "GetCurrentState failed")
 	}
 
 	var serial uint32
@@ -124,14 +125,23 @@ func (m *MutterManager) getCurrentState() (uint32, []mutterMonitor, []mutterLogi
 	var logical []mutterLogicalMonitor
 	var props map[string]dbus.Variant
 	if err := call.Store(&serial, &monitors, &logical, &props); err != nil {
-		return 0, nil, nil, errors.Wrap(err, "failed to decode GetCurrentState reply")
+		return 0, nil, nil, 0, errors.Wrap(err, "failed to decode GetCurrentState reply")
 	}
-	return serial, monitors, logical, nil
+
+	// "layout-mode" (uint32) is absent on setups that don't support changing it;
+	// default to logical, which is what Wayland uses with fractional scaling.
+	layoutMode := layoutModeLogical
+	if v, ok := props["layout-mode"]; ok {
+		if lm, ok := v.Value().(uint32); ok {
+			layoutMode = lm
+		}
+	}
+	return serial, monitors, logical, layoutMode, nil
 }
 
 // ListMonitors returns information about connected monitors.
 func (m *MutterManager) ListMonitors() ([]api.Monitor, error) {
-	_, monitors, logical, err := m.getCurrentState()
+	_, monitors, logical, layoutMode, err := m.getCurrentState()
 	if err != nil {
 		return nil, err
 	}
@@ -157,8 +167,11 @@ func (m *MutterManager) ListMonitors() ([]api.Monitor, error) {
 		if lm, ok := logicalByConnector[mon.Spec.Connector]; ok {
 			cur := currentMode(mon)
 			active := &api.ActiveMonitor{
-				PositionX: int(lm.X),
-				PositionY: int(lm.Y),
+				// Report positions in logical pixels regardless of the current
+				// layout mode, so a scaled monitor's stored position matches its
+				// logical size (physical / scale) and layouts render correctly.
+				PositionX: toLogicalCoord(lm.X, lm.Scale, layoutMode),
+				PositionY: toLogicalCoord(lm.Y, lm.Scale, layoutMode),
 				Primary:   lm.Primary,
 				Model:     mon.Spec.Product,
 				Scale:     lm.Scale,
@@ -200,7 +213,7 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		m.waitForFractionalScales(wantFractional)
 	}
 
-	serial, monitors, _, err := m.getCurrentState()
+	serial, monitors, _, targetMode, err := m.getCurrentState()
 	if err != nil {
 		return err
 	}
@@ -231,9 +244,15 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		// Mutter rejects an ApplyMonitorsConfig whose scale isn't in the list.
 		scale := pickScale(mode, lm.Scale)
 
+		// Layouts store logical positions; convert them into whatever coordinate
+		// space the target layout mode expects (physical pixels when fractional
+		// scaling is off). monitors.xml uses the same space, so persist it too.
+		x := fromLogicalCoord(lm.PositionX, scale, targetMode)
+		y := fromLogicalCoord(lm.PositionY, scale, targetMode)
+
 		logicals = append(logicals, applyLogicalMonitor{
-			X:         int32(lm.PositionX),
-			Y:         int32(lm.PositionY),
+			X:         x,
+			Y:         y,
 			Scale:     scale,
 			Transform: 0,
 			Primary:   lm.Primary,
@@ -245,8 +264,8 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		})
 		persist = append(persist, persistLogicalMonitor{
 			spec:    mon.Spec,
-			x:       int32(lm.PositionX),
-			y:       int32(lm.PositionY),
+			x:       x,
+			y:       y,
 			width:   mode.Width,
 			height:  mode.Height,
 			rate:    mode.RefreshRate,
@@ -283,6 +302,35 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		log.Printf("Applied layout but failed to persist to monitors.xml: %v", err)
 	}
 	return nil
+}
+
+// Mutter logical-monitor layout modes (org.gnome.Mutter.DisplayConfig). They
+// determine the coordinate space of logical-monitor positions: LOGICAL uses
+// scaled pixels (Wayland with fractional scaling), PHYSICAL uses device pixels
+// (integer scaling with fractional scaling off).
+const (
+	layoutModeLogical  uint32 = 1
+	layoutModePhysical uint32 = 2
+)
+
+// toLogicalCoord converts a position component as reported by Mutter into
+// logical pixels. In physical layout mode positions are device pixels, so they
+// are divided by the monitor's scale; in logical mode they are already logical.
+func toLogicalCoord(v int32, scale float64, mode uint32) int {
+	if mode == layoutModePhysical && scale > 0 {
+		return int(math.Round(float64(v) / scale))
+	}
+	return int(v)
+}
+
+// fromLogicalCoord is the inverse of toLogicalCoord: it converts a stored
+// logical position into the coordinate space Mutter expects for the target
+// layout mode (multiplying by scale in physical mode).
+func fromLogicalCoord(v int, scale float64, mode uint32) int32 {
+	if mode == layoutModePhysical && scale > 0 {
+		return int32(math.Round(float64(v) * scale))
+	}
+	return int32(v)
 }
 
 // mutterFractionalScalingFeature is the org.gnome.mutter experimental feature
@@ -362,7 +410,7 @@ func setFractionalScaling(enable bool) (bool, error) {
 // GetCurrentState carries a fresh serial and the up-to-date supported-scale list.
 func (m *MutterManager) waitForFractionalScales(want bool) {
 	for i := 0; i < 20; i++ {
-		if _, monitors, _, err := m.getCurrentState(); err == nil && anyModeHasFractional(monitors) == want {
+		if _, monitors, _, _, err := m.getCurrentState(); err == nil && anyModeHasFractional(monitors) == want {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
