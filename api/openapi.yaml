@@ -973,7 +973,7 @@ components:
 
     ActiveMonitor:
       type: object
-      required: [width, height, refresh_rate, position_x, position_y, primary, model]
+      required: [width, height, refresh_rate, position_x, position_y, primary, model, scale]
       properties:
         width: { type: integer }
         height: { type: integer }
@@ -982,6 +982,7 @@ components:
         position_y: { type: integer }
         primary: { type: boolean }
         model: { type: string }
+        scale: { type: number, format: double, description: "logical scale factor (1 = 100%, 2 = 200%, 1.5 = 150% fractional)" }
 
     MonitorsResponse:
       type: array
@@ -991,7 +992,7 @@ components:
     # --- Layout Types ---
     LayoutMonitor:
       type: object
-      required: [name, edid, port, width, height, refresh_rate, position_x, position_y, primary]
+      required: [name, edid, port, width, height, refresh_rate, position_x, position_y, primary, scale]
       properties:
         name: { type: string }
         edid: { type: string }
@@ -1002,6 +1003,7 @@ components:
         position_x: { type: integer }
         position_y: { type: integer }
         primary: { type: boolean }
+        scale: { type: number, format: double, description: "logical scale factor (1 = 100%, 2 = 200%, 1.5 = 150% fractional)" }
 
     Layout:
       type: object

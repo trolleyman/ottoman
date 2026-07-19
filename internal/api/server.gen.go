@@ -96,7 +96,10 @@ type ActiveMonitor struct {
 	PositionY   int     `json:"position_y"`
 	Primary     bool    `json:"primary"`
 	RefreshRate float64 `json:"refresh_rate"`
-	Width       int     `json:"width"`
+
+	// Scale logical scale factor (1 = 100%, 2 = 200%, 1.5 = 150% fractional)
+	Scale float64 `json:"scale"`
+	Width int     `json:"width"`
 }
 
 // AudioResponse defines model for AudioResponse.
@@ -167,7 +170,10 @@ type LayoutMonitor struct {
 	PositionY   int     `json:"position_y"`
 	Primary     bool    `json:"primary"`
 	RefreshRate float64 `json:"refresh_rate"`
-	Width       int     `json:"width"`
+
+	// Scale logical scale factor (1 = 100%, 2 = 200%, 1.5 = 150% fractional)
+	Scale float64 `json:"scale"`
+	Width int     `json:"width"`
 }
 
 // LayoutsResponse defines model for LayoutsResponse.
