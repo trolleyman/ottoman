@@ -1,15 +1,16 @@
 import type { LayoutMonitor } from "./api";
-import { formatScalePercent } from "./utils";
+import { formatScalePercent, logicalMonitorRect } from "./utils";
 
 export function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; scale: number }) {
   if (monitors.length === 0) return null;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const m of monitors) {
-    minX = Math.min(minX, m.position_x);
-    minY = Math.min(minY, m.position_y);
-    maxX = Math.max(maxX, m.position_x + m.width);
-    maxY = Math.max(maxY, m.position_y + m.height);
+    const r = logicalMonitorRect(m);
+    minX = Math.min(minX, r.x);
+    minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + r.w);
+    maxY = Math.max(maxY, r.y + r.h);
   }
 
   const totalW = maxX - minX;
@@ -25,10 +26,11 @@ export function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor
       style={{ width: scaledW, height: scaledH }}
     >
       {monitors.map((m, i) => {
-        const x = (m.position_x - minX) * scale;
-        const y = (m.position_y - minY) * scale;
-        const w = m.width * scale;
-        const h = m.height * scale;
+        const r = logicalMonitorRect(m);
+        const x = (r.x - minX) * scale;
+        const y = (r.y - minY) * scale;
+        const w = r.w * scale;
+        const h = r.h * scale;
 
         return (
           <div

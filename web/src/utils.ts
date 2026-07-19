@@ -25,6 +25,15 @@ export function formatScalePercent(scale: number | undefined): string | null {
   return `${Math.round(scale * 100)}%`;
 }
 
+/** A monitor's logical rectangle for previews. Positions are already logical
+ *  (the backend normalises them); physical width/height are divided by the scale
+ *  so a 200% monitor occupies half the space, and multi-monitor layouts line up.
+ *  Layouts saved before scale existed default to scale 1 (physical == logical). */
+export function logicalMonitorRect(m: { position_x: number; position_y: number; width: number; height: number; scale?: number }): { x: number; y: number; w: number; h: number } {
+  const s = m.scale && m.scale > 0 ? m.scale : 1;
+  return { x: m.position_x, y: m.position_y, w: m.width / s, h: m.height / s };
+}
+
 /** Compute a uniform scale that fits all layouts into the same coordinate space */
 export function computeUniformScale(layouts: Layout[], maxW: number, maxH: number): number {
   let globalMaxW = 0;
@@ -33,10 +42,11 @@ export function computeUniformScale(layouts: Layout[], maxW: number, maxH: numbe
     if ((layout.monitors ?? []).length === 0) continue;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const m of layout.monitors) {
-      minX = Math.min(minX, m.position_x);
-      minY = Math.min(minY, m.position_y);
-      maxX = Math.max(maxX, m.position_x + m.width);
-      maxY = Math.max(maxY, m.position_y + m.height);
+      const r = logicalMonitorRect(m);
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w);
+      maxY = Math.max(maxY, r.y + r.h);
     }
     globalMaxW = Math.max(globalMaxW, maxX - minX);
     globalMaxH = Math.max(globalMaxH, maxY - minY);

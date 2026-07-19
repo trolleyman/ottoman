@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { MiniLayoutPreview } from "./MiniLayoutPreview";
+import { logicalMonitorRect } from "./utils";
 import type { Layout } from "./api";
 
 export function MonitorDisplay({
@@ -65,10 +66,11 @@ export function MonitorDisplay({
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const m of monitors) {
-    minX = Math.min(minX, m.position_x);
-    minY = Math.min(minY, m.position_y);
-    maxX = Math.max(maxX, m.position_x + m.width);
-    maxY = Math.max(maxY, m.position_y + m.height);
+    const r = logicalMonitorRect(m);
+    minX = Math.min(minX, r.x);
+    minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + r.w);
+    maxY = Math.max(maxY, r.y + r.h);
   }
   const totalW = maxX - minX;
   const totalH = maxY - minY;
