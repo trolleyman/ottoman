@@ -51,7 +51,12 @@ function TouchArea({
   const twoFingerLastX = useRef(0);
   const twoFingerLastY = useRef(0);
 
-  const lastTapPos = useRef<{ x: number; y: number } | null>(null);
+  // Where the previous single-finger gesture ended, and whether that gesture was
+  // one that a following quick touch should turn into a click-and-drag (a genuine
+  // tap, or an active drag being continued). A plain cursor move is neither, so
+  // moving then quickly moving again keeps moving instead of starting a drag.
+  const lastTapEndPos = useRef<{ x: number; y: number } | null>(null);
+  const lastGestureAllowsDrag = useRef(false);
   const scrollVelocity = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const inertiaFrame = useRef(0);
   const lastScrollTime = useRef(0);
@@ -113,18 +118,20 @@ function TouchArea({
     cursorVelocity.current = { x: 0, y: 0 };
     lastCursorTime.current = performance.now();
 
-    // Check for double-tap-drag start
-    // We check distance to ensure the second tap is close to the first one (preventing accidental drags on fast moves)
-    const dist = lastTapPos.current
-      ? Math.hypot(touch.clientX - lastTapPos.current.x, touch.clientY - lastTapPos.current.y)
+    // Check for double-tap-drag start. Only start a drag when the previous
+    // gesture was a genuine tap (or an active drag we're continuing) AND this
+    // touch lands close to where that gesture ended. This prevents a cursor move
+    // followed by another quick move from being misread as a click-and-drag —
+    // that sequence should just keep moving the cursor.
+    const dist = lastTapEndPos.current
+      ? Math.hypot(touch.clientX - lastTapEndPos.current.x, touch.clientY - lastTapEndPos.current.y)
       : Infinity;
 
-    if (touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40) {
+    if (lastGestureAllowsDrag.current && touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40) {
       isDragging.current = true;
       send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
     }
 
-    lastTapPos.current = { x: touch.clientX, y: touch.clientY };
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
     // Focus hidden input for on-screen keyboard on mobile
@@ -238,6 +245,8 @@ function TouchArea({
     if (isDragging.current) {
       send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
       isDragging.current = false;
+      // A drag can be continued: lifting and quickly re-touching resumes it.
+      lastGestureAllowsDrag.current = true;
     } else {
       // Cursor inertia
       const { x: vx, y: vy } = cursorVelocity.current;
@@ -270,15 +279,25 @@ function TouchArea({
         cursorInertiaFrame.current = requestAnimationFrame(step);
       }
 
+      // A genuine tap (short and near-stationary) is a click, and it also arms
+      // the next quick touch to become a click-and-drag. A longer or moved
+      // gesture was a cursor move, which must not arm a drag.
+      let wasTap = false;
       if (touchStartPos.current && now - touchStartTime.current < 200) {
         const touch = e.changedTouches[0];
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 10) {
           send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+          wasTap = true;
         }
       }
+      lastGestureAllowsDrag.current = wasTap;
     }
+
+    // Remember where this gesture lifted so the next touch can measure closeness.
+    const endTouch = e.changedTouches[0];
+    if (endTouch) lastTapEndPos.current = { x: endTouch.clientX, y: endTouch.clientY };
 
     touchStartPos.current = null;
     lastTouchRef.current = null;
