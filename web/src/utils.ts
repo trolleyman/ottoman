@@ -18,6 +18,13 @@ export async function postJSON<TRequest, TResponse>(url: string, data: TRequest)
   return (await res.json()) as TResponse;
 }
 
+/** Format a display scale factor as a percentage label (e.g. 1.5 -> "150%").
+ *  Returns null for an unset (0) or 100% scale, which needs no badge. */
+export function formatScalePercent(scale: number | undefined): string | null {
+  if (!scale || Math.abs(scale - 1) < 1e-6) return null;
+  return `${Math.round(scale * 100)}%`;
+}
+
 /** Compute a uniform scale that fits all layouts into the same coordinate space */
 export function computeUniformScale(layouts: Layout[], maxW: number, maxH: number): number {
   let globalMaxW = 0;

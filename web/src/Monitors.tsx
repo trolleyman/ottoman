@@ -313,6 +313,7 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
           {a && (
             <>
               <Row label="Resolution" value={`${a.width}x${a.height}`} />
+              <Row label="Scale" value={`${Math.round((a.scale || 1) * 100)}%`} />
               <Row
                 label="Refresh"
                 value={`${Number.isInteger(a.refresh_rate) ? a.refresh_rate : a.refresh_rate.toFixed(1)} Hz`}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Pencil, Trash2 } from "lucide-react";
-import { sortedLayoutMonitors } from "./utils";
+import { formatScalePercent, sortedLayoutMonitors } from "./utils";
 import { MiniLayoutPreview } from "./MiniLayoutPreview";
 import type { Layout } from "./api";
 
@@ -216,7 +216,12 @@ export function LayoutCard({
                 <span className="truncate text-zinc-300 font-medium" title={m.name || m.port}>
                   {m.name || m.port || "Unknown"}
                 </span>
-                <span className="font-mono text-zinc-500">{m.width}x{m.height}</span>
+                <span className="font-mono text-zinc-500">
+                  {m.width}x{m.height}
+                  {formatScalePercent(m.scale) && (
+                    <span className="ml-1 text-zinc-400">@{formatScalePercent(m.scale)}</span>
+                  )}
+                </span>
                 <span className="font-mono text-zinc-600 text-[10px]">{m.edid}</span>
               </div>
             ))}

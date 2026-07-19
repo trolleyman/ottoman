@@ -1,4 +1,5 @@
 import type { LayoutMonitor } from "./api";
+import { formatScalePercent } from "./utils";
 
 export function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor[]; scale: number }) {
   if (monitors.length === 0) return null;
@@ -44,7 +45,7 @@ export function MiniLayoutPreview({ monitors, scale }: { monitors: LayoutMonitor
               {m.position_x},{m.position_y}
             </span>
             <span className="absolute bottom-0.5 left-1 text-zinc-400 font-mono leading-none text-[7pt]">
-              {m.width}x{m.height}
+              {m.width}x{m.height}{formatScalePercent(m.scale) ? ` @${formatScalePercent(m.scale)}` : ""}
             </span>
             <span className="absolute bottom-0.5 right-1 text-zinc-500 leading-none text-[7pt]">
               {m.edid}
