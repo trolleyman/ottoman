@@ -4,6 +4,7 @@ package display
 
 import (
 	"encoding/xml"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,6 +35,7 @@ type persistLogicalMonitor struct {
 	width   int32
 	height  int32
 	rate    float64
+	scale   float64
 	primary bool
 }
 
@@ -171,8 +173,9 @@ func sameKeySet(a, b map[string]bool) bool {
 }
 
 // buildConfigurationXML renders one <configuration> block matching Mutter 46's
-// on-disk format. Ottoman layouts are always scale 1, unrotated, one physical
-// monitor per logical monitor.
+// on-disk format. Ottoman layouts are unrotated with one physical monitor per
+// logical monitor; the scale is whatever the layout applied (1 for 100%, 2 for
+// 200%, or a fractional value like 1.5).
 func buildConfigurationXML(enabled []persistLogicalMonitor, disabled []monitorSpec) string {
 	var b strings.Builder
 	b.WriteString("  <configuration>\n")
@@ -180,7 +183,7 @@ func buildConfigurationXML(enabled []persistLogicalMonitor, disabled []monitorSp
 		b.WriteString("    <logicalmonitor>\n")
 		b.WriteString("      <x>" + strconv.Itoa(int(e.x)) + "</x>\n")
 		b.WriteString("      <y>" + strconv.Itoa(int(e.y)) + "</y>\n")
-		b.WriteString("      <scale>1</scale>\n")
+		b.WriteString("      <scale>" + formatScaleXML(e.scale) + "</scale>\n")
 		if e.primary {
 			b.WriteString("      <primary>yes</primary>\n")
 		}
@@ -203,6 +206,19 @@ func buildConfigurationXML(enabled []persistLogicalMonitor, disabled []monitorSp
 	}
 	b.WriteString("  </configuration>\n")
 	return b.String()
+}
+
+// formatScaleXML renders a scale the way Mutter writes it to monitors.xml: whole
+// numbers with no decimal point ("2"), fractional values at full precision
+// ("1.5"). An unset scale (0) defaults to 1.
+func formatScaleXML(scale float64) string {
+	if scale <= 0 {
+		scale = 1
+	}
+	if scale == math.Trunc(scale) {
+		return strconv.Itoa(int(scale))
+	}
+	return strconv.FormatFloat(scale, 'g', -1, 64)
 }
 
 func writeMonitorSpecXML(b *strings.Builder, spec monitorSpec, indent string) {

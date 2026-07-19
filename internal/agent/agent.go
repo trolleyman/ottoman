@@ -449,6 +449,7 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 				PositionX:   m.Active.PositionX,
 				PositionY:   m.Active.PositionY,
 				Primary:     m.Active.Primary,
+				Scale:       m.Active.Scale,
 			})
 		}
 	}
@@ -585,6 +586,7 @@ func (a *Agent) GetMonitors(ctx context.Context, request api.GetMonitorsRequestO
 				Primary:     m.Active.Primary,
 				RefreshRate: m.Active.RefreshRate,
 				Width:       m.Active.Width,
+				Scale:       m.Active.Scale,
 			}
 		}
 		apiMonitors = append(apiMonitors, mon)

@@ -5,7 +5,9 @@ package display
 import (
 	"log"
 	"math"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/pkg/errors"
@@ -159,6 +161,7 @@ func (m *MutterManager) ListMonitors() ([]api.Monitor, error) {
 				PositionY: int(lm.Y),
 				Primary:   lm.Primary,
 				Model:     mon.Spec.Product,
+				Scale:     lm.Scale,
 			}
 			if cur != nil {
 				active.Width = int(cur.Width)
@@ -177,6 +180,26 @@ func (m *MutterManager) ListMonitors() ([]api.Monitor, error) {
 
 // ApplyLayoutConfig applies a display configuration via ApplyMonitorsConfig.
 func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
+	// GNOME only offers fractional scales (1.25, 1.5, …) while the
+	// "scale-monitor-framebuffer" experimental feature is enabled; with it off,
+	// only integer scales are available and Mutter uses the sharper physical
+	// layout mode. Enable the feature exactly when this layout needs it, and turn
+	// it back off otherwise so integer-only layouts don't pay the fractional
+	// rendering cost. This may change the serial and the modes' supported-scale
+	// lists, so it must happen before we read state and build the request.
+	wantFractional := layoutNeedsFractional(layout)
+	changed, err := setFractionalScaling(wantFractional)
+	if err != nil {
+		log.Printf("Failed to set fractional scaling to %v: %v", wantFractional, err)
+	}
+	if changed {
+		// Mutter processes the gsettings change asynchronously; wait for it to
+		// take effect so the state we read next carries a fresh serial (a stale
+		// one makes ApplyMonitorsConfig fail) and the updated supported-scale
+		// lists (needed to snap the scale correctly).
+		m.waitForFractionalScales(wantFractional)
+	}
+
 	serial, monitors, _, err := m.getCurrentState()
 	if err != nil {
 		return err
@@ -204,10 +227,14 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 			return errors.Errorf("no matching mode %dx%d@%.2f for monitor %q", lm.Width, lm.Height, lm.RefreshRate, mon.Spec.Connector)
 		}
 
+		// Snap the layout's saved scale to one the picked mode actually supports;
+		// Mutter rejects an ApplyMonitorsConfig whose scale isn't in the list.
+		scale := pickScale(mode, lm.Scale)
+
 		logicals = append(logicals, applyLogicalMonitor{
 			X:         int32(lm.PositionX),
 			Y:         int32(lm.PositionY),
-			Scale:     1.0,
+			Scale:     scale,
 			Transform: 0,
 			Primary:   lm.Primary,
 			Monitors: []applyMonitor{{
@@ -223,6 +250,7 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 			width:   mode.Width,
 			height:  mode.Height,
 			rate:    mode.RefreshRate,
+			scale:   scale,
 			primary: lm.Primary,
 		})
 	}
@@ -255,6 +283,145 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		log.Printf("Applied layout but failed to persist to monitors.xml: %v", err)
 	}
 	return nil
+}
+
+// mutterFractionalScalingFeature is the org.gnome.mutter experimental feature
+// that unlocks non-integer display scales (and switches Mutter to the logical
+// framebuffer layout mode).
+const mutterFractionalScalingFeature = "scale-monitor-framebuffer"
+
+// layoutNeedsFractional reports whether any monitor in the layout uses a
+// non-integer scale, which GNOME only honours with fractional scaling enabled.
+func layoutNeedsFractional(layout api.Layout) bool {
+	for _, lm := range layout.Monitors {
+		if isFractionalScale(lm.Scale) {
+			return true
+		}
+	}
+	return false
+}
+
+// isFractionalScale reports whether s is a set, non-integer scale.
+func isFractionalScale(s float64) bool {
+	return s > 0 && math.Abs(s-math.Round(s)) > 1e-6
+}
+
+// pickScale snaps the layout's saved scale to the nearest value the chosen mode
+// actually supports. An unset scale (0, e.g. a layout saved before scale was
+// captured) falls back to the mode's preferred scale, else 1.0.
+func pickScale(mode *mutterMode, want float64) float64 {
+	if want <= 0 {
+		if mode.PreferredScale > 0 {
+			return mode.PreferredScale
+		}
+		return 1.0
+	}
+	if len(mode.SupportedScales) == 0 {
+		return want
+	}
+	best := mode.SupportedScales[0]
+	bestDelta := math.Abs(best - want)
+	for _, s := range mode.SupportedScales[1:] {
+		if d := math.Abs(s - want); d < bestDelta {
+			best, bestDelta = s, d
+		}
+	}
+	return best
+}
+
+// setFractionalScaling enables or disables GNOME's fractional-scaling
+// experimental feature, preserving any other experimental features already set.
+// It reports whether it actually changed the setting. Best-effort: a missing
+// gsettings binary or mutter schema surfaces as an error for the caller to log.
+func setFractionalScaling(enable bool) (bool, error) {
+	features, err := getMutterExperimentalFeatures()
+	if err != nil {
+		return false, err
+	}
+	has := false
+	out := make([]string, 0, len(features)+1)
+	for _, f := range features {
+		if f == mutterFractionalScalingFeature {
+			has = true
+			continue // re-added below iff enabling
+		}
+		out = append(out, f)
+	}
+	if enable == has {
+		return false, nil // already in the desired state
+	}
+	if enable {
+		out = append(out, mutterFractionalScalingFeature)
+	}
+	return true, writeMutterExperimentalFeatures(out)
+}
+
+// waitForFractionalScales blocks (briefly) until Mutter has processed a
+// fractional-scaling toggle, i.e. until the connected monitors' modes advertise
+// (or stop advertising) fractional scales. This guarantees the next
+// GetCurrentState carries a fresh serial and the up-to-date supported-scale list.
+func (m *MutterManager) waitForFractionalScales(want bool) {
+	for i := 0; i < 20; i++ {
+		if _, monitors, _, err := m.getCurrentState(); err == nil && anyModeHasFractional(monitors) == want {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func anyModeHasFractional(monitors []mutterMonitor) bool {
+	for i := range monitors {
+		for j := range monitors[i].Modes {
+			for _, s := range monitors[i].Modes[j].SupportedScales {
+				if isFractionalScale(s) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// getMutterExperimentalFeatures reads org.gnome.mutter's experimental-features
+// key via gsettings, returning the currently-enabled feature names.
+func getMutterExperimentalFeatures() ([]string, error) {
+	out, err := exec.Command("gsettings", "get", "org.gnome.mutter", "experimental-features").Output()
+	if err != nil {
+		return nil, errors.Wrap(err, "gsettings get experimental-features")
+	}
+	return parseGSettingsStringArray(string(out)), nil
+}
+
+func writeMutterExperimentalFeatures(features []string) error {
+	quoted := make([]string, len(features))
+	for i, f := range features {
+		quoted[i] = "'" + f + "'"
+	}
+	val := "[" + strings.Join(quoted, ", ") + "]"
+	if err := exec.Command("gsettings", "set", "org.gnome.mutter", "experimental-features", val).Run(); err != nil {
+		return errors.Wrap(err, "gsettings set experimental-features")
+	}
+	return nil
+}
+
+// parseGSettingsStringArray extracts the single-quoted tokens from a gsettings
+// array literal such as "['scale-monitor-framebuffer']" or "@as []".
+func parseGSettingsStringArray(s string) []string {
+	var res []string
+	for {
+		i := strings.IndexByte(s, '\'')
+		if i < 0 {
+			break
+		}
+		s = s[i+1:]
+		j := strings.IndexByte(s, '\'')
+		if j < 0 {
+			break
+		}
+		res = append(res, s[:j])
+		s = s[j+1:]
+	}
+	return res
 }
 
 // resolveMonitor finds the connected monitor matching a layout monitor,

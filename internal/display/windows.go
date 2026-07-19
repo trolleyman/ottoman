@@ -517,6 +517,7 @@ func (m *WindowsManager) ListMonitors() ([]api.Monitor, error) {
 			PositionY:   posY,
 			Primary:     primary,
 			Model:       gdiName,
+			Scale:       1.0, // Windows DPI scaling isn't captured; assume 100%
 		}
 		monitors[key] = monitor
 	}

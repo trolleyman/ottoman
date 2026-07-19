@@ -183,6 +183,7 @@ func (s *SimulatedController) updateMonitorStates() {
 				PositionY:   lm.PositionY,
 				Primary:     lm.Primary,
 				Model:       lm.Name,
+				Scale:       lm.Scale,
 			}
 		}
 		s.monitors = append(s.monitors, mon)
@@ -578,6 +579,7 @@ func (s *SimulatedController) SaveCurrentLayout(ctx context.Context, request api
 				PositionX:   m.Active.PositionX,
 				PositionY:   m.Active.PositionY,
 				Primary:     m.Active.Primary,
+				Scale:       m.Active.Scale,
 			})
 		}
 	}
@@ -705,6 +707,7 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 				Primary:     m.Active.Primary,
 				RefreshRate: m.Active.RefreshRate,
 				Width:       m.Active.Width,
+				Scale:       m.Active.Scale,
 			}
 		}
 		// Mock DDC control metadata so the UI renders brightness + a power switch.
@@ -751,7 +754,7 @@ func (s *SimulatedController) GetMonitors(ctx context.Context, request api.GetMo
 		Capabilities:   &api.MonitorCapabilities{Brightness: true, Power: true, Volume: true},
 		TvState:        &api.MonitorTVState{Paired: true, On: true, Volume: 12},
 		Active: &api.ActiveMonitor{
-			Width: 3840, Height: 2160, RefreshRate: 120, Primary: false, Model: "OLED65C1",
+			Width: 3840, Height: 2160, RefreshRate: 120, Primary: false, Model: "OLED65C1", Scale: 2.0,
 		},
 	})
 

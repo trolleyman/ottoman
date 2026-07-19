@@ -10,6 +10,24 @@ import (
 	"testing"
 )
 
+func TestFormatScaleXML(t *testing.T) {
+	cases := []struct {
+		scale float64
+		want  string
+	}{
+		{0, "1"},     // unset defaults to 1
+		{1, "1"},     // integer, no decimal point
+		{2, "2"},     // integer
+		{1.5, "1.5"}, // fractional at precision
+		{1.25, "1.25"},
+	}
+	for _, c := range cases {
+		if got := formatScaleXML(c.scale); got != c.want {
+			t.Errorf("formatScaleXML(%v) = %q, want %q", c.scale, got, c.want)
+		}
+	}
+}
+
 func specA() monitorSpec {
 	return monitorSpec{Connector: "DP-1", Vendor: "LG", Product: "27GL", Serial: "S1"}
 }

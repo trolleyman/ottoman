@@ -9,6 +9,88 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 )
 
+func TestIsFractionalScale(t *testing.T) {
+	cases := []struct {
+		scale float64
+		want  bool
+	}{
+		{0, false},   // unset
+		{1, false},   // 100%
+		{2, false},   // 200%
+		{1.25, true}, // fractional
+		{1.5, true},
+		{1.7518248558044434, true}, // Mutter's exact 175% value
+	}
+	for _, c := range cases {
+		if got := isFractionalScale(c.scale); got != c.want {
+			t.Errorf("isFractionalScale(%v) = %v, want %v", c.scale, got, c.want)
+		}
+	}
+}
+
+func TestLayoutNeedsFractional(t *testing.T) {
+	intLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 1}, {Scale: 2}}}
+	if layoutNeedsFractional(intLayout) {
+		t.Error("all-integer layout should not need fractional scaling")
+	}
+	fracLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 2}, {Scale: 1.5}}}
+	if !layoutNeedsFractional(fracLayout) {
+		t.Error("layout with a 1.5 scale should need fractional scaling")
+	}
+	unsetLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 0}}}
+	if layoutNeedsFractional(unsetLayout) {
+		t.Error("unset scale (0) should not be treated as fractional")
+	}
+}
+
+func TestPickScale(t *testing.T) {
+	mode := &mutterMode{PreferredScale: 1.0, SupportedScales: []float64{1.0, 1.25, 1.5, 2.0}}
+
+	// Unset scale falls back to the mode's preferred scale.
+	if got := pickScale(mode, 0); got != 1.0 {
+		t.Errorf("pickScale(unset) = %v, want 1.0 (preferred)", got)
+	}
+	// Exact supported value passes through.
+	if got := pickScale(mode, 1.5); got != 1.5 {
+		t.Errorf("pickScale(1.5) = %v, want 1.5", got)
+	}
+	// A near-miss snaps to the closest supported value.
+	if got := pickScale(mode, 1.4); got != 1.5 {
+		t.Errorf("pickScale(1.4) = %v, want 1.5 (nearest)", got)
+	}
+	// An unsupported high value snaps down to the max supported.
+	if got := pickScale(mode, 3.0); got != 2.0 {
+		t.Errorf("pickScale(3.0) = %v, want 2.0 (nearest)", got)
+	}
+	// With no supported list, the request is trusted as-is.
+	if got := pickScale(&mutterMode{}, 1.5); got != 1.5 {
+		t.Errorf("pickScale(no supported list) = %v, want 1.5", got)
+	}
+}
+
+func TestParseGSettingsStringArray(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"@as []\n", nil},
+		{"['scale-monitor-framebuffer']\n", []string{"scale-monitor-framebuffer"}},
+		{"['a', 'b', 'scale-monitor-framebuffer']\n", []string{"a", "b", "scale-monitor-framebuffer"}},
+	}
+	for _, c := range cases {
+		got := parseGSettingsStringArray(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("parseGSettingsStringArray(%q) = %v, want %v", c.in, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("parseGSettingsStringArray(%q)[%d] = %q, want %q", c.in, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
 func TestMonitorEDID(t *testing.T) {
 	if got := monitorEDID(monitorSpec{Vendor: "GSM", Product: "LG TV", Serial: "0x01"}); got != "GSM:LG TV:0x01" {
 		t.Fatalf("monitorEDID = %q", got)

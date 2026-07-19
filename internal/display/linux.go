@@ -177,6 +177,7 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 				currentActive = &api.ActiveMonitor{
 					Primary: primary,
 					Model:   "", // Not available from xrandr
+					Scale:   1.0, // xrandr scaling isn't captured; assume 100%
 				}
 				geom := matches[4]
 				parts := strings.Split(geom, "+")
