@@ -596,7 +596,11 @@ func (c *Controller) Start() error {
 
 	go func() {
 		log.Printf("Controller starting on %s", c.config.ListenAddress)
-		if err := c.server.ListenAndServe(); err != http.ErrServerClosed {
+		ln, err := common.ListenWithRetry("tcp", c.config.ListenAddress)
+		if err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+		if err := c.server.Serve(ln); err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()

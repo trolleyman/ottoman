@@ -980,7 +980,11 @@ func (a *Agent) Start() error {
 
 	go func() {
 		log.Printf("Agent starting at http://%s", a.config.ListenAddress)
-		if err := a.server.ListenAndServe(); err != http.ErrServerClosed {
+		ln, err := common.ListenWithRetry("tcp", a.config.ListenAddress)
+		if err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+		if err := a.server.Serve(ln); err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
