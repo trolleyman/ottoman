@@ -10,19 +10,25 @@ type AgentOnlineStatus = "online" | "offline" | "waking" | "shutting_down";
 
 /** Turn the verified switch outcome into a user-facing notice. Only "applied"
  *  is silently fine; the others mean the screen may not match what was asked
- *  for, which the user needs to know rather than being told it worked. */
+ *  for, which the user needs to know rather than being told it worked.
+ *
+ *  wasCurrent says the user re-selected the layout they were already on. That
+ *  makes "nothing changed" the expected answer rather than a warning sign. */
 function noticeForOutcome(
   outcome: string | undefined,
   message: string | undefined,
+  wasCurrent: boolean,
 ): { kind: "ok" | "warn"; text: string } | null {
   switch (outcome) {
     case "applied":
       return null;
     case "already-active":
-      return {
-        kind: "warn",
-        text: "Nothing changed — the display server already reported this layout as active. If the screen disagrees, its state has drifted.",
-      };
+      return wasCurrent
+        ? { kind: "ok", text: "Already on this layout — nothing to change." }
+        : {
+          kind: "warn",
+          text: "Nothing changed — the display server already reported this layout as active. If the screen disagrees, its state has drifted.",
+        };
     case "rolled-back":
       return {
         kind: "warn",
@@ -374,12 +380,13 @@ export const useStore = create<OttomanStore>((set, get) => ({
   // the current layout is how you force them back into sync.
   switchLayout: async (id: string) => {
     if (get().switching) return;
+    const wasCurrent = get().currentLayout === id;
     set({ switching: true, layoutNotice: null });
     try {
       const data = await client.default.switchLayout({ layout: id });
       if (data.success) {
         set({ currentLayout: data.current_layout ?? "" });
-        set({ layoutNotice: noticeForOutcome(data.outcome, data.message) });
+        set({ layoutNotice: noticeForOutcome(data.outcome, data.message, wasCurrent) });
         void get().refreshAll(false);
       } else {
         set({ layoutNotice: { kind: "warn", text: data.message || "Switch failed" } });

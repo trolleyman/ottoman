@@ -84,10 +84,12 @@ export function Layouts() {
             }`}
         >
           <span className="flex-1">{layoutNotice.text}</span>
+          {/* select-none keeps the button out of a triple-click selection, which
+              otherwise copies the notice with a pile of blank lines after it. */}
           <button
             onClick={dismissLayoutNotice}
             aria-label="Dismiss"
-            className="shrink-0 rounded p-0.5 text-current opacity-70 hover:opacity-100 cursor-pointer"
+            className="shrink-0 select-none rounded p-0.5 text-current opacity-70 hover:opacity-100 cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
