@@ -19,9 +19,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// debugLogging enables verbose logging: subprocess output and the requests the
-// web UI polls continuously. Both are off by default because they drown out the
-// entries that matter — they accounted for ~95% of a typical log file.
+// debugLogging enables verbose logging of subprocess invocations and their
+// stdout. It's off by default because the audio and DDC pollers shell out every
+// few seconds: those dumps accounted for ~93% of a typical log file, burying the
+// entries that matter and pushing useful history out through rotation.
+//
+// HTTP request lines are deliberately not gated on this — they're one line each
+// and are the clearest record of what the UI actually asked for.
 var debugLogging atomic.Bool
 
 // SetDebugLogging turns verbose logging on or off.
@@ -30,29 +34,12 @@ func SetDebugLogging(on bool) { debugLogging.Store(on) }
 // DebugLogging reports whether verbose logging is enabled.
 func DebugLogging() bool { return debugLogging.Load() }
 
-// isRoutinePoll reports whether a request is a successful read of an endpoint
-// the UI polls on a timer. These repeat every few seconds forever and carry no
-// information unless something failed, so they're suppressed outside debug mode.
-func isRoutinePoll(r *http.Request, status int) bool {
-	if r.Method != http.MethodGet || status != http.StatusOK {
-		return false
-	}
-	switch r.URL.Path {
-	case "/health", "/api/status", "/api/layouts", "/api/monitors", "/api/audio/sinks":
-		return true
-	}
-	return false
-}
-
 // LoggingMiddleware logs HTTP requests with method, path, status, and duration
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		lw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(lw, r)
-		if !DebugLogging() && isRoutinePoll(r, lw.status) {
-			return
-		}
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, lw.status, time.Since(start).Round(time.Microsecond))
 	})
 }

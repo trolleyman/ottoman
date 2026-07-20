@@ -899,9 +899,9 @@ func setupLogging() {
 	log.SetOutput(io.MultiWriter(os.Stderr, rl))
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	// Verbose logging (subprocess output and the UI's polling requests) is opt-in
-	// via OTTOMAN_DEBUG=1 — left on, it accounts for ~95% of the log volume and
-	// buries the entries that matter.
+	// Verbose subprocess logging is opt-in via OTTOMAN_DEBUG=1 — left on, it
+	// accounts for ~93% of the log volume and buries the entries that matter.
+	// HTTP requests are always logged regardless.
 	if v := os.Getenv("OTTOMAN_DEBUG"); v != "" && v != "0" && v != "false" {
 		common.SetDebugLogging(true)
 		log.Printf("Debug logging enabled (OTTOMAN_DEBUG=%s)", v)
