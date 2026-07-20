@@ -291,7 +291,7 @@ func (m *MutterManager) applyLayout(layout api.Layout) (map[string]intentMonitor
 			scale:   scale,
 			primary: lm.Primary,
 		})
-		intent[mon.Spec.Connector] = intentMonitor{x: x, y: y, scale: scale}
+		intent[mon.Spec.Connector] = intentMonitor{x: x, y: y, scale: scale, primary: lm.Primary}
 	}
 
 	if len(logicals) == 0 {
@@ -333,8 +333,9 @@ func (m *MutterManager) applyLayout(layout api.Layout) (map[string]intentMonitor
 // intentMonitor is the placement we asked Mutter for, used to check afterwards
 // whether the display actually ended up that way.
 type intentMonitor struct {
-	x, y  int32
-	scale float64
+	x, y    int32
+	scale   float64
+	primary bool
 }
 
 // How long to keep watching the display after an apply, and how often to sample.
@@ -349,7 +350,12 @@ const (
 
 // stateMatchesIntent reports whether the display server's logical monitors match
 // the configuration we asked for: exactly the same set of connectors, each at the
-// requested position and scale.
+// requested position, scale and primary flag.
+//
+// The primary flag matters as much as the geometry. Two layouts can place the
+// same monitors identically and differ only in which one is primary; without
+// comparing it, switching between them looks like the display already matched
+// and the switch is reported as "nothing changed".
 func stateMatchesIntent(logical []mutterLogicalMonitor, intent map[string]intentMonitor) bool {
 	seen := 0
 	for _, lm := range logical {
@@ -359,6 +365,9 @@ func stateMatchesIntent(logical []mutterLogicalMonitor, intent map[string]intent
 				return false // a monitor is enabled that the layout wanted off
 			}
 			if lm.X != want.x || lm.Y != want.y || math.Abs(lm.Scale-want.scale) > 1e-6 {
+				return false
+			}
+			if lm.Primary != want.primary {
 				return false
 			}
 			seen++
@@ -526,17 +535,33 @@ func setFractionalScaling(enable bool) (bool, error) {
 	return true, writeMutterExperimentalFeatures(out)
 }
 
-// waitForFractionalScales blocks (briefly) until Mutter has processed a
-// fractional-scaling toggle, i.e. until the connected monitors' modes advertise
-// (or stop advertising) fractional scales. This guarantees the next
-// GetCurrentState carries a fresh serial and the up-to-date supported-scale list.
+// waitForFractionalScales blocks (briefly) until Mutter has finished processing
+// a fractional-scaling toggle.
+//
+// It waits on the layout mode rather than on the advertised scale lists, because
+// the layout mode is what actually matters to us: toggling the feature flips
+// Mutter between the logical and physical coordinate spaces, and every position
+// we send is converted for that space. Reading the mode before the flip lands
+// means converting positions into the wrong space — monitors end up at double or
+// half their intended offsets, which shows up as a viewport parked in the corner
+// of the screen or a fraction of the display being used.
+//
+// It also waits for the supported-scale lists to catch up, so a fractional scale
+// can be snapped correctly, and returns once both agree (or the timeout expires,
+// leaving the caller to proceed best-effort).
 func (m *MutterManager) waitForFractionalScales(want bool) {
-	for i := 0; i < 20; i++ {
-		if _, monitors, _, _, err := m.getCurrentState(); err == nil && anyModeHasFractional(monitors) == want {
+	wantMode := layoutModePhysical
+	if want {
+		wantMode = layoutModeLogical
+	}
+	for i := 0; i < 30; i++ {
+		_, monitors, _, mode, err := m.getCurrentState()
+		if err == nil && mode == wantMode && anyModeHasFractional(monitors) == want {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	log.Printf("Timed out waiting for the display server to switch layout mode (fractional=%v); display positions may be off", want)
 }
 
 func anyModeHasFractional(monitors []mutterMonitor) bool {

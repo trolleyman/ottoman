@@ -45,11 +45,36 @@ func TestStateMatchesIntent(t *testing.T) {
 
 	// Right monitors, wrong position.
 	wrongPos := []mutterLogicalMonitor{
-		{X: 0, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-6"}}},
-		{X: 1920, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+		{X: 0, Y: 360, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 99, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-4"}}},
 	}
 	if stateMatchesIntent(wrongPos, intent) {
 		t.Error("a differing position must not match")
+	}
+}
+
+// Two layouts can be geometrically identical and differ only in which monitor is
+// primary. Without comparing it, switching between them reports "nothing
+// changed" even though the switch is real.
+func TestStateMatchesIntentDistinguishesPrimary(t *testing.T) {
+	intent := map[string]intentMonitor{
+		"DP-6": {x: 0, y: 0, scale: 1, primary: false},
+		"DP-4": {x: 1920, y: 0, scale: 1, primary: true},
+	}
+	match := []mutterLogicalMonitor{
+		{X: 0, Y: 0, Scale: 1, Primary: false, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 0, Scale: 1, Primary: true, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+	}
+	if !stateMatchesIntent(match, intent) {
+		t.Error("matching primary should match")
+	}
+
+	swapped := []mutterLogicalMonitor{
+		{X: 0, Y: 0, Scale: 1, Primary: true, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 0, Scale: 1, Primary: false, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+	}
+	if stateMatchesIntent(swapped, intent) {
+		t.Error("a swapped primary must not match")
 	}
 }
 
