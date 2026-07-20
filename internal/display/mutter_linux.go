@@ -193,6 +193,24 @@ func (m *MutterManager) ListMonitors() ([]api.Monitor, error) {
 
 // ApplyLayoutConfig applies a display configuration via ApplyMonitorsConfig.
 func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
+	_, err := m.ApplyLayoutConfigVerified(layout)
+	return err
+}
+
+// ApplyLayoutConfigVerified applies a layout and then confirms what actually
+// happened to the display, rather than trusting that an accepted request means
+// the layout stuck. See verifyApplied for why that distinction matters.
+func (m *MutterManager) ApplyLayoutConfigVerified(layout api.Layout) (LayoutApplyResult, error) {
+	intent, preMatched, err := m.applyLayout(layout)
+	if err != nil {
+		return LayoutApplyResult{Outcome: OutcomeUnverified, Detail: err.Error()}, err
+	}
+	return m.verifyApplied(intent, preMatched), nil
+}
+
+// applyLayout performs the apply and returns the configuration it asked for
+// (keyed by connector) plus whether the display already matched it beforehand.
+func (m *MutterManager) applyLayout(layout api.Layout) (map[string]intentMonitor, bool, error) {
 	// GNOME only offers fractional scales (1.25, 1.5, …) while the
 	// "scale-monitor-framebuffer" experimental feature is enabled; with it off,
 	// only integer scales are available and Mutter uses the sharper physical
@@ -213,9 +231,9 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		m.waitForFractionalScales(wantFractional)
 	}
 
-	serial, monitors, _, targetMode, err := m.getCurrentState()
+	serial, monitors, preLogical, targetMode, err := m.getCurrentState()
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	byConnector := make(map[string]*mutterMonitor)
@@ -229,15 +247,16 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 
 	var logicals []applyLogicalMonitor
 	var persist []persistLogicalMonitor
+	intent := make(map[string]intentMonitor, len(layout.Monitors))
 	for _, lm := range layout.Monitors {
 		mon := resolveMonitor(lm, byEDID, byConnector)
 		if mon == nil {
-			return errors.Errorf("layout monitor %q (edid=%q port=%q) is not connected", lm.Name, lm.Edid, lm.Port)
+			return nil, false, errors.Errorf("layout monitor %q (edid=%q port=%q) is not connected", lm.Name, lm.Edid, lm.Port)
 		}
 
 		mode := pickMode(mon, lm)
 		if mode == nil {
-			return errors.Errorf("no matching mode %dx%d@%.2f for monitor %q", lm.Width, lm.Height, lm.RefreshRate, mon.Spec.Connector)
+			return nil, false, errors.Errorf("no matching mode %dx%d@%.2f for monitor %q", lm.Width, lm.Height, lm.RefreshRate, mon.Spec.Connector)
 		}
 
 		// Snap the layout's saved scale to one the picked mode actually supports;
@@ -272,11 +291,18 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 			scale:   scale,
 			primary: lm.Primary,
 		})
+		intent[mon.Spec.Connector] = intentMonitor{x: x, y: y, scale: scale}
 	}
 
 	if len(logicals) == 0 {
-		return errors.New("layout has no applicable monitors")
+		return nil, false, errors.New("layout has no applicable monitors")
 	}
+
+	// Whether the display server already considered this layout active. If so the
+	// apply below is a no-op, which is worth surfacing: it means a "successful"
+	// switch changed nothing, and any disagreement with the screen is drift in the
+	// display server's own state.
+	preMatched := stateMatchesIntent(preLogical, intent)
 
 	obj := m.conn.Object(mutterBusName, dbus.ObjectPath(mutterObjectPath))
 	// Apply with the TEMPORARY method, not PERSISTENT. PERSISTENT makes Mutter
@@ -292,7 +318,7 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 		map[string]dbus.Variant{},
 	)
 	if call.Err != nil {
-		return errors.Wrap(call.Err, "ApplyMonitorsConfig failed")
+		return nil, false, errors.Wrap(call.Err, "ApplyMonitorsConfig failed")
 	}
 
 	// Best-effort persistence: the layout is already applied, so a failure to
@@ -301,7 +327,85 @@ func (m *MutterManager) ApplyLayoutConfig(layout api.Layout) error {
 	if err := writeMonitorsXML(persist, monitors); err != nil {
 		log.Printf("Applied layout but failed to persist to monitors.xml: %v", err)
 	}
-	return nil
+	return intent, preMatched, nil
+}
+
+// intentMonitor is the placement we asked Mutter for, used to check afterwards
+// whether the display actually ended up that way.
+type intentMonitor struct {
+	x, y  int32
+	scale float64
+}
+
+// How long to keep watching the display after an apply, and how often to sample.
+// Mutter has been observed accepting a configuration, applying it, and then
+// silently rolling it back roughly two seconds later, so a single check straight
+// after the call reports success for a layout that does not survive. The window
+// must comfortably outlast that rollback.
+const (
+	verifySettleWindow = 3 * time.Second
+	verifyPollInterval = 250 * time.Millisecond
+)
+
+// stateMatchesIntent reports whether the display server's logical monitors match
+// the configuration we asked for: exactly the same set of connectors, each at the
+// requested position and scale.
+func stateMatchesIntent(logical []mutterLogicalMonitor, intent map[string]intentMonitor) bool {
+	seen := 0
+	for _, lm := range logical {
+		for _, spec := range lm.Monitors {
+			want, ok := intent[spec.Connector]
+			if !ok {
+				return false // a monitor is enabled that the layout wanted off
+			}
+			if lm.X != want.x || lm.Y != want.y || math.Abs(lm.Scale-want.scale) > 1e-6 {
+				return false
+			}
+			seen++
+		}
+	}
+	return seen == len(intent)
+}
+
+// verifyApplied watches the display for a settle window after an apply and
+// reports what actually happened. ApplyMonitorsConfig returning success only
+// means the request was accepted — it is not proof the layout stuck, so this
+// keeps sampling rather than trusting a single post-apply read.
+func (m *MutterManager) verifyApplied(intent map[string]intentMonitor, preMatched bool) LayoutApplyResult {
+	deadline := time.Now().Add(verifySettleWindow)
+	everMatched := preMatched
+	matched := preMatched
+	readOK := false
+
+	for {
+		if _, _, logical, _, err := m.getCurrentState(); err == nil {
+			readOK = true
+			matched = stateMatchesIntent(logical, intent)
+			if matched {
+				everMatched = true
+			}
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(verifyPollInterval)
+	}
+
+	switch {
+	case !readOK:
+		return LayoutApplyResult{OutcomeUnverified, "could not read display state back"}
+	case matched && preMatched:
+		return LayoutApplyResult{OutcomeAlreadyActive,
+			"the display server already reported this layout as active, so nothing changed"}
+	case matched:
+		return LayoutApplyResult{OutcomeApplied, "layout is active"}
+	case everMatched:
+		return LayoutApplyResult{OutcomeRolledBack,
+			"layout was applied but the display server reverted it within " + verifySettleWindow.String()}
+	default:
+		return LayoutApplyResult{OutcomeMismatch,
+			"the request was accepted but the display never matched the layout"}
+	}
 }
 
 // Mutter logical-monitor layout modes (org.gnome.Mutter.DisplayConfig). They

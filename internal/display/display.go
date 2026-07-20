@@ -12,6 +12,48 @@ type Manager interface {
 	ApplyLayoutConfig(layout api.Layout) error
 }
 
+// LayoutApplyOutcome describes what actually happened to the display. A display
+// server accepting an apply request is not proof the layout stuck: Mutter can
+// report success and then roll the configuration back a second or two later, and
+// it can also report a layout as already active while the screen shows something
+// else. Reporting a bare "success" in those cases is actively misleading.
+type LayoutApplyOutcome string
+
+const (
+	// OutcomeApplied means the display changed and now matches the layout.
+	OutcomeApplied LayoutApplyOutcome = "applied"
+	// OutcomeAlreadyActive means the display server already considered this
+	// layout active, so nothing changed. If the screen disagrees, the display
+	// server's state has drifted from reality.
+	OutcomeAlreadyActive LayoutApplyOutcome = "already-active"
+	// OutcomeRolledBack means the layout applied and was then reverted by the
+	// display server.
+	OutcomeRolledBack LayoutApplyOutcome = "rolled-back"
+	// OutcomeMismatch means the request was accepted but the display never
+	// matched the layout.
+	OutcomeMismatch LayoutApplyOutcome = "mismatch"
+	// OutcomeUnverified means the resulting state could not be read back.
+	OutcomeUnverified LayoutApplyOutcome = "unverified"
+)
+
+// Ok reports whether the outcome means the layout is actually on screen.
+func (o LayoutApplyOutcome) Ok() bool {
+	return o == OutcomeApplied || o == OutcomeAlreadyActive || o == OutcomeUnverified
+}
+
+// LayoutApplyResult reports the verified outcome of applying a layout.
+type LayoutApplyResult struct {
+	Outcome LayoutApplyOutcome
+	Detail  string
+}
+
+// VerifyingManager is implemented by display backends that can confirm what
+// actually happened to the display after an apply, rather than just reporting
+// that the request was accepted.
+type VerifyingManager interface {
+	ApplyLayoutConfigVerified(layout api.Layout) (LayoutApplyResult, error)
+}
+
 // Layouts manages display layout configurations
 type Layouts struct {
 	layouts map[string]api.Layout

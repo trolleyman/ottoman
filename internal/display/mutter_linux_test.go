@@ -9,6 +9,64 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 )
 
+func TestStateMatchesIntent(t *testing.T) {
+	intent := map[string]intentMonitor{
+		"DP-6": {x: 0, y: 360, scale: 1},
+		"DP-4": {x: 1920, y: 0, scale: 1},
+	}
+	match := []mutterLogicalMonitor{
+		{X: 0, Y: 360, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+	}
+	if !stateMatchesIntent(match, intent) {
+		t.Error("identical state should match")
+	}
+
+	// A monitor enabled that the layout wanted off (the TV hijack case).
+	extra := append(append([]mutterLogicalMonitor{}, match...),
+		mutterLogicalMonitor{X: 0, Y: 0, Scale: 2, Monitors: []monitorSpec{{Connector: "HDMI-2"}}})
+	if stateMatchesIntent(extra, intent) {
+		t.Error("an unexpected enabled monitor must not match")
+	}
+
+	// Only some of the intended monitors are on.
+	if stateMatchesIntent(match[:1], intent) {
+		t.Error("a missing monitor must not match")
+	}
+
+	// Right monitors, wrong scale — the 200%-not-applied case.
+	wrongScale := []mutterLogicalMonitor{
+		{X: 0, Y: 360, Scale: 2, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+	}
+	if stateMatchesIntent(wrongScale, intent) {
+		t.Error("a differing scale must not match")
+	}
+
+	// Right monitors, wrong position.
+	wrongPos := []mutterLogicalMonitor{
+		{X: 0, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-6"}}},
+		{X: 1920, Y: 0, Scale: 1, Monitors: []monitorSpec{{Connector: "DP-4"}}},
+	}
+	if stateMatchesIntent(wrongPos, intent) {
+		t.Error("a differing position must not match")
+	}
+}
+
+func TestLayoutApplyOutcomeOk(t *testing.T) {
+	ok := []LayoutApplyOutcome{OutcomeApplied, OutcomeAlreadyActive, OutcomeUnverified}
+	for _, o := range ok {
+		if !o.Ok() {
+			t.Errorf("%s should be Ok", o)
+		}
+	}
+	for _, o := range []LayoutApplyOutcome{OutcomeRolledBack, OutcomeMismatch} {
+		if o.Ok() {
+			t.Errorf("%s should not be Ok", o)
+		}
+	}
+}
+
 func TestLogicalCoordRoundTrip(t *testing.T) {
 	cases := []struct {
 		name       string
