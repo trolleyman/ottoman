@@ -108,3 +108,39 @@ func TestGetClosestPrefersCurrentAndIsDeterministic(t *testing.T) {
 		t.Errorf("an unmatched preference should fall back to the stable choice, got %q", got)
 	}
 }
+
+// Re-capturing a layout replaces its geometry but must preserve its identity
+// and metadata — the whole point of updating in place rather than re-saving.
+func TestSetMonitorsPreservesMetadata(t *testing.T) {
+	emoji := "📺"
+	original := api.Layout{
+		Id: "with-tv", Name: "With TV", Emoji: &emoji, Aliases: []string{"3"},
+		Monitors: []api.LayoutMonitor{layoutMonitor("LG", 3840, 2160, 0, 0, true, 1, 60)},
+	}
+	store := NewLayoutsFromSlice([]api.Layout{original})
+
+	fresh := []api.LayoutMonitor{
+		layoutMonitor("LG", 3840, 2160, 0, 0, false, 2, 120),
+		layoutMonitor("AOC", 2560, 1440, 1920, 0, true, 1, 60),
+	}
+	got, ok := store.SetMonitors("with-tv", fresh)
+	if !ok {
+		t.Fatal("SetMonitors should find the layout")
+	}
+	if len(got.Monitors) != 2 || got.Monitors[0].Scale != 2 || !got.Monitors[1].Primary {
+		t.Errorf("monitors were not replaced: %+v", got.Monitors)
+	}
+	if got.Id != "with-tv" || got.Name != "With TV" || got.Emoji == nil || *got.Emoji != "📺" {
+		t.Errorf("identity/metadata not preserved: %+v", got)
+	}
+	if len(got.Aliases) != 1 || got.Aliases[0] != "3" {
+		t.Errorf("aliases not preserved: %+v", got.Aliases)
+	}
+	// The change must be persisted in the store, not just returned.
+	if stored, _ := store.Get("with-tv"); len(stored.Monitors) != 2 {
+		t.Errorf("store not updated: %+v", stored.Monitors)
+	}
+	if _, ok := store.SetMonitors("nope", fresh); ok {
+		t.Error("SetMonitors should report a missing layout")
+	}
+}

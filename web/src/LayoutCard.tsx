@@ -13,13 +13,20 @@ function LayoutEditor({
   onCancel,
 }: {
   layout: Layout;
-  onSave: (changes: { name: string; emoji: string; aliases: string[] }) => Promise<boolean>;
+  onSave: (changes: {
+    name: string;
+    emoji: string;
+    aliases: string[];
+    captureMonitors: boolean;
+  }) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(layout.name);
   const [emoji, setEmoji] = useState(layout.emoji ?? "");
   // Aliases are edited as a comma/space separated string for simplicity.
   const [aliases, setAliases] = useState((layout.aliases ?? []).join(", "));
+  // Opt-in, because it discards the layout's saved geometry.
+  const [captureMonitors, setCaptureMonitors] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -32,6 +39,7 @@ function LayoutEditor({
         .split(/[,\s]+/)
         .map((a) => a.trim())
         .filter(Boolean),
+      captureMonitors,
     });
     setSaving(false);
     if (ok) onCancel();
@@ -76,6 +84,26 @@ function LayoutEditor({
           Shortcuts to switch to this layout — separate with commas.
         </span>
       </label>
+      <label
+        className={`flex items-start gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors ${captureMonitors
+          ? "border-amber-500/40 bg-amber-500/10"
+          : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-600"
+          }`}
+      >
+        <input
+          type="checkbox"
+          checked={captureMonitors}
+          onChange={(e) => setCaptureMonitors(e.target.checked)}
+          className="mt-0.5 shrink-0 accent-amber-500"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm text-zinc-200">Overwrite with current display</span>
+          <span className="text-[10px] text-zinc-500">
+            Replace this layout's monitors, positions and scales with whatever is
+            on screen right now. Its name and aliases are kept.
+          </span>
+        </span>
+      </label>
       <div className="flex gap-2">
         <button
           onClick={() => void submit()}
@@ -111,7 +139,12 @@ export function LayoutCard({
   scale: number;
   onClick: () => void;
   onDelete?: () => void;
-  onUpdate?: (changes: { name: string; emoji: string; aliases: string[] }) => Promise<boolean>;
+  onUpdate?: (changes: {
+    name: string;
+    emoji: string;
+    aliases: string[];
+    captureMonitors: boolean;
+  }) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const enabled = sortedLayoutMonitors(layout.monitors ?? []);

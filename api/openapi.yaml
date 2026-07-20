@@ -356,7 +356,7 @@ paths:
 
   /api/layouts/update:
     post:
-      summary: Update layout metadata (name, emoji, aliases)
+      summary: Update a layout's metadata, and optionally re-capture its monitors
       operationId: updateLayout
       requestBody:
         content:
@@ -1130,6 +1130,13 @@ components:
           type: array
           description: "Replacement alias list (optional; unchanged if omitted)"
           items: { type: string }
+        capture_monitors:
+          type: boolean
+          description: >-
+            Replace the layout's monitor configuration with the display setup
+            that is active right now, keeping its id, name, emoji and aliases.
+            Lets an existing layout be re-captured after adjusting the displays,
+            instead of having to delete it and save a new one.
 
     UpdateLayoutResponse:
       type: object

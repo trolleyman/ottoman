@@ -109,7 +109,13 @@ interface OttomanStore {
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
   updateLayout: (
     id: string,
-    changes: { name?: string; emoji?: string; aliases?: string[] },
+    changes: {
+      name?: string;
+      emoji?: string;
+      aliases?: string[];
+      /** Replace the layout's monitors with the current display setup. */
+      captureMonitors?: boolean;
+    },
   ) => Promise<boolean>;
 
   // ── Power Actions ─────────────────────────────────────
@@ -435,7 +441,12 @@ export const useStore = create<OttomanStore>((set, get) => ({
       ),
     }));
     try {
-      const data = await client.default.updateLayout({ id, ...changes });
+      const { captureMonitors, ...meta } = changes;
+      const data = await client.default.updateLayout({
+        id,
+        ...meta,
+        ...(captureMonitors ? { capture_monitors: true } : {}),
+      });
       if (data.success) {
         void get().fetchLayouts(true);
         return true;

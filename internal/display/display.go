@@ -261,6 +261,19 @@ func (s *Layouts) AliasOwner(alias, exceptID string) string {
 // UpdateMeta updates a layout's editable metadata (name, emoji, aliases) in
 // place, preserving its monitors. Any nil field is left unchanged; a non-nil
 // emoji of "" clears it. Returns the updated layout and whether it existed.
+// SetMonitors replaces a layout's monitor configuration, leaving its identity
+// and metadata (id, name, emoji, aliases) untouched. Used to re-capture an
+// existing layout from the live display rather than deleting and re-saving it.
+func (s *Layouts) SetMonitors(id string, monitors []api.LayoutMonitor) (api.Layout, bool) {
+	layout, ok := s.layouts[id]
+	if !ok {
+		return api.Layout{}, false
+	}
+	layout.Monitors = monitors
+	s.layouts[id] = layout
+	return layout, true
+}
+
 func (s *Layouts) UpdateMeta(id string, name, emoji *string, aliases *[]string) (api.Layout, bool) {
 	layout, ok := s.layouts[id]
 	if !ok {

@@ -19,5 +19,9 @@ export type UpdateLayoutRequest = {
      * Replacement alias list (optional; unchanged if omitted)
      */
     aliases?: Array<string>;
+    /**
+     * Replace the layout's monitor configuration with the display setup that is active right now, keeping its id, name, emoji and aliases. Lets an existing layout be re-captured after adjusting the displays, instead of having to delete it and save a new one.
+     */
+    capture_monitors?: boolean;
 };
 

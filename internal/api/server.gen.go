@@ -517,6 +517,9 @@ type UpdateLayoutRequest struct {
 	// Aliases Replacement alias list (optional; unchanged if omitted)
 	Aliases *[]string `json:"aliases,omitempty"`
 
+	// CaptureMonitors Replace the layout's monitor configuration with the display setup that is active right now, keeping its id, name, emoji and aliases. Lets an existing layout be re-captured after adjusting the displays, instead of having to delete it and save a new one.
+	CaptureMonitors *bool `json:"capture_monitors,omitempty"`
+
 	// Emoji New emoji (optional; empty string clears it, omitted leaves unchanged)
 	Emoji *string `json:"emoji,omitempty"`
 
@@ -1050,7 +1053,7 @@ type ServerInterface interface {
 	// Switch layout
 	// (POST /api/layouts/switch)
 	SwitchLayout(w http.ResponseWriter, r *http.Request)
-	// Update layout metadata (name, emoji, aliases)
+	// Update a layout's metadata, and optionally re-capture its monitors
 	// (POST /api/layouts/update)
 	UpdateLayout(w http.ResponseWriter, r *http.Request)
 	// Get all monitors
@@ -2876,7 +2879,7 @@ type StrictServerInterface interface {
 	// Switch layout
 	// (POST /api/layouts/switch)
 	SwitchLayout(ctx context.Context, request SwitchLayoutRequestObject) (SwitchLayoutResponseObject, error)
-	// Update layout metadata (name, emoji, aliases)
+	// Update a layout's metadata, and optionally re-capture its monitors
 	// (POST /api/layouts/update)
 	UpdateLayout(ctx context.Context, request UpdateLayoutRequestObject) (UpdateLayoutResponseObject, error)
 	// Get all monitors

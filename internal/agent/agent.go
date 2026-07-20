@@ -438,6 +438,35 @@ func (a *Agent) GetCurrentLayout(ctx context.Context, request api.GetCurrentLayo
 }
 
 // SaveCurrentLayout implements api.StrictServerInterface
+// captureCurrentMonitors snapshots the currently active display configuration
+// as layout monitors. Inactive (disabled) monitors are omitted, so an empty
+// result means nothing is currently driving a display.
+func (a *Agent) captureCurrentMonitors() ([]api.LayoutMonitor, error) {
+	monitors, err := a.displayMgr.ListMonitors()
+	if err != nil {
+		return nil, err
+	}
+	configs := make([]api.LayoutMonitor, 0, len(monitors))
+	for _, m := range monitors {
+		if m.Active == nil {
+			continue
+		}
+		configs = append(configs, api.LayoutMonitor{
+			Name:        m.Name,
+			Edid:        m.Edid,
+			Port:        m.Port,
+			Width:       m.Active.Width,
+			Height:      m.Active.Height,
+			RefreshRate: m.Active.RefreshRate,
+			PositionX:   m.Active.PositionX,
+			PositionY:   m.Active.PositionY,
+			Primary:     m.Active.Primary,
+			Scale:       m.Active.Scale,
+		})
+	}
+	return configs, nil
+}
+
 func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLayoutRequestObject) (api.SaveCurrentLayoutResponseObject, error) {
 	if request.Body == nil || request.Body.Name == "" {
 		return api.SaveCurrentLayout400JSONResponse{Code: 400, Error: "name is required"}, nil
@@ -453,29 +482,9 @@ func (a *Agent) SaveCurrentLayout(ctx context.Context, request api.SaveCurrentLa
 		id = slugify(name)
 	}
 
-	// Get current monitor state to save
-	monitors, err := a.displayMgr.ListMonitors()
+	monitorConfigs, err := a.captureCurrentMonitors()
 	if err != nil {
 		return api.SaveCurrentLayout500JSONResponse{Code: 500, Error: "failed to get current monitors"}, nil
-	}
-
-	// Convert Monitor to LayoutMonitor config
-	monitorConfigs := make([]api.LayoutMonitor, 0)
-	for _, m := range monitors {
-		if m.Active != nil {
-			monitorConfigs = append(monitorConfigs, api.LayoutMonitor{
-				Name:        m.Name,
-				Edid:        m.Edid,
-				Port:        m.Port,
-				Width:       m.Active.Width,
-				Height:      m.Active.Height,
-				RefreshRate: m.Active.RefreshRate,
-				PositionX:   m.Active.PositionX,
-				PositionY:   m.Active.PositionY,
-				Primary:     m.Active.Primary,
-				Scale:       m.Active.Scale,
-			})
-		}
 	}
 
 	layout := api.Layout{
@@ -572,6 +581,24 @@ func (a *Agent) UpdateLayout(ctx context.Context, request api.UpdateLayoutReques
 		request.Body.Name = &trimmed
 	}
 
+	// Optionally re-capture the layout's geometry from the live display, so an
+	// existing layout can be brought up to date in place after adjusting the
+	// monitors — rather than having to delete it and save a new one, which would
+	// lose its id, aliases and position in the list.
+	captured := false
+	if request.Body.CaptureMonitors != nil && *request.Body.CaptureMonitors {
+		monitors, err := a.captureCurrentMonitors()
+		if err != nil {
+			log.Printf("Failed to read monitors while re-capturing layout %q: %v", id, err)
+			return api.UpdateLayout500JSONResponse{Code: 500, Error: "failed to read the current display configuration"}, nil
+		}
+		if len(monitors) == 0 {
+			return api.UpdateLayout400JSONResponse{Code: 400, Error: "no active monitors to capture"}, nil
+		}
+		a.layouts.SetMonitors(id, monitors)
+		captured = true
+	}
+
 	layout, _ := a.layouts.UpdateMeta(id, request.Body.Name, request.Body.Emoji, request.Body.Aliases)
 
 	if err := a.saveLayouts(); err != nil {
@@ -579,7 +606,11 @@ func (a *Agent) UpdateLayout(ctx context.Context, request api.UpdateLayoutReques
 		return api.UpdateLayout500JSONResponse{Code: 500, Error: "failed to save layout"}, nil
 	}
 
-	log.Printf("Updated layout: %s", id)
+	if captured {
+		log.Printf("Updated layout: %s (re-captured %d monitors from the current display)", id, len(layout.Monitors))
+	} else {
+		log.Printf("Updated layout: %s", id)
+	}
 	return api.UpdateLayout200JSONResponse{
 		Success: true,
 		Layout:  &layout,

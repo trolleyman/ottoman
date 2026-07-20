@@ -259,7 +259,7 @@ export class DefaultService {
         });
     }
     /**
-     * Update layout metadata (name, emoji, aliases)
+     * Update a layout's metadata, and optionally re-capture its monitors
      * @param requestBody
      * @returns UpdateLayoutResponse Success
      * @throws ApiError
