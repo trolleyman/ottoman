@@ -442,12 +442,30 @@ func fromLogicalCoord(v int, scale float64, mode uint32) int32 {
 // framebuffer layout mode).
 const mutterFractionalScalingFeature = "scale-monitor-framebuffer"
 
-// layoutNeedsFractional reports whether any monitor in the layout uses a
-// non-integer scale, which GNOME only honours with fractional scaling enabled.
+// layoutNeedsFractional reports whether a layout needs GNOME's
+// scale-monitor-framebuffer feature (i.e. the logical layout mode).
+//
+// Two cases require it. The obvious one is a non-integer scale. The subtler one
+// is a layout whose monitors don't all share the same scale: the legacy physical
+// layout mode applies a *single global* UI scale factor to the whole desktop, so
+// a mixed configuration (a 200% TV beside 100% monitors) is recorded per-monitor
+// but rendered at one factor — GNOME reports 200% while the display is visibly
+// still 100%. A uniform scale, including an all-200% single-monitor layout, works
+// fine in physical mode and doesn't pay the fractional cost.
 func layoutNeedsFractional(layout api.Layout) bool {
+	first, have := 0.0, false
 	for _, lm := range layout.Monitors {
 		if isFractionalScale(lm.Scale) {
 			return true
+		}
+		scale := lm.Scale
+		if scale <= 0 {
+			scale = 1 // unset: treated as 100% when applied
+		}
+		if !have {
+			first, have = scale, true
+		} else if math.Abs(scale-first) > 1e-6 {
+			return true // mixed scales can't be expressed by one global factor
 		}
 	}
 	return false

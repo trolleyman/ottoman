@@ -113,17 +113,31 @@ func TestIsFractionalScale(t *testing.T) {
 }
 
 func TestLayoutNeedsFractional(t *testing.T) {
-	intLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 1}, {Scale: 2}}}
-	if layoutNeedsFractional(intLayout) {
-		t.Error("all-integer layout should not need fractional scaling")
+	cases := []struct {
+		name   string
+		scales []float64
+		want   bool
+	}{
+		{"uniform 100%", []float64{1, 1}, false},
+		{"single monitor at 200%", []float64{2}, false},
+		{"uniform 200%", []float64{2, 2}, false},
+		{"unset scales", []float64{0, 0}, false},
+		// The legacy physical mode has one global scale factor, so a 200% TV
+		// beside 100% monitors renders everything at one factor: it reports 200%
+		// while looking 100%. Only logical mode can express this.
+		{"mixed integer scales", []float64{2, 1}, true},
+		{"unset alongside 200%", []float64{0, 2}, true},
+		{"fractional", []float64{1.5, 1.5}, true},
+		{"fractional among integers", []float64{2, 1.5}, true},
 	}
-	fracLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 2}, {Scale: 1.5}}}
-	if !layoutNeedsFractional(fracLayout) {
-		t.Error("layout with a 1.5 scale should need fractional scaling")
-	}
-	unsetLayout := api.Layout{Monitors: []api.LayoutMonitor{{Scale: 0}}}
-	if layoutNeedsFractional(unsetLayout) {
-		t.Error("unset scale (0) should not be treated as fractional")
+	for _, c := range cases {
+		mons := make([]api.LayoutMonitor, len(c.scales))
+		for i, s := range c.scales {
+			mons[i] = api.LayoutMonitor{Scale: s}
+		}
+		if got := layoutNeedsFractional(api.Layout{Monitors: mons}); got != c.want {
+			t.Errorf("%s: layoutNeedsFractional(%v) = %v, want %v", c.name, c.scales, got, c.want)
+		}
 	}
 }
 
