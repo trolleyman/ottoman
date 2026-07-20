@@ -1043,6 +1043,14 @@ components:
         success: { type: boolean }
         current_layout: { type: string }
         message: { type: string }
+        # What actually happened to the display, verified after applying. A
+        # display server can accept a configuration and then roll it back, or
+        # report a layout as already active while the screen shows something
+        # else, so "success" alone is not enough to tell the user.
+        outcome:
+          type: string
+          enum: [applied, already-active, rolled-back, mismatch, unverified]
+          description: verified result of the switch
 
     AuthRequest:
       type: object

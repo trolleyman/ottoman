@@ -47,7 +47,7 @@ export type { SimSetStateRequest } from './models/SimSetStateRequest';
 export type { SimStateResponse } from './models/SimStateResponse';
 export type { StatusResponse } from './models/StatusResponse';
 export type { SwitchLayoutRequest } from './models/SwitchLayoutRequest';
-export type { SwitchLayoutResponse } from './models/SwitchLayoutResponse';
+export { SwitchLayoutResponse } from './models/SwitchLayoutResponse';
 export type { TrackpadMessage } from './models/TrackpadMessage';
 export type { TrackpadMessageConnected } from './models/TrackpadMessageConnected';
 export type { TrackpadMessageKeyDown } from './models/TrackpadMessageKeyDown';

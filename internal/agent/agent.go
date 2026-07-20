@@ -374,19 +374,41 @@ func (a *Agent) SwitchLayout(ctx context.Context, request api.SwitchLayoutReques
 
 	layout := layouts[0]
 
-	if err := a.displayMgr.ApplyLayoutConfig(layout); err != nil {
+	// Prefer a backend that verifies the result: a display server accepting the
+	// configuration is not proof it stuck, so reporting a bare success can be
+	// misleading (it may be rolled back a second later, or have changed nothing).
+	result := display.LayoutApplyResult{Outcome: display.OutcomeUnverified}
+	var err error
+	if v, ok := a.displayMgr.(display.VerifyingManager); ok {
+		result, err = v.ApplyLayoutConfigVerified(layout)
+	} else {
+		err = a.displayMgr.ApplyLayoutConfig(layout)
+	}
+	if err != nil {
 		log.Printf("Failed to apply layout: %v", err)
 		return api.SwitchLayout500JSONResponse{Code: 500, Error: err.Error()}, nil
+	}
+
+	if result.Outcome.Ok() {
+		log.Printf("Layout %q: %s (%s)", layoutName, result.Outcome, result.Detail)
+	} else {
+		// Loud, because this is the case that previously looked like success.
+		log.Printf("WARNING: layout %q did not take effect: %s (%s)", layoutName, result.Outcome, result.Detail)
 	}
 
 	a.currentLayout = layoutName
 	a.recordCurrentLayout(layout.Id)
 
-	msg := fmt.Sprintf("Switched to layout: %s", layoutName)
+	msg := result.Detail
+	if msg == "" {
+		msg = fmt.Sprintf("Switched to layout: %s", layoutName)
+	}
+	outcome := api.SwitchLayoutResponseOutcome(result.Outcome)
 	return api.SwitchLayout200JSONResponse{
 		Success:       true,
 		CurrentLayout: layoutName,
 		Message:       &msg,
+		Outcome:       &outcome,
 	}, nil
 }
 

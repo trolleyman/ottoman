@@ -33,6 +33,15 @@ const (
 	Right   MouseButton = "right"
 )
 
+// Defines values for SwitchLayoutResponseOutcome.
+const (
+	AlreadyActive SwitchLayoutResponseOutcome = "already-active"
+	Applied       SwitchLayoutResponseOutcome = "applied"
+	Mismatch      SwitchLayoutResponseOutcome = "mismatch"
+	RolledBack    SwitchLayoutResponseOutcome = "rolled-back"
+	Unverified    SwitchLayoutResponseOutcome = "unverified"
+)
+
 // Defines values for TrackpadMessageConnectedType.
 const (
 	Connected TrackpadMessageConnectedType = "connected"
@@ -369,8 +378,14 @@ type SwitchLayoutRequest struct {
 type SwitchLayoutResponse struct {
 	CurrentLayout string  `json:"current_layout"`
 	Message       *string `json:"message,omitempty"`
-	Success       bool    `json:"success"`
+
+	// Outcome verified result of the switch
+	Outcome *SwitchLayoutResponseOutcome `json:"outcome,omitempty"`
+	Success bool                         `json:"success"`
 }
+
+// SwitchLayoutResponseOutcome verified result of the switch
+type SwitchLayoutResponseOutcome string
 
 // TVConn defines model for TVConn.
 type TVConn struct {

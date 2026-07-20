@@ -8,6 +8,38 @@ export const client = new OttomanClient({
 
 type AgentOnlineStatus = "online" | "offline" | "waking" | "shutting_down";
 
+/** Turn the verified switch outcome into a user-facing notice. Only "applied"
+ *  is silently fine; the others mean the screen may not match what was asked
+ *  for, which the user needs to know rather than being told it worked. */
+function noticeForOutcome(
+  outcome: string | undefined,
+  message: string | undefined,
+): { kind: "ok" | "warn"; text: string } | null {
+  switch (outcome) {
+    case "applied":
+      return null;
+    case "already-active":
+      return {
+        kind: "warn",
+        text: "Nothing changed — the display server already reported this layout as active. If the screen disagrees, its state has drifted.",
+      };
+    case "rolled-back":
+      return {
+        kind: "warn",
+        text: "The layout was applied but the display server reverted it moments later. The displays may not support this configuration right now.",
+      };
+    case "mismatch":
+      return {
+        kind: "warn",
+        text: "The switch was accepted but the display never matched the layout.",
+      };
+    case "unverified":
+      return { kind: "ok", text: "Switched (result could not be verified)." };
+    default:
+      return message ? { kind: "ok", text: message } : null;
+  }
+}
+
 interface OttomanStore {
   // ── Auth ──────────────────────────────────────────────
   authed: boolean | null;
@@ -30,6 +62,10 @@ interface OttomanStore {
   layoutsLoading: boolean;
   layoutsError: string | null;
   switching: boolean;
+  /** Result of the last layout switch, shown inline. The display server can
+   *  accept a switch and then revert it, or report nothing changed, so the UI
+   *  reports what actually happened rather than assuming success. */
+  layoutNotice: { kind: "ok" | "warn"; text: string } | null;
 
   // ── Monitors ──────────────────────────────────────────
   monitors: Monitor[];
@@ -68,6 +104,7 @@ interface OttomanStore {
 
   // ── Layout Actions ────────────────────────────────────
   switchLayout: (id: string) => Promise<void>;
+  dismissLayoutNotice: () => void;
   removeLayout: (id: string) => Promise<void>;
   saveCurrentLayout: (name: string, emoji: string) => Promise<void>;
   updateLayout: (
@@ -146,6 +183,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   layoutsLoading: false,
   layoutsError: null,
   switching: false,
+  layoutNotice: null,
 
   // ── Monitors ──────────────────────────────────────────
   monitors: [],
@@ -325,23 +363,34 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   // ── Layout Actions ────────────────────────────────────
 
+  // Re-applying the layout that's already selected is allowed on purpose: if the
+  // display server's state has drifted from what's actually on screen, tapping
+  // the current layout is how you force them back into sync.
   switchLayout: async (id: string) => {
-    if (get().switching || id === get().currentLayout) return;
-    set({ switching: true });
+    if (get().switching) return;
+    set({ switching: true, layoutNotice: null });
     try {
       const data = await client.default.switchLayout({ layout: id });
       if (data.success) {
         set({ currentLayout: data.current_layout ?? "" });
+        set({ layoutNotice: noticeForOutcome(data.outcome, data.message) });
         void get().refreshAll(false);
       } else {
-        alert(data.message || "Switch failed");
+        set({ layoutNotice: { kind: "warn", text: data.message || "Switch failed" } });
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Switch failed");
+      set({
+        layoutNotice: {
+          kind: "warn",
+          text: e instanceof Error ? e.message : "Switch failed",
+        },
+      });
     } finally {
       set({ switching: false });
     }
   },
+
+  dismissLayoutNotice: () => set({ layoutNotice: null }),
 
   removeLayout: async (id: string) => {
     if (!confirm("Are you sure you want to delete this layout?")) return;

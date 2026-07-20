@@ -12,6 +12,8 @@ export function Layouts() {
   const error = useStore((s) => s.layoutsError);
   const switching = useStore((s) => s.switching);
   const switchLayout = useStore((s) => s.switchLayout);
+  const layoutNotice = useStore((s) => s.layoutNotice);
+  const dismissLayoutNotice = useStore((s) => s.dismissLayoutNotice);
   const removeLayout = useStore((s) => s.removeLayout);
   const saveCurrentLayout = useStore((s) => s.saveCurrentLayout);
   const updateLayout = useStore((s) => s.updateLayout);
@@ -70,6 +72,24 @@ export function Layouts() {
             className="w-full sm:w-auto rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Save
+          </button>
+        </div>
+      )}
+
+      {layoutNotice && (
+        <div
+          className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${layoutNotice.kind === "warn"
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+            : "border-zinc-700 bg-zinc-800/60 text-zinc-300"
+            }`}
+        >
+          <span className="flex-1">{layoutNotice.text}</span>
+          <button
+            onClick={dismissLayoutNotice}
+            aria-label="Dismiss"
+            className="shrink-0 rounded p-0.5 text-current opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
