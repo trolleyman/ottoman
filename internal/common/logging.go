@@ -13,10 +13,36 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
 )
+
+// debugLogging enables verbose logging: subprocess output and the requests the
+// web UI polls continuously. Both are off by default because they drown out the
+// entries that matter — they accounted for ~95% of a typical log file.
+var debugLogging atomic.Bool
+
+// SetDebugLogging turns verbose logging on or off.
+func SetDebugLogging(on bool) { debugLogging.Store(on) }
+
+// DebugLogging reports whether verbose logging is enabled.
+func DebugLogging() bool { return debugLogging.Load() }
+
+// isRoutinePoll reports whether a request is a successful read of an endpoint
+// the UI polls on a timer. These repeat every few seconds forever and carry no
+// information unless something failed, so they're suppressed outside debug mode.
+func isRoutinePoll(r *http.Request, status int) bool {
+	if r.Method != http.MethodGet || status != http.StatusOK {
+		return false
+	}
+	switch r.URL.Path {
+	case "/health", "/api/status", "/api/layouts", "/api/monitors", "/api/audio/sinks":
+		return true
+	}
+	return false
+}
 
 // LoggingMiddleware logs HTTP requests with method, path, status, and duration
 func LoggingMiddleware(next http.Handler) http.Handler {
@@ -24,6 +50,9 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		lw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(lw, r)
+		if !DebugLogging() && isRoutinePoll(r, lw.status) {
+			return
+		}
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, lw.status, time.Since(start).Round(time.Microsecond))
 	})
 }
@@ -186,6 +215,26 @@ func FormatCmd(cmd string, args ...string) string {
 	return strings.Join(parts, " ")
 }
 
+// logRunning announces a subprocess, but only in debug mode. The audio and DDC
+// pollers shell out every few seconds, so these lines are pure noise in normal
+// operation; a failing command still surfaces its name via the wrapped error.
+func logRunning(name string, args ...string) {
+	if !DebugLogging() {
+		return
+	}
+	log.Printf("Running: %s", FormatCmd(name, args...))
+}
+
+// logStdout logs a command's stdout, but only in debug mode. Subprocess dumps
+// (wpctl inspect and friends) are by far the largest source of log volume and
+// are only useful when actively debugging.
+func logStdout(output string) {
+	if !DebugLogging() {
+		return
+	}
+	logOutput("[stdout]", output)
+}
+
 // logOutput logs each line of output with the given prefix.
 func logOutput(prefix, output string) {
 	out := strings.TrimRight(output, "\n")
@@ -200,7 +249,7 @@ func logOutput(prefix, output string) {
 
 // RunCmd executes a command, logging it and piping stdout/stderr to the log.
 func RunCmd(name string, args ...string) error {
-	log.Printf("Running: %s", FormatCmd(name, args...))
+	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -208,7 +257,7 @@ func RunCmd(name string, args ...string) error {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	logOutput("[stdout]", stdout.String())
+	logStdout(stdout.String())
 	logOutput("[stderr]", stderr.String())
 
 	if err != nil {
@@ -220,7 +269,7 @@ func RunCmd(name string, args ...string) error {
 // RunCmdOutput executes a command, logging it, and returns stdout.
 // Stderr is logged. Returns stdout and any error.
 func RunCmdOutput(name string, args ...string) (string, error) {
-	log.Printf("Running: %s", FormatCmd(name, args...))
+	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -229,7 +278,7 @@ func RunCmdOutput(name string, args ...string) (string, error) {
 
 	err := cmd.Run()
 	logOutput("[stderr]", stderr.String())
-	logOutput("[stdout]", stdout.String())
+	logStdout(stdout.String())
 
 	if err != nil {
 		return stdout.String(), errors.Wrapf(err, "failed to run %s", name)
@@ -239,7 +288,7 @@ func RunCmdOutput(name string, args ...string) (string, error) {
 
 // RunCmdAllOutput executes a command, logging it, and returns stdout and stderr.
 func RunCmdAllOutput(name string, args ...string) (string, string, error) {
-	log.Printf("Running: %s", FormatCmd(name, args...))
+	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -247,7 +296,7 @@ func RunCmdAllOutput(name string, args ...string) (string, string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	logOutput("[stderr]", stderr.String())
-	logOutput("[stdout]", stdout.String())
+	logStdout(stdout.String())
 
 	if err != nil {
 		return stdout.String(), stderr.String(), errors.Wrapf(err, "failed to run %s", name)
@@ -258,7 +307,7 @@ func RunCmdAllOutput(name string, args ...string) (string, string, error) {
 // RunCmdSilent executes a command, logging it but ignoring errors.
 // Useful for cleanup commands where failure is expected.
 func RunCmdSilent(name string, args ...string) {
-	log.Printf("Running: %s", FormatCmd(name, args...))
+	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
@@ -266,7 +315,7 @@ func RunCmdSilent(name string, args ...string) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	logOutput("[stdout]", stdout.String())
+	logStdout(stdout.String())
 	logOutput("[stderr]", stderr.String())
 
 	if err != nil {
