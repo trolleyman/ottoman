@@ -41,6 +41,76 @@ func wrapMonitors(blocks ...string) string {
 	return "<monitors version=\"2\">\n" + strings.Join(blocks, "") + "</monitors>\n"
 }
 
+// writeTempMonitors writes a monitors.xml into a temp dir and returns its path.
+func writeTempMonitors(t *testing.T, blocks ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "monitors.xml")
+	if err := os.WriteFile(path, []byte(wrapMonitors(blocks...)), 0o644); err != nil {
+		t.Fatalf("writing temp monitors.xml: %v", err)
+	}
+	return path
+}
+
+func edidSet(specs ...monitorSpec) map[string]bool {
+	set := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		set[specEDIDKey(s)] = true
+	}
+	return set
+}
+
+// The same monitors on renumbered connectors must be recognised as the current
+// configuration and dropped, not preserved as an orphan. This is the case that
+// let blocks pile up: DisplayPort renumbers DP-6 to DP-3 when a monitor sleeps.
+func TestPreservedConfigsDropsRenumberedConnectors(t *testing.T) {
+	// Same physical monitors as specA/specB, but on different connectors.
+	renamedA := monitorSpec{Connector: "DP-9", Vendor: "LG", Product: "27GL", Serial: "S1"}
+	renamedB := monitorSpec{Connector: "HDMI-7", Vendor: "DEL", Product: "U2415", Serial: "S2"}
+	block := buildConfigurationXML(
+		[]persistLogicalMonitor{{spec: renamedA, width: 2560, height: 1440, rate: 60}},
+		[]monitorSpec{renamedB},
+	)
+	path := writeTempMonitors(t, block)
+
+	got := preservedConfigs(path, edidSet(specA(), specB()))
+	if len(got) != 0 {
+		t.Errorf("block for the same monitors on renumbered connectors should be replaced, kept %d", len(got))
+	}
+}
+
+// A block describing genuinely different hardware must survive.
+func TestPreservedConfigsKeepsOtherHardware(t *testing.T) {
+	other := monitorSpec{Connector: "DP-1", Vendor: "AOC", Product: "Q27G4", Serial: "S9"}
+	block := buildConfigurationXML(
+		[]persistLogicalMonitor{{spec: other, width: 2560, height: 1440, rate: 60}}, nil)
+	path := writeTempMonitors(t, block)
+
+	if got := preservedConfigs(path, edidSet(specA(), specB())); len(got) != 1 {
+		t.Errorf("a block for different monitors should be preserved, kept %d", len(got))
+	}
+}
+
+// Several blocks describing the same monitors collapse to the first: Mutter only
+// ever applies the first match, so the rest are dead weight that can later hijack
+// the display when they match a transient hardware state.
+func TestPreservedConfigsDeduplicatesEquivalentBlocks(t *testing.T) {
+	other := monitorSpec{Connector: "DP-1", Vendor: "AOC", Product: "Q27G4", Serial: "S9"}
+	sameOnAnotherPort := monitorSpec{Connector: "DP-5", Vendor: "AOC", Product: "Q27G4", Serial: "S9"}
+	first := buildConfigurationXML(
+		[]persistLogicalMonitor{{spec: other, width: 2560, height: 1440, rate: 60}}, nil)
+	dup := buildConfigurationXML(
+		[]persistLogicalMonitor{{spec: sameOnAnotherPort, width: 1920, height: 1080, rate: 60}}, nil)
+	path := writeTempMonitors(t, first, dup)
+
+	got := preservedConfigs(path, edidSet(specA(), specB()))
+	if len(got) != 1 {
+		t.Fatalf("equivalent blocks should collapse to one, kept %d", len(got))
+	}
+	if !strings.Contains(got[0], "2560") {
+		t.Errorf("the first block should be the one kept, got:\n%s", got[0])
+	}
+}
+
 // A generated block must parse back into the spec sets used to match hardware.
 func TestBuildConfigurationRoundTrips(t *testing.T) {
 	enabled := []persistLogicalMonitor{{
@@ -101,8 +171,7 @@ func TestPreservedConfigsReplacesMatchingKeepsOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	currentKeys := map[string]bool{specKey(specA()): true, specKey(specB()): true}
-	preserved := preservedConfigs(path, currentKeys)
+	preserved := preservedConfigs(path, edidSet(specA(), specB()))
 
 	if len(preserved) != 1 {
 		t.Fatalf("want 1 preserved config, got %d", len(preserved))

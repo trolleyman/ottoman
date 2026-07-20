@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -22,10 +23,12 @@ import (
 // that Mutter reads it back on the next hardware change or session start.
 //
 // A monitors.xml file can hold several <configuration> blocks, one per distinct
-// set of connected monitors. Mutter selects the block whose set of monitor
+// set of connected monitors. Mutter selects the first block whose set of monitor
 // specs (enabled + disabled) exactly equals the currently connected set. We
-// therefore replace only the block matching the current hardware and preserve
-// any others verbatim.
+// therefore replace only the block describing the current hardware and preserve
+// the others verbatim — identifying them by EDID rather than connector, so the
+// same monitors on renumbered ports are recognised as the same configuration
+// instead of piling up as orphans (see specEDIDKey).
 
 // persistLogicalMonitor is one enabled monitor's placement, captured while
 // building the D-Bus apply request so it can also be written to monitors.xml.
@@ -67,8 +70,34 @@ func specKey(s monitorSpec) string {
 	return s.Connector + "\x00" + s.Vendor + "\x00" + s.Product + "\x00" + s.Serial
 }
 
-func specKeyXML(s specXML) string {
-	return s.Connector + "\x00" + s.Vendor + "\x00" + s.Product + "\x00" + s.Serial
+// specEDIDKey identifies a monitor by its stable vendor/product/serial triple,
+// deliberately ignoring the connector.
+//
+// DisplayPort connectors get renumbered when a monitor sleeps or is replugged
+// (DP-6 becomes DP-3, and so on), so comparing by connector treats the very same
+// physical setup as a different one: the old block is never replaced and a fresh
+// near-duplicate is appended every time. Those orphans accumulate — one machine
+// reached ten blocks — and are not merely untidy: a stale partial block can later
+// match a *transient* hardware state (e.g. while a DP monitor is briefly absent)
+// and Mutter will apply it, hijacking the display. Keying on EDID lets us replace
+// the equivalent block instead of hoarding it.
+func specEDIDKey(s monitorSpec) string {
+	return s.Vendor + "\x00" + s.Product + "\x00" + s.Serial
+}
+
+func specEDIDKeyXML(s specXML) string {
+	return s.Vendor + "\x00" + s.Product + "\x00" + s.Serial
+}
+
+// keySetSignature renders a key set as a stable string so two sets can be
+// compared for equality by value.
+func keySetSignature(keys map[string]bool) string {
+	out := make([]string, 0, len(keys))
+	for k := range keys {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\x01")
 }
 
 // monitorsXMLPath returns the path Mutter reads, honouring XDG_CONFIG_HOME.
@@ -93,10 +122,10 @@ func writeMonitorsXML(enabled []persistLogicalMonitor, connected []mutterMonitor
 		enabledKeys[specKey(e.spec)] = true
 	}
 	var disabled []monitorSpec
-	currentKeys := make(map[string]bool, len(connected))
+	currentEDIDs := make(map[string]bool, len(connected))
 	for i := range connected {
 		spec := connected[i].Spec
-		currentKeys[specKey(spec)] = true
+		currentEDIDs[specEDIDKey(spec)] = true
 		if !enabledKeys[specKey(spec)] {
 			disabled = append(disabled, spec)
 		}
@@ -109,7 +138,7 @@ func writeMonitorsXML(enabled []persistLogicalMonitor, connected []mutterMonitor
 		return err
 	}
 
-	preserved := preservedConfigs(path, currentKeys)
+	preserved := preservedConfigs(path, currentEDIDs)
 
 	var b strings.Builder
 	b.WriteString("<monitors version=\"2\">\n")
@@ -131,9 +160,14 @@ func writeMonitorsXML(enabled []persistLogicalMonitor, connected []mutterMonitor
 }
 
 // preservedConfigs returns the raw inner XML of every existing <configuration>
-// that targets a *different* hardware set than the one we're rewriting. A parse
-// failure (or missing file) simply yields nothing to preserve.
-func preservedConfigs(path string, currentKeys map[string]bool) []string {
+// worth keeping: those describing a *different* set of physical monitors than
+// the one we're rewriting, with equivalent blocks collapsed to the first.
+//
+// Both comparisons are by EDID rather than connector (see specEDIDKey), so a
+// block for the same monitors under renumbered connectors is recognised as the
+// same configuration and dropped instead of accumulating. A parse failure (or
+// missing file) simply yields nothing to preserve.
+func preservedConfigs(path string, currentEDIDs map[string]bool) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -144,17 +178,25 @@ func preservedConfigs(path string, currentKeys map[string]bool) []string {
 	}
 
 	var preserved []string
+	kept := make(map[string]bool)
 	for _, cfg := range parsed.Configs {
 		keys := make(map[string]bool)
 		for _, s := range cfg.LogicalSpecs {
-			keys[specKeyXML(s)] = true
+			keys[specEDIDKeyXML(s)] = true
 		}
 		for _, s := range cfg.DisabledSpecs {
-			keys[specKeyXML(s)] = true
+			keys[specEDIDKeyXML(s)] = true
 		}
-		if sameKeySet(keys, currentKeys) {
-			continue // this block is for the current hardware; we replace it
+		if sameKeySet(keys, currentEDIDs) {
+			continue // describes the current monitors; our new block replaces it
 		}
+		// Mutter applies the first matching block, so when several describe the
+		// same monitors only the first can ever win — the rest are dead weight.
+		sig := keySetSignature(keys)
+		if kept[sig] {
+			continue
+		}
+		kept[sig] = true
 		preserved = append(preserved, cfg.Inner)
 	}
 	return preserved
