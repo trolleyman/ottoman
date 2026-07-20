@@ -1,7 +1,9 @@
 package display
 
 import (
+	"math"
 	"slices"
+	"sort"
 
 	"github.com/trolleyman/ottoman/internal/api"
 )
@@ -126,14 +128,52 @@ func (s *Layouts) FindByIDOrAlias(query string) []api.Layout {
 	return matches
 }
 
-// GetClosest returns the layout that matches the provided monitors
-func (s *Layouts) GetClosest(monitors []api.Monitor) (string, bool) {
-	for _, layout := range s.layouts {
+// GetClosest returns the layout matching the provided monitors.
+//
+// Several layouts can legitimately match at once (two that differ only in a
+// field the display can't distinguish). Iterating the layout map directly made
+// the winner depend on Go's randomised map order, so the reported current layout
+// could differ between calls. When there's a tie, prefer is returned if it's
+// among the matches — the layout the user actually switched to is the right
+// answer — and otherwise the lowest ID wins so the result is at least stable.
+func (s *Layouts) GetClosest(monitors []api.Monitor, prefer string) (string, bool) {
+	var found []string
+	for id, layout := range s.layouts {
 		if matches(monitors, layout) {
-			return layout.Id, true
+			found = append(found, id)
 		}
 	}
-	return "", false
+	if len(found) == 0 {
+		return "", false
+	}
+	if prefer != "" && slices.Contains(found, prefer) {
+		return prefer, true
+	}
+	sort.Strings(found)
+	return found[0], true
+}
+
+// sameScale compares scale factors, treating an unset (0) scale as 100% so
+// layouts saved before scale was recorded still match an unscaled display.
+func sameScale(a, b float64) bool {
+	if a <= 0 {
+		a = 1
+	}
+	if b <= 0 {
+		b = 1
+	}
+	return math.Abs(a-b) < 1e-6
+}
+
+// sameRefreshRate compares refresh rates loosely. Modes report rates like
+// 59.93939208984375, and a layout may have been applied via the closest
+// available mode, so an exact comparison would spuriously fail to match. The
+// tolerance is wide enough to absorb that but still separates 60Hz from 144Hz.
+func sameRefreshRate(a, b float64) bool {
+	if a <= 0 || b <= 0 {
+		return true // unknown on either side: don't let it veto a match
+	}
+	return math.Abs(a-b) < 0.5
 }
 
 func matches(monitors []api.Monitor, layout api.Layout) bool {
@@ -175,6 +215,19 @@ func matches(monitors []api.Monitor, layout api.Layout) bool {
 				continue
 			}
 			if lm.PositionX != m.Active.PositionX || lm.PositionY != m.Active.PositionY {
+				continue
+			}
+			// Geometry alone doesn't identify a layout: two layouts can place the
+			// same monitors identically and differ only in which one is primary,
+			// their scale, or their refresh rate. Without these, such layouts are
+			// indistinguishable and the wrong one gets reported as current.
+			if lm.Primary != m.Active.Primary {
+				continue
+			}
+			if !sameScale(lm.Scale, m.Active.Scale) {
+				continue
+			}
+			if !sameRefreshRate(lm.RefreshRate, m.Active.RefreshRate) {
 				continue
 			}
 

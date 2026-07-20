@@ -311,9 +311,11 @@ func getOutboundIP() string {
 func (a *Agent) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
 	allLayouts := a.layouts.List()
 
-	// Update current layout from display manager to ensure it's fresh
+	// Update current layout from display manager to ensure it's fresh. The
+	// layout we last switched to breaks ties between layouts the display can't
+	// tell apart, so it isn't replaced by an equally-matching sibling.
 	if monitors, err := a.displayMgr.ListMonitors(); err == nil {
-		if current, ok := a.layouts.GetClosest(monitors); ok {
+		if current, ok := a.layouts.GetClosest(monitors, a.currentLayout); ok {
 			a.currentLayout = current
 		}
 	}
@@ -420,7 +422,7 @@ func (a *Agent) GetCurrentLayout(ctx context.Context, request api.GetCurrentLayo
 		log.Printf("Failed to list monitors: %v", err)
 		currentLayout = a.currentLayout
 	} else {
-		if layout, ok := a.layouts.GetClosest(monitors); ok {
+		if layout, ok := a.layouts.GetClosest(monitors, a.currentLayout); ok {
 			currentLayout = layout
 		}
 	}
