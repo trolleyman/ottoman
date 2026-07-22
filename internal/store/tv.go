@@ -9,7 +9,8 @@ import (
 )
 
 // TVStatePath returns the path to the TV runtime-state file (holds the pairing
-// keys, which must survive config redeploys — hence data dir, not config).
+// keys, which are generated at runtime rather than authored by hand — hence
+// data dir, not config).
 func TVStatePath() string {
 	return filepath.Join(DataDir(), "tv.json")
 }
