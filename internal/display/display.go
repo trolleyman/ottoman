@@ -153,6 +153,49 @@ func (s *Layouts) GetClosest(monitors []api.Monitor, prefer string) (string, boo
 	return found[0], true
 }
 
+// MatchBySet returns the ID of a saved layout whose set of monitors — compared
+// by EDID, ignoring position, scale and which one is primary — is exactly the
+// given EDIDs. Unlike GetClosest it deliberately disregards geometry: it's used
+// to find the layout for a *subset* of the physically-connected monitors (e.g.
+// when a TV in the current arrangement is powered off), where the monitors that
+// remain still carry their old positions and so wouldn't match on geometry.
+// Ties break to the lowest ID for stability; ok is false if no layout uses
+// exactly that set (or any given EDID is empty, since an unidentifiable monitor
+// can't be set-matched).
+func (s *Layouts) MatchBySet(edids []string) (string, bool) {
+	want := make(map[string]bool, len(edids))
+	for _, e := range edids {
+		if e == "" {
+			return "", false
+		}
+		want[e] = true
+	}
+	if len(want) == 0 {
+		return "", false
+	}
+	var found []string
+	for id, layout := range s.layouts {
+		if len(layout.Monitors) != len(want) {
+			continue
+		}
+		ok := true
+		for _, lm := range layout.Monitors {
+			if lm.Edid == "" || !want[lm.Edid] {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			found = append(found, id)
+		}
+	}
+	if len(found) == 0 {
+		return "", false
+	}
+	sort.Strings(found)
+	return found[0], true
+}
+
 // sameScale compares scale factors, treating an unset (0) scale as 100% so
 // layouts saved before scale was recorded still match an unscaled display.
 func sameScale(a, b float64) bool {

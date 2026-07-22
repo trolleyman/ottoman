@@ -24,6 +24,42 @@ func layoutMonitor(edid string, w, h, x, y int, primary bool, scale, rate float6
 	}
 }
 
+func TestMatchBySetIgnoresGeometry(t *testing.T) {
+	// The monitors-only layout places AOC at a different origin than it sits at
+	// while extended alongside the (now-off) TV — MatchBySet must still find it.
+	monitorsOnly := api.Layout{Id: "2", Monitors: []api.LayoutMonitor{
+		layoutMonitor("AOC", 2560, 1440, 0, 0, true, 1, 60),
+	}}
+	withTV := api.Layout{Id: "1", Monitors: []api.LayoutMonitor{
+		layoutMonitor("AOC", 2560, 1440, 3840, 0, false, 1, 60),
+		layoutMonitor("LG", 3840, 2160, 0, 0, true, 2, 60),
+	}}
+	s := NewLayoutsFromSlice([]api.Layout{monitorsOnly, withTV})
+
+	id, ok := s.MatchBySet([]string{"AOC"})
+	if !ok || id != "2" {
+		t.Fatalf("MatchBySet([AOC]) = %q,%v; want \"2\",true", id, ok)
+	}
+	if id, ok := s.MatchBySet([]string{"AOC", "LG"}); !ok || id != "1" {
+		t.Errorf("MatchBySet([AOC,LG]) = %q,%v; want \"1\",true", id, ok)
+	}
+	if _, ok := s.MatchBySet([]string{"AOC", "DELL"}); ok {
+		t.Error("MatchBySet with an unknown set should not match")
+	}
+	if _, ok := s.MatchBySet([]string{""}); ok {
+		t.Error("MatchBySet with an empty EDID should not match")
+	}
+}
+
+func TestMatchBySetTieBreaksLowestID(t *testing.T) {
+	a := api.Layout{Id: "b", Monitors: []api.LayoutMonitor{layoutMonitor("AOC", 2560, 1440, 0, 0, true, 1, 60)}}
+	b := api.Layout{Id: "a", Monitors: []api.LayoutMonitor{layoutMonitor("AOC", 2560, 1440, 0, 0, true, 2, 120)}}
+	s := NewLayoutsFromSlice([]api.Layout{a, b})
+	if id, ok := s.MatchBySet([]string{"AOC"}); !ok || id != "a" {
+		t.Errorf("MatchBySet tie = %q,%v; want \"a\",true", id, ok)
+	}
+}
+
 // Two layouts placing the same monitors identically but differing in which one
 // is primary must not be confused for each other.
 func TestMatchesDistinguishesPrimary(t *testing.T) {
