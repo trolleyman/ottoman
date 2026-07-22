@@ -14,6 +14,7 @@ func (a *Agent) SetMonitorBrightness(ctx context.Context, request api.SetMonitor
 		return api.SetMonitorBrightness400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
 	if err := a.control.setBrightness(request.Body.Edid, request.Body.Brightness); err != nil {
+		log.Printf("Set brightness of %q to %d failed: %v", request.Body.Edid, request.Body.Brightness, err)
 		return api.SetMonitorBrightness500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}
 	log.Printf("Set brightness of %q to %d", request.Body.Edid, request.Body.Brightness)
@@ -27,6 +28,7 @@ func (a *Agent) SetMonitorPower(ctx context.Context, request api.SetMonitorPower
 		return api.SetMonitorPower400JSONResponse{Code: 400, Error: "edid is required"}, nil
 	}
 	if err := a.control.setPower(request.Body.Edid, request.Body.On); err != nil {
+		log.Printf("Set power of %q to on=%v failed: %v", request.Body.Edid, request.Body.On, err)
 		return api.SetMonitorPower500JSONResponse{Code: 500, Error: err.Error()}, nil
 	}
 	log.Printf("Set power of %q to on=%v", request.Body.Edid, request.Body.On)
