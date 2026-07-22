@@ -103,7 +103,7 @@ func (b *i2cBus) do(fn func(f *os.File) error) error {
 		if wait := b.spacing - time.Since(b.lastOp); wait > 0 {
 			time.Sleep(wait)
 		}
-		err := b.attempt(fn)
+		err := b.attempt(ddcAddr, fn)
 		b.lastOp = time.Now()
 
 		if err == nil {
@@ -119,8 +119,26 @@ func (b *i2cBus) do(fn func(f *os.File) error) error {
 	return errors.Wrapf(lastErr, "DDC op failed after %d attempts", ddcMaxAttempts)
 }
 
-// attempt opens the bus, targets the DDC/CI address, and runs one operation.
-func (b *i2cBus) attempt(fn func(f *os.File) error) error {
+// once runs a single operation against addr on the bus — no retries, but with
+// the bus lock held and the adaptive spacing honoured. EDID reads (address
+// 0x50, see edid_linux.go) go through here rather than opening the bus
+// themselves: they share the wire with DDC/CI traffic (0x37), so a detect that
+// lands in the middle of a brightness drag's request/reply exchange corrupts
+// both — the read comes back short and the setvcp is answered out of sequence.
+func (b *i2cBus) once(addr int, fn func(f *os.File) error) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if wait := b.spacing - time.Since(b.lastOp); wait > 0 {
+		time.Sleep(wait)
+	}
+	err := b.attempt(addr, fn)
+	b.lastOp = time.Now()
+	return err
+}
+
+// attempt opens the bus, targets an i2c slave address, and runs one operation.
+func (b *i2cBus) attempt(addr int, fn func(f *os.File) error) error {
 	f, err := os.OpenFile(fmt.Sprintf("/dev/i2c-%d", b.bus), os.O_RDWR, 0)
 	if err != nil {
 		return errors.Wrapf(err, "open /dev/i2c-%d", b.bus)
@@ -128,8 +146,9 @@ func (b *i2cBus) attempt(fn func(f *os.File) error) error {
 	defer f.Close()
 
 	// I2C_SLAVE_FORCE (not I2C_SLAVE) because a stale kernel driver can hold the
-	// address; 0x37 is DDC/CI-only so forcing is safe, and it's what ddcutil does.
-	if err := unix.IoctlSetInt(int(f.Fd()), i2cSlaveForce, ddcAddr); err != nil {
+	// address; 0x37 is DDC/CI-only and 0x50 is the display's own EEPROM, so
+	// forcing is safe on both — and it's what ddcutil does.
+	if err := unix.IoctlSetInt(int(f.Fd()), i2cSlaveForce, addr); err != nil {
 		return errors.Wrap(err, "set i2c slave address")
 	}
 	return fn(f)

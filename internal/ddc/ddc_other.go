@@ -12,6 +12,9 @@ func Available() bool { return false }
 // Detect is unsupported off Linux.
 func Detect() ([]Display, error) { return nil, errUnsupported }
 
+// SysfsDisplays is unsupported off Linux (DRM sysfs is a Linux interface).
+func SysfsDisplays() []Display { return nil }
+
 // GetBrightness is unsupported off Linux.
 func GetBrightness(bus int) (int, error) { return 0, errUnsupported }
 

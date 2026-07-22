@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"golang.org/x/sys/unix"
 )
 
 // Native EDID-based display detection, replacing `ddcutil detect` for bus
@@ -116,25 +115,67 @@ func i2cNum(base string) (int, bool) {
 
 // readEDID reads a display's 128-byte EDID base block from address 0x50 on the
 // given bus. It writes the word offset (0) then reads the block — the standard
-// EDID access pattern, which GPU DDC buses support directly.
+// EDID access pattern, which GPU DDC buses support directly. The transfer runs
+// under the bus lock (i2cBus.once) so it can't interleave with DDC/CI traffic
+// on the same wire.
 func readEDID(bus int) ([]byte, error) {
-	f, err := os.OpenFile(fmt.Sprintf("/dev/i2c-%d", bus), os.O_RDWR, 0)
-	if err != nil {
-		return nil, errors.Wrapf(err, "open /dev/i2c-%d", bus)
-	}
-	defer f.Close()
-
-	if err := unix.IoctlSetInt(int(f.Fd()), i2cSlaveForce, edidAddr); err != nil {
-		return nil, errors.Wrap(err, "set i2c slave address")
-	}
-	if _, err := f.Write([]byte{0x00}); err != nil {
-		return nil, errors.Wrap(err, "write EDID offset")
-	}
 	buf := make([]byte, edidLen)
-	if _, err := io.ReadFull(f, buf); err != nil {
-		return nil, errors.Wrap(err, "read EDID")
+	err := getBus(bus).once(edidAddr, func(f *os.File) error {
+		if _, err := f.Write([]byte{0x00}); err != nil {
+			return errors.Wrap(err, "write EDID offset")
+		}
+		if _, err := io.ReadFull(f, buf); err != nil {
+			return errors.Wrap(err, "read EDID")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return buf, nil
+}
+
+// SysfsDisplays lists the displays the kernel reports as connected, reading
+// each DRM connector's EDID from sysfs. Unlike DetectDirect this touches no i2c
+// bus at all — the kernel caches the EDID it read when the link came up — so it
+// keeps answering when a live 0x50 read doesn't. That happens: a DisplayPort
+// monitor tunnels DDC over the AUX channel, and the bridge can stop passing raw
+// i2c through after a sleep/wake cycle while the panel stays connected, lit, and
+// perfectly willing to take DDC/CI commands.
+//
+// It's identity only. The connector's DDC bus is resolved from its sysfs ddc
+// link when the driver publishes one (AMD/Intel); NVIDIA doesn't, so those come
+// back with Bus == -1 and can't be addressed on this information alone.
+func SysfsDisplays() []Display {
+	var displays []Display
+	for _, dir := range globQuiet("/sys/class/drm/card*-*") {
+		status, err := os.ReadFile(filepath.Join(dir, "status"))
+		if err != nil || strings.TrimSpace(string(status)) != "connected" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, "edid"))
+		if err != nil {
+			continue
+		}
+		d, ok := parseEDID(raw)
+		if !ok {
+			continue // a connected-but-EDID-less connector (or a stub block)
+		}
+		d.Bus = sysfsDDCBus(dir)
+		displays = append(displays, d)
+	}
+	return displays
+}
+
+// sysfsDDCBus returns the i2c bus a DRM connector exposes its DDC channel on,
+// or -1 when the driver doesn't publish one.
+func sysfsDDCBus(connectorDir string) int {
+	for _, link := range globQuiet(filepath.Join(connectorDir, "ddc/i2c-dev/i2c-*")) {
+		if n, ok := i2cNum(filepath.Base(link)); ok {
+			return n
+		}
+	}
+	return -1
 }
 
 var edidHeader = []byte{0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00}
