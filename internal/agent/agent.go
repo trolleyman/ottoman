@@ -98,7 +98,10 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	var keyboard input.KeyboardController
 	var audioCtl audio.Controller
 	if greeter {
-		log.Println("Greeter mode: input, audio and TV control are disabled")
+		// Input and audio need a real user session; the TV backend is still wired
+		// up so the login screen can tell whether a TV is powered off (see
+		// applyStartupLayout), but it's only read at startup, not driven.
+		log.Println("Greeter mode: input and audio are disabled")
 	} else {
 		mouse, err = input.NewMouseController()
 		if err != nil {
@@ -159,10 +162,25 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	return a, nil
 }
 
-// applyStartupLayout applies the last-used layout (recorded by the user's agent
-// on each switch) so the greeter mirrors the user's session. Best-effort: any
+// applyStartupLayout brings the login screen up sensibly. Normally it mirrors
+// the user's last-used layout (recorded by the user's agent on each switch). But
+// if that layout would put the login screen on a TV whose panel is off — the
+// machine was last used on the TV and is now booted with it switched off — it
+// steers onto the monitors that are actually lit instead. Best-effort: any
 // problem just leaves the greeter's default layout in place.
 func (a *Agent) applyStartupLayout() {
+	if monitors, err := a.displayMgr.ListMonitors(); err == nil {
+		if off := a.offScreenTVs(monitors); len(off) > 0 {
+			a.applyOffTVRecovery(monitors, off)
+			return
+		}
+	}
+	a.restoreLastLayout()
+}
+
+// restoreLastLayout applies the user's last-used layout so the greeter mirrors
+// their session.
+func (a *Agent) restoreLastLayout() {
 	id := store.LoadCurrentLayout()
 	if id == "" {
 		log.Println("Greeter: no last-used layout recorded; leaving display as-is")
@@ -1022,6 +1040,16 @@ func (a *Agent) Start() error {
 		}
 	}()
 
+	// In a user session, correct the display if it came up stranded on a
+	// powered-off TV. Runs off the startup path (the TV probe dials the network)
+	// after a short settle so the session's own display setup has landed first.
+	if !a.greeter {
+		go func() {
+			time.Sleep(3 * time.Second)
+			a.correctStartupDisplay()
+		}()
+	}
+
 	<-stop
 	log.Println("Shutting down agent...")
 
@@ -1097,7 +1125,10 @@ func (a *Agent) mirrorToGreeter() {
 		}
 		return
 	}
-	for _, name := range []string{"layouts.json", "current-layout"} {
+	// registry.json and tv.json let the greeter identify which monitor is a TV
+	// and reach it (pairing key) so it can tell at the login screen whether the
+	// TV's panel is off — see applyStartupLayout.
+	for _, name := range []string{"layouts.json", "current-layout", "registry.json", "tv.json"} {
 		if err := copyFileInto(filepath.Join(store.DataDir(), name), filepath.Join(greeterDataDir, name)); err != nil {
 			log.Printf("Warning: failed to mirror %s to greeter: %v", name, err)
 		}
