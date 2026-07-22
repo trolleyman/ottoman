@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +35,17 @@ const brightnessCacheTTL = 1 * time.Hour
 // and serve the last-known state meanwhile.
 const tvStateCacheTTL = 10 * time.Second
 
+// ddcMissCooldown rate-limits the re-detect kicked when a monitor we're asked
+// about isn't in the cached topology. Without it, a genuinely absent monitor
+// (a remembered layout entry that's unplugged) would re-detect on every poll.
+const ddcMissCooldown = 30 * time.Second
+
+// ddcRefreshWedged bounds how long the single in-flight detect slot may be held
+// before we assume the goroutine holding it is stuck and claim it anyway. An
+// i2c read blocks in the kernel with no timeout of its own, so a wedged bus must
+// not be able to freeze display detection for the life of the process.
+const ddcRefreshWedged = 2 * time.Minute
+
 // monitorControl maps physical monitors (by EDID) to their control backend and
 // dispatches brightness/power operations. DDC monitors are matched to an i2c
 // bus via ddcutil; the TV backend is wired in separately.
@@ -43,7 +56,11 @@ type monitorControl struct {
 	mu                   sync.Mutex
 	ddcCache             []ddc.Display
 	ddcFetched           time.Time
-	ddcRefreshing        bool // a background `ddcutil detect` is in flight
+	ddcRefreshing        bool      // a background detect is in flight
+	ddcRefreshAt         time.Time // when that detect claimed the slot
+	ddcSummary           string    // last logged topology, to log only on change
+	ddcBusMemory         map[string]int
+	ddcMissAt            map[string]time.Time
 	brightness           map[string]brightnessSample
 	brightnessRefreshing map[string]bool // per-EDID background read in flight
 	tvState              map[string]tvStateSample
@@ -64,6 +81,8 @@ type tvStateSample struct {
 func newMonitorControl(reg *store.Registry) *monitorControl {
 	return &monitorControl{
 		registry:             reg,
+		ddcBusMemory:         make(map[string]int),
+		ddcMissAt:            make(map[string]time.Time),
 		brightness:           make(map[string]brightnessSample),
 		brightnessRefreshing: make(map[string]bool),
 		tvState:              make(map[string]tvStateSample),
@@ -91,39 +110,136 @@ func (c *monitorControl) ddcDisplays() []ddc.Display {
 	}
 	// Stale but known: refresh off the request path (detect churns the i2c bus
 	// and stutters the compositor, and can take a while) and serve the
-	// last-known topology now.
-	if !c.ddcRefreshing {
-		c.ddcRefreshing = true
-		go c.detectAndStore()
+	// last-known topology now. If a prior detect has held the in-flight slot
+	// past ddcRefreshWedged it's presumed stuck on a dead bus — claim it anyway
+	// so detection can't wedge permanently.
+	if !c.ddcRefreshing || time.Since(c.ddcRefreshAt) > ddcRefreshWedged {
+		c.startDetectLocked()
 	}
 	c.mu.Unlock()
 	return cached
 }
 
-// detectAndStore runs `ddcutil detect` and updates the cache. Safe to call in a
-// background goroutine; it clears the in-flight guard on the way out.
+// startDetectLocked launches a background detect and marks the in-flight slot.
+// Must be called with c.mu held.
+func (c *monitorControl) startDetectLocked() {
+	c.ddcRefreshing = true
+	c.ddcRefreshAt = time.Now()
+	go c.detectAndStore()
+}
+
+// detectAndStore runs display detection and updates the cache. Safe to call in
+// a background goroutine; it clears the in-flight guard on the way out.
+//
+// Two sources are merged. ddc.Detect reads EDIDs live over i2c and yields a bus
+// we can address for DDC/CI; ddc.SysfsDisplays reads the kernel's cached EDIDs
+// and keeps naming a monitor even when its live i2c read has gone quiet (see
+// SysfsDisplays). A monitor present in sysfs but missing a usable bus is matched
+// to a bus we've addressed it on before (ddcBusMemory), so a monitor that drops
+// off i2c mid-session stays controllable on its last-known bus.
 func (c *monitorControl) detectAndStore() []ddc.Display {
-	displays, err := ddc.Detect()
+	direct, err := ddc.Detect()
+	if err != nil {
+		// A live-detect error is the degraded case this merge exists for: the
+		// i2c reads failed and the ddcutil fallback failed too. Don't discard
+		// sysfs over it — carry on with no direct entries and let sysfs +
+		// remembered buses keep known monitors addressable.
+		log.Printf("live display detect failed (using sysfs + last-known buses): %v", err)
+		direct = nil
+	}
+	sysfs := ddc.SysfsDisplays()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ddcRefreshing = false
-	if err != nil {
-		log.Printf("ddcutil detect failed: %v", err)
+
+	displays := c.mergeDisplays(direct, sysfs)
+	c.ddcFetched = time.Now()
+	if len(displays) == 0 && len(c.ddcCache) > 0 {
+		// Everything came back empty (a transient total failure); keep the last
+		// known-good topology rather than blanking every monitor's controls. A
+		// specific control request still forces recovery via kickRedetect.
 		return c.ddcCache
 	}
 	c.ddcCache = displays
-	c.ddcFetched = time.Now()
+	if summary := summarizeDisplays(displays); summary != c.ddcSummary {
+		log.Printf("DDC topology: %s", summary)
+		c.ddcSummary = summary
+	}
 	return displays
 }
 
-// ddcBusFor returns the i2c bus for a monitor EDID, if a DDC display matches.
+// mergeDisplays folds the live-i2c and sysfs display lists into one entry per
+// physical monitor, preferring a live bus and otherwise a last-known one. Must
+// be called with c.mu held.
+func (c *monitorControl) mergeDisplays(direct, sysfs []ddc.Display) []ddc.Display {
+	byKey := map[string]ddc.Display{}
+	order := []string{}
+	add := func(d ddc.Display) {
+		k := displayKey(d)
+		if existing, ok := byKey[k]; ok {
+			// Keep whichever entry carries a usable bus (direct reads first).
+			if existing.Bus < 0 && d.Bus >= 0 {
+				byKey[k] = d
+			}
+			return
+		}
+		byKey[k] = d
+		order = append(order, k)
+	}
+	// Direct entries first so their live bus wins over a sysfs -1.
+	for _, d := range direct {
+		add(d)
+	}
+	for _, d := range sysfs {
+		add(d)
+	}
+
+	out := make([]ddc.Display, 0, len(order))
+	for _, k := range order {
+		d := byKey[k]
+		if d.Bus >= 0 {
+			c.ddcBusMemory[k] = d.Bus // remember where we can reach it
+		} else if bus, ok := c.ddcBusMemory[k]; ok {
+			d.Bus = bus // fall back to the last bus we addressed it on
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// ddcBusFor returns the i2c bus for a monitor EDID, if a DDC display matches and
+// we know a bus we can address it on. A match with no usable bus (a monitor
+// seen only in sysfs, never on i2c) is treated as a miss, but kicks a
+// rate-limited re-detect so a monitor that (re)appears is picked up well before
+// the long cache TTL lapses.
 func (c *monitorControl) ddcBusFor(edid string) (int, bool) {
-	for _, d := range c.ddcDisplays() {
-		if ddcMatches(edid, d) {
+	displays := c.ddcDisplays()
+	for _, d := range displays {
+		if ddcMatches(edid, d) && d.Bus >= 0 {
 			return d.Bus, true
 		}
 	}
+	c.kickRedetect(edid)
 	return 0, false
+}
+
+// kickRedetect launches a background detect when we're asked for a monitor we
+// can't currently address, at most once per ddcMissCooldown per monitor.
+func (c *monitorControl) kickRedetect(edid string) {
+	if !ddc.Available() {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ddcRefreshing && time.Since(c.ddcRefreshAt) <= ddcRefreshWedged {
+		return
+	}
+	if last, ok := c.ddcMissAt[edid]; ok && time.Since(last) < ddcMissCooldown {
+		return
+	}
+	c.ddcMissAt[edid] = time.Now()
+	c.startDetectLocked()
 }
 
 // backendFor resolves the control backend for a monitor: an explicit registry
@@ -468,4 +584,31 @@ func ddcMatches(edid string, d ddc.Display) bool {
 	}
 	// Manufacturer matched and nothing better to compare on.
 	return true
+}
+
+// displayKey is a stable identity for a display across the two detection
+// sources, so the same physical monitor read live over i2c and from sysfs folds
+// to one entry. Bus is deliberately excluded — it's the thing that changes.
+func displayKey(d ddc.Display) string {
+	return strings.ToLower(strings.TrimSpace(d.Mfg)) + ":" +
+		strings.ToLower(strings.TrimSpace(d.Model)) + ":" +
+		strings.ToLower(strings.TrimSpace(d.Serial))
+}
+
+// summarizeDisplays renders the detected topology for a log line, so a change
+// (a monitor gaining or losing a live bus) is visible without dumping on every
+// refresh.
+func summarizeDisplays(displays []ddc.Display) string {
+	if len(displays) == 0 {
+		return "no displays"
+	}
+	parts := make([]string, len(displays))
+	for i, d := range displays {
+		bus := "no-bus"
+		if d.Bus >= 0 {
+			bus = "i2c-" + strconv.Itoa(d.Bus)
+		}
+		parts[i] = fmt.Sprintf("%s/%s@%s", strings.TrimSpace(d.Mfg), strings.TrimSpace(d.Model), bus)
+	}
+	return strings.Join(parts, ", ")
 }
