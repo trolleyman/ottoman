@@ -202,14 +202,25 @@ func FormatCmd(cmd string, args ...string) string {
 	return strings.Join(parts, " ")
 }
 
-// logRunning announces a subprocess, but only in debug mode. The audio and DDC
-// pollers shell out every few seconds, so these lines are pure noise in normal
-// operation; a failing command still surfaces its name via the wrapped error.
-func logRunning(name string, args ...string) {
-	if !DebugLogging() {
-		return
+// runLogged runs cmd, always recording one line when it starts and one when it
+// returns (with how long it took). These two lines are cheap — one each — and
+// are the record we need to diagnose hangs: a stalled command (e.g. a wedged
+// `ddcutil detect`) shows up as a "run:" line with no matching "done"/"failed"
+// line, and a merely-slow one shows its duration. The verbose stdout/stderr
+// dumps stay gated behind OTTOMAN_DEBUG (see logStdout); those, not these
+// bookkeeping lines, were what flooded the log.
+func runLogged(cmd *exec.Cmd, name string, args []string) error {
+	desc := FormatCmd(name, args...)
+	log.Printf("run: %s", desc)
+	start := time.Now()
+	err := cmd.Run()
+	dur := time.Since(start).Round(time.Millisecond)
+	if err != nil {
+		log.Printf("run: %s failed after %s: %v", desc, dur, err)
+	} else {
+		log.Printf("run: %s done in %s", desc, dur)
 	}
-	log.Printf("Running: %s", FormatCmd(name, args...))
+	return err
 }
 
 // logStdout logs a command's stdout, but only in debug mode. Subprocess dumps
@@ -236,14 +247,13 @@ func logOutput(prefix, output string) {
 
 // RunCmd executes a command, logging it and piping stdout/stderr to the log.
 func RunCmd(name string, args ...string) error {
-	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err := runLogged(cmd, name, args)
 	logStdout(stdout.String())
 	logOutput("[stderr]", stderr.String())
 
@@ -256,14 +266,13 @@ func RunCmd(name string, args ...string) error {
 // RunCmdOutput executes a command, logging it, and returns stdout.
 // Stderr is logged. Returns stdout and any error.
 func RunCmdOutput(name string, args ...string) (string, error) {
-	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err := runLogged(cmd, name, args)
 	logOutput("[stderr]", stderr.String())
 	logStdout(stdout.String())
 
@@ -275,13 +284,12 @@ func RunCmdOutput(name string, args ...string) (string, error) {
 
 // RunCmdAllOutput executes a command, logging it, and returns stdout and stderr.
 func RunCmdAllOutput(name string, args ...string) (string, string, error) {
-	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err := runLogged(cmd, name, args)
 	logOutput("[stderr]", stderr.String())
 	logStdout(stdout.String())
 
@@ -294,14 +302,13 @@ func RunCmdAllOutput(name string, args ...string) (string, string, error) {
 // RunCmdSilent executes a command, logging it but ignoring errors.
 // Useful for cleanup commands where failure is expected.
 func RunCmdSilent(name string, args ...string) {
-	logRunning(name, args...)
 	cmd := exec.Command(name, args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err := runLogged(cmd, name, args)
 	logStdout(stdout.String())
 	logOutput("[stderr]", stderr.String())
 
