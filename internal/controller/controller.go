@@ -122,14 +122,13 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 		return nil, err
 	}
 
-	// Reachable UI origins, best first: the agent served directly (skips this
-	// proxy hop; only advertised while it answers /health), then this
-	// controller on the LAN. The SPA hops to the best one it can reach.
-	agentOK, publicIPs := c.refreshEndpointState()
-	endpoints := make([]string, 0, 2)
-	if agentOK {
-		endpoints = append(endpoints, "http://"+c.getAgentAddr())
-	}
+	// Reachable UI origin: this controller on the LAN. The SPA hops here from a
+	// proxy/tunnel so it reaches the lowest-latency origin it can. The agent is
+	// deliberately not advertised as a hop target — it sleeps / powers off, and
+	// redirecting straight to it strands the UI whenever it's down (reaching it
+	// through the always-on controller proxy keeps working instead).
+	publicIPs := c.refreshPublicIPs()
+	endpoints := make([]string, 0, 1)
 	if c.localIP != "" {
 		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", c.localIP, port))
 	}

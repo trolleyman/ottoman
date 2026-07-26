@@ -16,9 +16,6 @@ import (
 )
 
 const (
-	// agentHealthTTL bounds how often /api/status re-probes the agent's /health
-	// when deciding whether to advertise the direct-agent endpoint.
-	agentHealthTTL = 15 * time.Second
 	// publicIPTTL bounds how often the network's public IPs are re-fetched;
 	// home IPs change rarely.
 	publicIPTTL = 10 * time.Minute
@@ -26,71 +23,53 @@ const (
 	publicIPRetry = time.Minute
 )
 
-// endpointState caches the two slow inputs to the /api/status endpoint
-// hierarchy: whether the agent currently answers /health, and the network's
-// public IPs (for recognising tunnelled requests that originate from this same
-// network). Both are refreshed in the background so /api/status never blocks
-// on a probe.
+// endpointState caches the network's public IPs (for recognising tunnelled
+// requests that originate from this same network, which gates the optimistic
+// LAN redirect on https pages). They're refreshed in the background so
+// /api/status never blocks on a fetch.
 type endpointState struct {
 	mu              sync.Mutex
 	refreshing      bool
-	agentOK         bool
-	agentCheck      time.Time // next agent /health probe due
 	publicIPs       []netip.Addr
 	publicIPCheck   time.Time // next public-IP fetch due
 	lastNonLocalXFF string    // last X-Forwarded-For logged as non-local
 }
 
-// refreshEndpointState returns the cached agent-health and public-IP values,
-// kicking off a background refresh for whichever is stale. Callers get the
-// current (possibly zero) values immediately; the SPA re-evaluates on its next
-// status poll.
-func (c *Controller) refreshEndpointState() (agentOK bool, publicIPs []netip.Addr) {
+// refreshPublicIPs returns the cached public IPs, kicking off a background
+// refresh when they're stale. Callers get the current (possibly zero) value
+// immediately; the SPA re-evaluates on its next status poll.
+func (c *Controller) refreshPublicIPs() (publicIPs []netip.Addr) {
 	s := &c.endpoints
 	now := time.Now()
 	s.mu.Lock()
-	agentOK, publicIPs = s.agentOK, s.publicIPs
-	agentDue, ipDue := now.After(s.agentCheck), now.After(s.publicIPCheck)
-	if s.refreshing || (!agentDue && !ipDue) {
+	publicIPs = s.publicIPs
+	ipDue := now.After(s.publicIPCheck)
+	if s.refreshing || !ipDue {
 		s.mu.Unlock()
-		return agentOK, publicIPs
+		return publicIPs
 	}
 	s.refreshing = true
 	s.mu.Unlock()
 
 	go func() {
-		var freshAgentOK bool
-		if agentDue {
-			freshAgentOK = c.agentHealthy()
-		}
-		var ips []netip.Addr
-		var ipErr error
-		if ipDue {
-			ips, ipErr = fetchPublicIPs()
-		}
+		ips, ipErr := fetchPublicIPs()
 
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.refreshing = false
-		if agentDue {
-			s.agentOK = freshAgentOK
-			s.agentCheck = time.Now().Add(agentHealthTTL)
-		}
-		if ipDue {
-			if ipErr == nil {
-				if !slices.Equal(ips, s.publicIPs) {
-					log.Printf("Network public IP(s): %v", ips)
-				}
-				s.publicIPs = ips
-				s.publicIPCheck = time.Now().Add(publicIPTTL)
-			} else {
-				// Keep the last-known IPs and retry soon.
-				log.Printf("Public IP fetch failed (retrying in %s): %v", publicIPRetry, ipErr)
-				s.publicIPCheck = time.Now().Add(publicIPRetry)
+		if ipErr == nil {
+			if !slices.Equal(ips, s.publicIPs) {
+				log.Printf("Network public IP(s): %v", ips)
 			}
+			s.publicIPs = ips
+			s.publicIPCheck = time.Now().Add(publicIPTTL)
+		} else {
+			// Keep the last-known IPs and retry soon.
+			log.Printf("Public IP fetch failed (retrying in %s): %v", publicIPRetry, ipErr)
+			s.publicIPCheck = time.Now().Add(publicIPRetry)
 		}
 	}()
-	return agentOK, publicIPs
+	return publicIPs
 }
 
 // fetchPublicIPs asks checkip.amazonaws.com (a bare-text "what is my IP"

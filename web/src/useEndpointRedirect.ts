@@ -15,16 +15,17 @@ function normalizeOrigin(url: string): string {
 }
 
 // useEndpointRedirect hops the SPA to the best reachable server endpoint.
-// /api/status reports the hierarchy (`endpoints`, best first: agent direct >
-// controller LAN), so a page loaded via the controller proxy or a public
-// tunnel moves to the lowest-latency origin that works.
+// /api/status reports the origins to prefer (`endpoints`, best first), so a
+// page loaded via a public tunnel moves to the lowest-latency origin that
+// works — the controller's own LAN address. The agent is intentionally never
+// advertised as a hop target: it sleeps / powers off, so redirecting straight
+// to it would strand the UI whenever it's down.
 //
 // On an http page each better-ranked candidate's /health is probed before
 // navigating (cross-origin, allowed by the servers' HealthCORS middleware).
 // On an https page (e.g. ngrok) mixed-content rules block probing http
 // targets, so we navigate optimistically instead — but only when the server
-// vouches that the client is on its own network (`client_is_local`); the
-// controller also only lists the agent endpoint while it answers /health.
+// vouches that the client is on its own network (`client_is_local`).
 export function useEndpointRedirect(status: StatusResponse | null) {
   useEffect(() => {
     if (!status?.endpoints?.length) return;
