@@ -30,6 +30,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
 	"github.com/trolleyman/ottoman/internal/store"
+	"github.com/trolleyman/ottoman/internal/tv"
 )
 
 // Agent is the display control agent running on the desktop
@@ -42,7 +43,7 @@ type Agent struct {
 	layoutStore   *store.LayoutStore
 	registry      *store.Registry
 	control       *monitorControl
-	tv            *tvManager
+	tv            *tv.Manager
 	displayMgr    display.Manager
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
@@ -130,9 +131,9 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	// TV manager (LG webOS). Each TV's transport is resolved from its monitor
 	// registry entry (backend "tv"); pairing keys live in the data dir, not
 	// the config, so a config redeploy can't drop them.
-	tv := newTVManager(registry, store.NewTVStore(""))
+	tvMgr := tv.NewManager(registry, store.NewTVStore(""))
 	control := newMonitorControl(registry)
-	control.tv = tv
+	control.tv = tvMgr
 
 	a := &Agent{
 		config:      cfg,
@@ -141,7 +142,7 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		layoutStore: layoutStore,
 		registry:    registry,
 		control:     control,
-		tv:          tv,
+		tv:          tvMgr,
 		displayMgr:  mgr,
 		mouse:       mouse,
 		keyboard:    keyboard,
@@ -228,11 +229,36 @@ func (a *Agent) setupRoutes() error {
 		BaseRouter: a.router,
 	})
 
+	// The controller mirrors the TV registry + pairing keys from here so it can
+	// keep driving the TV when this agent (the desktop) is down. It's a bespoke
+	// endpoint (not in the OpenAPI spec) — a more specific ServeMux pattern than
+	// the SPA catch-all, so it takes precedence.
+	a.router.HandleFunc("GET /api/tv/export", a.handleTVExport)
+
 	if err := common.SetupSPAHandler(a.router); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")
 	}
 
 	return nil
+}
+
+// handleTVExport serves the TV registry entries and their SSAP pairing keys so
+// the controller can mirror them (see internal/tv.Export). It exposes pairing
+// keys, so it requires the same bearer token as the rest of the API when one is
+// configured.
+func (a *Agent) handleTVExport(w http.ResponseWriter, r *http.Request) {
+	if token := a.config.AuthToken; token != "" {
+		want := "Bearer " + token
+		got := r.Header.Get("Authorization")
+		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.tv.Export()); err != nil {
+		log.Printf("TV export encode failed: %v", err)
+	}
 }
 
 // CheckHealth implements api.StrictServerInterface

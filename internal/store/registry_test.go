@@ -61,3 +61,52 @@ func TestRegistryUpdate(t *testing.T) {
 		t.Error("brightness should default to visible")
 	}
 }
+
+func TestRegistryReplaceTVEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r, err := NewRegistry(path)
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	// A non-TV entry that must survive the replace, plus a TV that must be dropped.
+	if _, err := r.Update("DEL:U2717:9", func(e *MonitorEntry) { e.Backend = BackendDDC }); err != nil {
+		t.Fatalf("Update ddc: %v", err)
+	}
+	if _, err := r.Update("LG:OLD:1", func(e *MonitorEntry) {
+		e.Backend = BackendTV
+		e.TV = &TVConn{Type: "webos", Host: "10.0.0.9"}
+	}); err != nil {
+		t.Fatalf("Update old tv: %v", err)
+	}
+
+	err = r.ReplaceTVEntries([]MonitorEntry{
+		{Edid: "LG:NEW:2", FriendlyName: "Living Room", TV: &TVConn{Type: "webos", Host: "10.0.0.5", Mac: "aa:bb"}},
+		{Edid: "", TV: &TVConn{Host: "skip.me"}}, // empty EDID is skipped
+	})
+	if err != nil {
+		t.Fatalf("ReplaceTVEntries: %v", err)
+	}
+
+	// Reload from disk to confirm persistence + exact mirror semantics.
+	r2, err := NewRegistry(path)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if _, ok := r2.Get("LG:OLD:1"); ok {
+		t.Error("old TV entry should have been dropped")
+	}
+	if ddc, ok := r2.Get("DEL:U2717:9"); !ok || ddc.Backend != BackendDDC {
+		t.Errorf("non-TV entry should survive: %+v ok=%v", ddc, ok)
+	}
+	newTV, ok := r2.Get("LG:NEW:2")
+	if !ok {
+		t.Fatal("new TV entry missing")
+	}
+	if newTV.Backend != BackendTV || newTV.TV == nil || newTV.TV.Host != "10.0.0.5" {
+		t.Errorf("new TV entry wrong: %+v", newTV)
+	}
+	if got := r2.TVEntries(); len(got) != 1 {
+		t.Errorf("TVEntries = %d, want 1 (%+v)", len(got), got)
+	}
+}
