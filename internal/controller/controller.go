@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,8 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
+	"github.com/trolleyman/ottoman/internal/store"
+	"github.com/trolleyman/ottoman/internal/tv"
 )
 
 // Controller is the main orchestrator running on the Raspberry Pi
@@ -39,6 +42,17 @@ type Controller struct {
 	localIP string
 
 	endpoints endpointState
+
+	// TV mirror: a registry + pairing-key store synced from the agent while it's
+	// up (see syncTVFromAgent), and a manager that drives the TV directly when
+	// the agent is down (see the fallbacks in monitors.go). registry/tvStore are
+	// nil only if their data dir couldn't be initialised.
+	registry *store.Registry
+	tvStore  *store.TVStore
+	tv       *tv.Manager
+	// lastTVExport is the raw body of the last TV export written to the mirror;
+	// accessed only by the single sync goroutine, to skip unchanged rewrites.
+	lastTVExport []byte
 }
 
 // Ensure Controller implements StrictServerInterface
@@ -63,6 +77,19 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		startTime: time.Now(),
 		secret:    generateSecret(),
 		localIP:   getOutboundIP(),
+	}
+
+	// TV mirror. These cache files hold a copy of the agent's TV registry +
+	// pairing keys (distinct filenames so it's clearly a mirror, not the agent's
+	// own store). A failure here shouldn't stop the controller from starting —
+	// it just means no local TV fallback until the next successful sync.
+	registry, err := store.NewRegistry(filepath.Join(store.DataDir(), "controller-tv-registry.json"))
+	if err != nil {
+		log.Printf("TV mirror unavailable (registry load failed): %v", err)
+	} else {
+		c.registry = registry
+		c.tvStore = store.NewTVStore(filepath.Join(store.DataDir(), "controller-tv-keys.json"))
+		c.tv = tv.NewManager(registry, c.tvStore)
 	}
 
 	if err := c.setupRoutes(); err != nil {
@@ -353,9 +380,11 @@ func (c *Controller) SwitchLayout(ctx context.Context, request api.SwitchLayoutR
 	})
 }
 
-// GetMonitors implements api.StrictServerInterface
+// GetMonitors implements api.StrictServerInterface. When the agent is down it
+// falls back to the mirrored TV registry so the UI still shows (and can control)
+// the TVs — the rest of the monitors are the desktop's and go with it.
 func (c *Controller) GetMonitors(ctx context.Context, request api.GetMonitorsRequestObject) (api.GetMonitorsResponseObject, error) {
-	return proxyRequest(ctx, c, "GET", "/api/monitors", nil, func(resp *http.Response) (api.GetMonitorsResponseObject, error) {
+	resp, err := proxyRequest(ctx, c, "GET", "/api/monitors", nil, func(resp *http.Response) (api.GetMonitorsResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.MonitorsResponse
@@ -369,6 +398,12 @@ func (c *Controller) GetMonitors(ctx context.Context, request api.GetMonitorsReq
 			return api.GetMonitors502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
+	if err != nil {
+		if tvs := c.localTVMonitors(ctx); len(tvs) > 0 {
+			return api.GetMonitors200JSONResponse(tvs), nil
+		}
+	}
+	return resp, err
 }
 
 // GetCurrentLayout implements api.StrictServerInterface
@@ -589,6 +624,12 @@ func (c *Controller) Start() error {
 	for _, w := range ValidateWakeConfig(c.config.Agent.MACAddress) {
 		log.Printf("WARNING: %s", w)
 	}
+
+	// Mirror the agent's TV registry + pairing keys so the TV stays controllable
+	// once the desktop is off. Stops when the controller shuts down.
+	syncCtx, cancelSync := context.WithCancel(context.Background())
+	defer cancelSync()
+	c.startTVSync(syncCtx)
 
 	// Handle graceful shutdown
 	stop := make(chan os.Signal, 1)

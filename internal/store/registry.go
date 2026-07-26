@@ -176,6 +176,28 @@ func (r *Registry) TVEntries() []MonitorEntry {
 	return out
 }
 
+// ReplaceTVEntries replaces all backend-"tv" entries with the given ones,
+// leaving non-TV entries untouched, and persists. The controller uses this to
+// mirror the agent's TV registry: passing the agent's current TV set drops any
+// TV the agent no longer has and upserts the rest.
+func (r *Registry) ReplaceTVEntries(entries []MonitorEntry) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for edid, e := range r.entries {
+		if e.Backend == BackendTV {
+			delete(r.entries, edid)
+		}
+	}
+	for _, e := range entries {
+		if e.Edid == "" {
+			continue
+		}
+		e.Backend = BackendTV
+		r.entries[e.Edid] = e
+	}
+	return r.save()
+}
+
 // List returns all entries.
 func (r *Registry) List() []MonitorEntry {
 	r.mu.Lock()

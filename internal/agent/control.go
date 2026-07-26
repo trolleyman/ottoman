@@ -13,6 +13,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 	"github.com/trolleyman/ottoman/internal/ddc"
 	"github.com/trolleyman/ottoman/internal/store"
+	"github.com/trolleyman/ottoman/internal/tv"
 )
 
 // ddcCacheTTL bounds how often we run display detection (native EDID reads over
@@ -51,7 +52,7 @@ const ddcRefreshWedged = 2 * time.Minute
 // bus via ddcutil; the TV backend is wired in separately.
 type monitorControl struct {
 	registry *store.Registry
-	tv       *tvManager
+	tv       *tv.Manager
 
 	mu                   sync.Mutex
 	ddcCache             []ddc.Display
