@@ -4,24 +4,31 @@ info:
   version: 1.0.0
 
 # Authentication: every /api/* path needs the shared token, presented in any of
-# the shapes under components.securitySchemes. The exceptions - reachable with
-# no credentials - are /health, /api/auth, /api/auth/logout and the simulator's
-# /api/sim/* admin endpoints, so that the login screen can always load.
+# the shapes under components.securitySchemes. Operations that override this
+# with `security: []` are reachable with no credentials, so that the login
+# screen can always load.
 #
-# The requirement is deliberately not spelled as `security:` on each operation.
-# The gate is ordinary net/http middleware wrapped around the whole router (see
-# internal/common/auth.go); the generated handlers never see it, and declaring
-# it here only makes oapi-codegen emit per-operation scope plumbing that nothing
-# reads. Three further things the spec cannot express, all in auth.go:
+# The gate itself is ordinary net/http middleware wrapped around the whole
+# router (see internal/common/auth.go), not something the generated handlers
+# enforce - oapi-codegen only turns these declarations into per-operation scope
+# context values, which nothing reads. They are here to describe the API
+# truthfully, not to implement it. Three things the spec cannot express, all in
+# auth.go:
 #   - a request whose immediate peer is loopback is waved through, unless
 #     require_local_auth is set;
 #   - an empty configured token disables authentication entirely;
 #   - the SPA shell and its assets are not gated, only /api/*.
+security:
+  - bearerAuth: []
+  - basicAuth: []
+  - cookieAuth: []
+
 paths:
   /health:
     get:
       summary: Health check
       operationId: checkHealth
+      security: []
       responses:
         '200':
           description: OK
@@ -71,6 +78,9 @@ paths:
     post:
       summary: Authenticate
       operationId: auth
+      # The login exchange: it presents the token in the body and, on success,
+      # sets the ottoman_auth cookie.
+      security: []
       requestBody:
         content:
           application/json:
@@ -94,6 +104,7 @@ paths:
     post:
       summary: Logout
       operationId: logout
+      security: []
       responses:
         '200':
           description: Success
@@ -843,6 +854,9 @@ paths:
     post:
       summary: Reset simulation
       operationId: simReset
+      # The simulator runs with no authenticator at all - see
+      # internal/controller/simulated.go.
+      security: []
       responses:
         '200':
           description: Success
@@ -861,6 +875,7 @@ paths:
     get:
       summary: Get simulation state
       operationId: simState
+      security: []
       responses:
         '200':
           description: Success
@@ -879,6 +894,7 @@ paths:
     post:
       summary: Set simulation state
       operationId: simSetState
+      security: []
       requestBody:
         content:
           application/json:

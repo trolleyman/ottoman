@@ -16,6 +16,12 @@ import (
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
+const (
+	BasicAuthScopes  = "basicAuth.Scopes"
+	BearerAuthScopes = "bearerAuth.Scopes"
+	CookieAuthScopes = "cookieAuth.Scopes"
+)
+
 // Defines values for Modifier.
 const (
 	Alt   Modifier = "alt"
@@ -1119,6 +1125,16 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // GetAudioSinks operation middleware
 func (siw *ServerInterfaceWrapper) GetAudioSinks(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAudioSinks(w, r)
 	}))
@@ -1132,6 +1148,16 @@ func (siw *ServerInterfaceWrapper) GetAudioSinks(w http.ResponseWriter, r *http.
 
 // SetAudioVolume operation middleware
 func (siw *ServerInterfaceWrapper) SetAudioVolume(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetAudioVolume(w, r)
@@ -1161,6 +1187,16 @@ func (siw *ServerInterfaceWrapper) Auth(w http.ResponseWriter, r *http.Request) 
 // CheckAuth operation middleware
 func (siw *ServerInterfaceWrapper) CheckAuth(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckAuth(w, r)
 	}))
@@ -1189,6 +1225,16 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 // Boot operation middleware
 func (siw *ServerInterfaceWrapper) Boot(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Boot(w, r)
 	}))
@@ -1202,6 +1248,16 @@ func (siw *ServerInterfaceWrapper) Boot(w http.ResponseWriter, r *http.Request) 
 
 // GetLayouts operation middleware
 func (siw *ServerInterfaceWrapper) GetLayouts(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetLayouts(w, r)
@@ -1217,6 +1273,16 @@ func (siw *ServerInterfaceWrapper) GetLayouts(w http.ResponseWriter, r *http.Req
 // GetCurrentLayout operation middleware
 func (siw *ServerInterfaceWrapper) GetCurrentLayout(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentLayout(w, r)
 	}))
@@ -1230,6 +1296,16 @@ func (siw *ServerInterfaceWrapper) GetCurrentLayout(w http.ResponseWriter, r *ht
 
 // RemoveLayout operation middleware
 func (siw *ServerInterfaceWrapper) RemoveLayout(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveLayout(w, r)
@@ -1245,6 +1321,16 @@ func (siw *ServerInterfaceWrapper) RemoveLayout(w http.ResponseWriter, r *http.R
 // SaveCurrentLayout operation middleware
 func (siw *ServerInterfaceWrapper) SaveCurrentLayout(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SaveCurrentLayout(w, r)
 	}))
@@ -1258,6 +1344,16 @@ func (siw *ServerInterfaceWrapper) SaveCurrentLayout(w http.ResponseWriter, r *h
 
 // SwitchLayout operation middleware
 func (siw *ServerInterfaceWrapper) SwitchLayout(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SwitchLayout(w, r)
@@ -1273,6 +1369,16 @@ func (siw *ServerInterfaceWrapper) SwitchLayout(w http.ResponseWriter, r *http.R
 // UpdateLayout operation middleware
 func (siw *ServerInterfaceWrapper) UpdateLayout(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateLayout(w, r)
 	}))
@@ -1286,6 +1392,16 @@ func (siw *ServerInterfaceWrapper) UpdateLayout(w http.ResponseWriter, r *http.R
 
 // GetMonitors operation middleware
 func (siw *ServerInterfaceWrapper) GetMonitors(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMonitors(w, r)
@@ -1301,6 +1417,16 @@ func (siw *ServerInterfaceWrapper) GetMonitors(w http.ResponseWriter, r *http.Re
 // SetMonitorBrightness operation middleware
 func (siw *ServerInterfaceWrapper) SetMonitorBrightness(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorBrightness(w, r)
 	}))
@@ -1314,6 +1440,16 @@ func (siw *ServerInterfaceWrapper) SetMonitorBrightness(w http.ResponseWriter, r
 
 // SetMonitorInput operation middleware
 func (siw *ServerInterfaceWrapper) SetMonitorInput(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorInput(w, r)
@@ -1329,6 +1465,16 @@ func (siw *ServerInterfaceWrapper) SetMonitorInput(w http.ResponseWriter, r *htt
 // PairMonitor operation middleware
 func (siw *ServerInterfaceWrapper) PairMonitor(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PairMonitor(w, r)
 	}))
@@ -1342,6 +1488,16 @@ func (siw *ServerInterfaceWrapper) PairMonitor(w http.ResponseWriter, r *http.Re
 
 // SetMonitorPower operation middleware
 func (siw *ServerInterfaceWrapper) SetMonitorPower(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorPower(w, r)
@@ -1357,6 +1513,16 @@ func (siw *ServerInterfaceWrapper) SetMonitorPower(w http.ResponseWriter, r *htt
 // GetMonitorPowerState operation middleware
 func (siw *ServerInterfaceWrapper) GetMonitorPowerState(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMonitorPowerState(w, r)
 	}))
@@ -1370,6 +1536,16 @@ func (siw *ServerInterfaceWrapper) GetMonitorPowerState(w http.ResponseWriter, r
 
 // SetMonitorSettings operation middleware
 func (siw *ServerInterfaceWrapper) SetMonitorSettings(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorSettings(w, r)
@@ -1385,6 +1561,16 @@ func (siw *ServerInterfaceWrapper) SetMonitorSettings(w http.ResponseWriter, r *
 // SetMonitorVolume operation middleware
 func (siw *ServerInterfaceWrapper) SetMonitorVolume(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMonitorVolume(w, r)
 	}))
@@ -1398,6 +1584,16 @@ func (siw *ServerInterfaceWrapper) SetMonitorVolume(w http.ResponseWriter, r *ht
 
 // Shutdown operation middleware
 func (siw *ServerInterfaceWrapper) Shutdown(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Shutdown(w, r)
@@ -1455,6 +1651,16 @@ func (siw *ServerInterfaceWrapper) SimState(w http.ResponseWriter, r *http.Reque
 // GetStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetStatus(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetStatus(w, r)
 	}))
@@ -1468,6 +1674,16 @@ func (siw *ServerInterfaceWrapper) GetStatus(w http.ResponseWriter, r *http.Requ
 
 // GetAgentStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentStatus(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAgentStatus(w, r)
@@ -1483,6 +1699,16 @@ func (siw *ServerInterfaceWrapper) GetAgentStatus(w http.ResponseWriter, r *http
 // ConnectTrackpad operation middleware
 func (siw *ServerInterfaceWrapper) ConnectTrackpad(w http.ResponseWriter, r *http.Request) {
 
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ConnectTrackpad(w, r)
 	}))
@@ -1496,6 +1722,16 @@ func (siw *ServerInterfaceWrapper) ConnectTrackpad(w http.ResponseWriter, r *htt
 
 // Wake operation middleware
 func (siw *ServerInterfaceWrapper) Wake(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, BasicAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Wake(w, r)
