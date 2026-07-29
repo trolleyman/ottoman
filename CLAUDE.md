@@ -155,7 +155,11 @@ run --greeter` runs as the `gdm` user against the GDM greeter's own Mutter
 (display/layouts only — input/audio are skipped), so you can switch display
 layouts on the login screen and it mirrors the user's last-used layout there. It
 reads a gdm-readable copy of config + layouts under `/var/lib/ottoman/greeter`
-(owned `<user>:gdm`, setgid, group-readable) that the user's agent keeps in sync.
+(owned `<user>:gdm`, setgid, group-readable) that the user's agent keeps in sync
+- `config.toml` included, on every layout change and at agent startup, so a
+rotated token or a changed listen address reaches the login screen instead of
+drifting from the install-time copy. `config set` / `config rotate-token` mirror
+it too, for changes made while the agent isn't running.
 A GNOME Quick Settings extension lives in `gnome-extension/`.
 
 The TV backend (`internal/tv`, LG webOS over SSAP + Wake-on-LAN) is shared: both

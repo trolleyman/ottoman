@@ -1056,6 +1056,11 @@ func (a *Agent) Start() error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
+	// Push config + layouts to the greeter copy now rather than waiting for the
+	// next layout switch: a config-only change (a rotated token, a new listen
+	// address) would otherwise leave the login screen stale indefinitely.
+	a.mirrorToGreeter()
+
 	go func() {
 		log.Printf("Agent starting at http://%s", a.config.ListenAddress)
 		ln, err := common.ListenWithRetry("tcp", a.config.ListenAddress)
@@ -1136,9 +1141,17 @@ func (a *Agent) recordCurrentLayout(id string) {
 // layouts + current-layout from (see internal/agent/hostsetup.go greeterRoot).
 const greeterDataDir = "/var/lib/ottoman/greeter/.local/share/ottoman"
 
-// mirrorToGreeter keeps the greeter's copy of layouts + current-layout in sync
-// with the user's, so the login screen reflects the latest state. No-op unless
-// the greeter agent is installed. Best-effort; failures are logged, not fatal.
+// greeterConfigDir is where the login-screen agent looks for its config: its
+// autostart entry points XDG_CONFIG_HOME inside greeterRoot.
+const (
+	greeterConfigDir  = "/var/lib/ottoman/greeter/.config/ottoman"
+	greeterConfigPath = greeterConfigDir + "/config.toml"
+)
+
+// mirrorToGreeter keeps the greeter's copy of the config, layouts and
+// current-layout in sync with the user's, so the login screen reflects the
+// latest state. No-op unless the greeter agent is installed. Best-effort;
+// failures are logged, not fatal.
 func (a *Agent) mirrorToGreeter() {
 	if a.greeter {
 		return
@@ -1160,6 +1173,40 @@ func (a *Agent) mirrorToGreeter() {
 			log.Printf("Warning: failed to mirror %s to greeter: %v", name, err)
 		}
 	}
+
+	if _, err := MirrorConfigToGreeter(a.configPath); err != nil {
+		log.Printf("Warning: failed to mirror config to greeter: %v", err)
+	}
+}
+
+// MirrorConfigToGreeter copies the config file at path into the greeter's
+// gdm-readable copy. Reports whether it copied; false with no error means the
+// greeter agent isn't installed.
+//
+// host-setup copies the config once at install time, so without this the
+// greeter keeps running against whatever the config said back then: a rotated
+// auth token or a changed listen address never reaches it, and the drift is
+// invisible because nothing else reads that copy. The greeter dir already holds
+// the token, so mirroring the file adds no exposure.
+//
+// Exported because the config CLI calls it too - a `config set` from a shell
+// should reach the login screen without waiting for the agent to restart.
+func MirrorConfigToGreeter(path string) (bool, error) {
+	if path == "" {
+		return false, nil
+	}
+	// The directory, not the file: a greeter installed before the user had a
+	// config has the dir but no config.toml yet, and that copy still needs one.
+	if _, err := os.Stat(greeterConfigDir); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := copyFileInto(path, greeterConfigPath); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // copyFileInto copies src to dst atomically (temp + rename in dst's dir, so the
