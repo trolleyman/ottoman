@@ -235,8 +235,14 @@ func (s *SimulatedController) GetStatus(ctx context.Context, request api.GetStat
 
 	uptime := time.Since(s.startTime).Round(time.Second).String()
 
+	// Report where the agent is from the parsed base URL, so this keeps working
+	// whether the config used the url key or the legacy ip_address one.
+	agentHost := ""
+	if u, err := s.controllerCfg.Agent.BaseURL(); err == nil {
+		agentHost = u.Hostname()
+	}
 	var ipAddr api.StatusResponse_IpAddress
-	if err := ipAddr.FromStatusResponseIpAddress0(s.controllerCfg.Agent.IPAddress); err != nil {
+	if err := ipAddr.FromStatusResponseIpAddress0(agentHost); err != nil {
 		return nil, err
 	}
 

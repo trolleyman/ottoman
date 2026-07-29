@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,6 +36,8 @@ type Controller struct {
 	router    *http.ServeMux
 	server    *http.Server
 	client    *http.Client
+	auth      *common.Authenticator
+	agentBase *url.URL
 	startTime time.Time
 
 	mu      sync.RWMutex
@@ -56,9 +59,24 @@ type Controller struct {
 // Ensure Controller implements StrictServerInterface
 var _ api.StrictServerInterface = (*Controller)(nil)
 
-// getAgentAddr constructs the agent address from config
-func (c *Controller) getAgentAddr() string {
-	return fmt.Sprintf("%s:%d", c.config.Agent.IPAddress, c.config.Agent.Port)
+// agentURL builds an absolute URL for a path on the agent, carrying whatever
+// scheme the config asked for. path must start with "/".
+func (c *Controller) agentURL(path string) string {
+	u := *c.agentBase
+	u.Path = strings.TrimSuffix(u.Path, "/") + path
+	return u.String()
+}
+
+// agentWebSocketURL is agentURL for a WebSocket endpoint: https implies wss,
+// http implies ws, so a TLS-fronted agent doesn't get dialled in the clear.
+func (c *Controller) agentWebSocketURL(path string) string {
+	u := *c.agentBase
+	u.Scheme = "ws"
+	if c.agentBase.Scheme == "https" {
+		u.Scheme = "wss"
+	}
+	u.Path = strings.TrimSuffix(u.Path, "/") + path
+	return u.String()
 }
 
 // New creates a new controller instance
@@ -67,11 +85,18 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
+	agentBase, err := config.Agent.BaseURL()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid config")
+	}
+
 	c := &Controller{
 		config: config,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		auth:      common.NewAuthenticator(config.AuthToken, config.RequireLocalAuth),
+		agentBase: agentBase,
 		startTime: time.Now(),
 		secret:    generateSecret(),
 		localIP:   getOutboundIP(),
@@ -115,6 +140,9 @@ func (c *Controller) setupRoutes() error {
 	// Create outer mux that intercepts trackpad and delegates rest to inner
 	c.router = http.NewServeMux()
 	c.router.HandleFunc("GET /api/trackpad", c.handleTrackpadWebSocket)
+	// Session endpoints, which need the ResponseWriter to set the cookie. On the
+	// outer mux they shadow the generated handlers on the inner one.
+	c.auth.RegisterAuthRoutes(c.router)
 	c.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Skip trackpad endpoint, delegate everything else to inner mux
 		if r.Method == "GET" && r.URL.Path == "/api/trackpad" {
@@ -171,7 +199,7 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 
 // GetAgentStatus implements api.StrictServerInterface
 func (c *Controller) GetAgentStatus(ctx context.Context, request api.GetAgentStatusRequestObject) (api.GetAgentStatusResponseObject, error) {
-	url := fmt.Sprintf("http://%s/api/status/agent", c.getAgentAddr())
+	url := c.agentURL("/api/status/agent")
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return api.GetAgentStatus502JSONResponse{
@@ -248,7 +276,7 @@ func (c *Controller) CheckAuth(ctx context.Context, request api.CheckAuthRequest
 // proxyRequest is a generic helper for proxying requests to the agent
 func proxyRequest[T any](ctx context.Context, c *Controller, method, path string, body []byte, handler func(*http.Response) (T, error)) (T, error) {
 	var zero T
-	url := fmt.Sprintf("http://%s%s", c.getAgentAddr(), path)
+	url := c.agentURL(path)
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -546,7 +574,7 @@ func (c *Controller) handleTrackpadWebSocket(w http.ResponseWriter, r *http.Requ
 	defer browserConn.CloseNow()
 
 	// Dial client WebSocket
-	clientURL := fmt.Sprintf("ws://%s/api/trackpad", c.getAgentAddr())
+	clientURL := c.agentWebSocketURL("/api/trackpad")
 	dialOpts := &websocket.DialOptions{}
 	if c.config.AuthToken != "" {
 		dialOpts.HTTPHeader = http.Header{
@@ -608,7 +636,7 @@ func Run(config *config.ControllerConfig) error {
 func (c *Controller) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(c.router)),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(c.auth.Middleware(c.router))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -652,7 +680,7 @@ func (c *Controller) Start() error {
 // CheckStatus checks if a server is reachable
 func CheckStatus(addr string) string {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s/health", addr))
+	resp, err := client.Get(common.HealthURL(addr))
 	if err != nil {
 		return fmt.Sprintf("ERROR: %v", err)
 	}

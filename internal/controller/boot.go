@@ -63,7 +63,7 @@ func (c *Controller) orchestrateWindowsBoot() {
 func (c *Controller) agentHealthy() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+c.getAgentAddr()+"/health", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", c.agentURL("/health"), nil)
 	if err != nil {
 		return false
 	}

@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
@@ -39,4 +40,15 @@ func SetupSPAHandler(router *http.ServeMux) error {
 
 	router.Handle("/", http.FileServerFS(webFS))
 	return nil
+}
+
+// HealthURL builds the /health URL for a target given either a bare "host:port"
+// - the historical spelling of the CLI's --controller / --agent flags, which
+// implies plain HTTP - or a full base URL, so a TLS-fronted component can be
+// probed as "https://host:port" without a second flag to say so.
+func HealthURL(target string) string {
+	if strings.Contains(target, "://") {
+		return strings.TrimSuffix(target, "/") + "/health"
+	}
+	return "http://" + target + "/health"
 }

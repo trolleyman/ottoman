@@ -48,6 +48,7 @@ type Agent struct {
 	mouse         input.MouseController
 	keyboard      input.KeyboardController
 	audio         audio.Controller
+	auth          *common.Authenticator
 	startTime     time.Time
 	currentLayout string
 	greeter       bool
@@ -147,6 +148,7 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		mouse:       mouse,
 		keyboard:    keyboard,
 		audio:       audioCtl,
+		auth:        common.NewAuthenticator(cfg.AuthToken, cfg.RequireLocalAuth),
 		startTime:   time.Now(),
 		greeter:     greeter,
 	}
@@ -213,7 +215,7 @@ func (h *agentHandler) ConnectTrackpad(w http.ResponseWriter, r *http.Request) {
 
 // setupRoutes configures HTTP routes
 func (a *Agent) setupRoutes() error {
-	a.router = http.NewServeMux()
+	inner := http.NewServeMux()
 
 	// Create the strict handler
 	strictHandler := api.NewStrictHandler(a, nil)
@@ -226,18 +228,25 @@ func (a *Agent) setupRoutes() error {
 
 	// Register generated routes
 	api.HandlerWithOptions(handler, api.StdHTTPServerOptions{
-		BaseRouter: a.router,
+		BaseRouter: inner,
 	})
 
 	// The controller mirrors the TV registry + pairing keys from here so it can
 	// keep driving the TV when this agent (the desktop) is down. It's a bespoke
 	// endpoint (not in the OpenAPI spec) — a more specific ServeMux pattern than
 	// the SPA catch-all, so it takes precedence.
-	a.router.HandleFunc("GET /api/tv/export", a.handleTVExport)
+	inner.HandleFunc("GET /api/tv/export", a.handleTVExport)
 
-	if err := common.SetupSPAHandler(a.router); err != nil {
+	if err := common.SetupSPAHandler(inner); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")
 	}
+
+	// Outer mux: the session endpoints need the ResponseWriter to set the
+	// session cookie, which the generated strict handler never sees, so they are
+	// registered here and shadow the generated ones on the inner mux.
+	a.router = http.NewServeMux()
+	a.auth.RegisterAuthRoutes(a.router)
+	a.router.Handle("/", inner)
 
 	return nil
 }
@@ -1045,7 +1054,7 @@ func (w *logResponseWriter) WriteHeader(code int) {
 func (a *Agent) Start() error {
 	a.server = &http.Server{
 		Addr:         a.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(a.router)),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(a.auth.Middleware(a.router))),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -1088,7 +1097,7 @@ func (a *Agent) Start() error {
 // CheckStatus checks if an agent is reachable
 func CheckStatus(addr string) string {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://%s/health", addr))
+	resp, err := client.Get(common.HealthURL(addr))
 	if err != nil {
 		return fmt.Sprintf("ERROR: %v", err)
 	}

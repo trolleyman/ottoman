@@ -6,11 +6,42 @@
 #   - %APPDATA%/ottoman/config.toml (Windows)
 
 [controller]
-listen_addr = ':17293'
+# Bind to 127.0.0.1 when a TLS front-end on this host (tailscale serve, a
+# reverse proxy) is the only way in - it dials the controller over loopback, and
+# a wildcard bind would collide with the front-end's own listener on this port.
+listen_address = ':17293'
 auth_token = 'your-secret-token-here'
-agent_addr = '192.168.1.100:17294'
 
-[[controller.wake_targets]]
-name = 'desktop'
+# The API is gated by auth_token: an unauthenticated caller gets 401 on /api/*.
+# Loopback callers are exempt by default, so the CLI and a browser on this
+# machine keep working with no credentials. Turn this on to withdraw that
+# exemption - which you want as soon as a TLS front-end forwards outside traffic
+# in, because it dials from 127.0.0.1 and every proxied request would otherwise
+# look local.
+# require_local_auth = true
+
+[controller.agent]
+# Where the agent is, scheme included. Use https when a TLS front-end sits in
+# front of the agent, http for a direct connection over a link that is already
+# encrypted (a tailnet, a VPN). The scheme also decides how the trackpad
+# WebSocket is dialled: wss for https, ws for http.
+url = 'http://192.168.1.100:17294'
+
+# Over a tailnet, name the agent by its MagicDNS name rather than a LAN IP so
+# the address survives DHCP:
+#   url = 'http://hades.example-tailnet.ts.net:17294'
+# And with `tailscale serve --bg --https=17294 http://127.0.0.1:17294` on the
+# agent host, so the hop is TLS end to end:
+#   url = 'https://hades.example-tailnet.ts.net:17294'
+
+# Wake-on-LAN target. The magic packet is an L2 broadcast, so this is the one
+# path that cannot travel over a tailnet or a VPN - a sleeping agent has no
+# WireGuard running - and the controller has to share a LAN segment with the
+# agent for wake to work. Moving `url` onto a tailnet does not change that; the
+# two are independent.
 mac_address = '00:11:22:33:44:55'
-ip_address = '192.168.1.100'
+
+# Deprecated, still honoured: ip_address + port are folded into
+# "http://ip:port" when url is unset. Prefer url.
+#   ip_address = '192.168.1.100'
+#   port = 17294

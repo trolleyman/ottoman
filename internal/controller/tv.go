@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -66,7 +65,7 @@ func (c *Controller) syncTVFromAgent(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	url := fmt.Sprintf("http://%s/api/tv/export", c.getAgentAddr())
+	url := c.agentURL("/api/tv/export")
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err

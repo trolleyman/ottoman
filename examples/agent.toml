@@ -6,8 +6,19 @@
 #   - %APPDATA%/ottoman/config.toml (Windows)
 
 [agent]
-listen_addr = ':17294'
+# Bind to 127.0.0.1 when a TLS front-end on this host (tailscale serve, a
+# reverse proxy) is the only way in - it dials the agent over loopback, and a
+# wildcard bind would collide with the front-end's own listener on this port.
+listen_address = ':17294'
 auth_token = 'your-secret-token-here'
+
+# The API is gated by auth_token: an unauthenticated caller gets 401 on /api/*.
+# Loopback callers are exempt by default, so the CLI and a browser on this
+# machine keep working with no credentials. Turn this on to withdraw that
+# exemption - which you want as soon as a TLS front-end forwards outside traffic
+# in, because it dials from 127.0.0.1 and every proxied request would otherwise
+# look local.
+# require_local_auth = true
 
 # Network-controlled TVs (LG webOS) are configured per monitor, not here: open
 # the monitor's settings (cog) in the web UI, set the backend to "tv", and fill

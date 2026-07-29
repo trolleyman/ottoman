@@ -4,9 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -35,13 +38,31 @@ type ControllerConfig struct {
 	ListenAddress string                `json:"listen_address"`
 	AuthToken     string                `json:"auth_token"`
 	Agent         AgentControllerConfig `json:"agent"`
+
+	// RequireLocalAuth withdraws the loopback exemption, so a browser on this
+	// machine has to present the token too. Turn it on when a TLS front-end on
+	// this host forwards outside traffic in - `tailscale serve` and reverse
+	// proxies dial us from 127.0.0.1, so with the default exemption every
+	// proxied request looks local and is waved straight through.
+	RequireLocalAuth bool `json:"require_local_auth,omitempty"`
 }
 
-// AgentControllerConfig holds the configuration for how to contact the agent
+// AgentControllerConfig holds the configuration for how to contact the agent.
 type AgentControllerConfig struct {
 	MACAddress string `json:"mac_address"`
-	IPAddress  string `json:"ip_address,omitempty"`
-	Port       int    `json:"port,omitempty"`
+
+	// URL is the agent's base URL, scheme included. The scheme decides how the
+	// controller talks to the agent: "https://host:port" when a TLS front-end
+	// (tailscale serve, a reverse proxy) fronts it, "http://host:port" for a
+	// direct connection over an already-trusted link such as a tailnet. It also
+	// decides the trackpad WebSocket scheme (wss vs ws).
+	URL string `json:"url,omitempty"`
+
+	// IPAddress and Port are the pre-URL spelling. They are kept so existing
+	// configs keep working: when URL is empty they are folded into
+	// "http://ip:port". Prefer URL in new configs.
+	IPAddress string `json:"ip_address,omitempty"`
+	Port      int    `json:"port,omitempty"`
 }
 
 // AgentConfig holds agent configuration
@@ -51,6 +72,63 @@ type AgentConfig struct {
 	Layouts       []api.Layout   `json:"layouts"`
 	Trackpad      TrackpadConfig `json:"trackpad"`
 	Boot          BootConfig     `json:"boot"`
+
+	// RequireLocalAuth withdraws the loopback exemption - see the field of the
+	// same name on ControllerConfig.
+	RequireLocalAuth bool `json:"require_local_auth,omitempty"`
+}
+
+// DefaultAgentPort is the agent's listen port, and the port assumed when a
+// legacy ip_address is given without one.
+const DefaultAgentPort = 17294
+
+// defaultAgentURL is where the controller looks for the agent when nothing is
+// configured at all.
+const defaultAgentURL = "http://127.0.0.1:17294"
+
+// resolvedURL returns the agent base URL, folding in the legacy ip_address /
+// port pair when url is unset. It is deliberately total - callers get a usable
+// string whether or not Normalize has run - so there is no ordering dependency
+// between loading, validating and using the config.
+func (a *AgentControllerConfig) resolvedURL() string {
+	if a.URL != "" {
+		return a.URL
+	}
+	if a.IPAddress != "" {
+		port := a.Port
+		if port == 0 {
+			port = DefaultAgentPort
+		}
+		return "http://" + net.JoinHostPort(a.IPAddress, strconv.Itoa(port))
+	}
+	return defaultAgentURL
+}
+
+// BaseURL parses the agent's base URL, rejecting anything the controller can't
+// actually dial.
+func (a *AgentControllerConfig) BaseURL() (*url.URL, error) {
+	raw := a.resolvedURL()
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, errors.Wrapf(err, "controller.agent.url %q is not a valid URL", raw)
+	}
+	switch u.Scheme {
+	case "http", "https":
+	default:
+		return nil, errors.Errorf("controller.agent.url %q must use the http or https scheme", raw)
+	}
+	if u.Host == "" {
+		return nil, errors.Errorf("controller.agent.url %q is missing a host", raw)
+	}
+	return u, nil
+}
+
+// Normalize collapses the legacy spelling into URL so a config written back out
+// carries only the modern key.
+func (a *AgentControllerConfig) Normalize() {
+	a.URL = a.resolvedURL()
+	a.IPAddress = ""
+	a.Port = 0
 }
 
 // BootConfig holds GRUB dual-boot entry names for remote OS selection. The GRUB
@@ -100,8 +178,10 @@ func Init(cfgFile string) {
 
 func setDefaults() {
 	v.SetDefault("controller.listen_address", ":17293")
-	v.SetDefault("controller.agent.ip_address", "127.0.0.1")
-	v.SetDefault("controller.agent.port", "17294")
+	// controller.agent.url is deliberately not defaulted: an unset legacy
+	// ip_address has to stay empty so resolvedURL can tell "nothing configured"
+	// (use the default URL) from "configured the old way" (fold it into one).
+	v.SetDefault("controller.agent.url", "")
 
 	v.SetDefault("agent.listen_address", ":17294")
 	v.SetDefault("agent.layouts", []api.Layout{})
@@ -211,6 +291,9 @@ func ensureConfigDir(path string) error {
 func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.listen_address", cfg.ListenAddress)
 	w.Set("agent.auth_token", cfg.AuthToken)
+	if cfg.RequireLocalAuth {
+		w.Set("agent.require_local_auth", true)
+	}
 
 	// Preserve trackpad tuning so re-running `config init` over an existing
 	// config doesn't silently drop it.
@@ -280,9 +363,13 @@ func SaveAgent(cfg *AgentConfig, path string) error {
 func setController(w *viper.Viper, cfg *ControllerConfig) {
 	w.Set("controller.listen_address", cfg.ListenAddress)
 	w.Set("controller.auth_token", cfg.AuthToken)
+	if cfg.RequireLocalAuth {
+		w.Set("controller.require_local_auth", true)
+	}
 	w.Set("controller.agent.mac_address", cfg.Agent.MACAddress)
-	w.Set("controller.agent.ip_address", cfg.Agent.IPAddress)
-	w.Set("controller.agent.port", cfg.Agent.Port)
+	// Write the modern key only: a config round-tripped through `config init`
+	// comes back with url and no ip_address/port to disagree with it.
+	w.Set("controller.agent.url", cfg.Agent.resolvedURL())
 }
 
 // SaveController writes controller configuration to a file
@@ -332,11 +419,8 @@ func (c *ControllerConfig) Validate() error {
 		return errors.New("controller.listen_address is required")
 	}
 
-	if c.Agent.IPAddress == "" {
-		return errors.New("controller.agent.ip_address is required")
-	}
-	if c.Agent.Port == 0 {
-		return errors.New("controller.agent.port is required")
+	if _, err := c.Agent.BaseURL(); err != nil {
+		return err
 	}
 
 	if c.AuthToken == "" {

@@ -75,7 +75,24 @@ web/                     # React frontend
   - `/etc/ottoman/ottoman.toml` (Linux system-wide)
   - `~/.config/ottoman/ottoman.toml` (Linux user)
   - `%APPDATA%/ottoman/ottoman.toml` (Windows)
-- **Authentication**: Bearer token or Basic auth with constant-time comparison
+- **Authentication**: `internal/common/auth.go`. One `Authenticator` gates both
+  components, wired in as ordinary `net/http` middleware around the router -
+  **not** inside the generated strict handler, which never sees the
+  `ResponseWriter` and so cannot set the session cookie. It accepts a Bearer
+  header, Basic auth (token as the password), or the `ottoman_auth` cookie, all
+  compared in constant time. `/api/*` is gated; `/health`, `/api/auth*` and the
+  SPA assets are not, so the login screen can always load. Loopback peers are
+  exempt unless `require_local_auth = true` - turn that on whenever a TLS
+  front-end forwards traffic in from `127.0.0.1`. The local-peer test reads
+  `RemoteAddr` only and never a forwarded header, which would be spoofable.
+  `Authenticator.Permits` is the single source of truth: the middleware and
+  `/api/auth/check` both call it, so the UI is never told something the gate
+  disagrees with.
+- **Talking to the agent**: `controller.agent.url` carries the scheme, and
+  `Controller.agentURL` / `agentWebSocketURL` derive every request from it
+  (`https` implies `wss`). Never hardcode `http://` at a call site. The legacy
+  `ip_address` + `port` pair still loads and is folded into a URL by
+  `AgentControllerConfig.resolvedURL`.
 - **Error handling**: Uses `github.com/pkg/errors` for wrapping
 
 ## Deployment Commands

@@ -195,10 +195,34 @@ ottoman status                            # Check server and client status
 
 ### Authentication
 
-Use Bearer token in Authorization header:
+`/api/*` is gated by `auth_token`; an unauthenticated caller gets `401`. Three
+credential shapes are accepted:
+
 ```
 Authorization: Bearer your-secret-token
+Authorization: Basic <base64 of any-username:your-secret-token>
+Cookie: ottoman_auth=<value issued by POST /api/auth>
 ```
+
+`/health`, `/api/auth*` and the web UI's own assets stay open, so an
+unauthenticated browser can still load the page and reach the login screen.
+
+`POST /api/auth` with `{"token": "..."}` sets the `ottoman_auth` cookie
+(HttpOnly, and holding a hash of the token rather than the token itself). The
+browser then sends it automatically - including on the `/api/trackpad`
+WebSocket, which is why the cookie exists at all: a browser cannot put an
+`Authorization` header on a WebSocket handshake.
+
+**Loopback callers are exempt by default**, so the CLI and a browser on the
+machine itself work with no credentials. Set `require_local_auth = true` to
+withdraw that exemption. You want it on as soon as a TLS front-end
+(`tailscale serve`, a reverse proxy) forwards outside traffic in: those dial
+from `127.0.0.1`, so with the default exemption every proxied request looks
+local and is waved straight through.
+
+The gate never trusts `X-Forwarded-For` or similar headers when deciding whether
+a peer is local - they are client-controlled, so honouring one would let any
+remote caller claim the exemption.
 
 ## Architecture
 
