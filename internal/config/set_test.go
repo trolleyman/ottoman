@@ -75,18 +75,12 @@ func TestSetValueTypedValues(t *testing.T) {
 	if _, _, err := SetValue(path, "agent.require_local_auth", "true"); err != nil {
 		t.Fatalf("SetValue(require_local_auth): %v", err)
 	}
-	if _, _, err := SetValue(path, "agent.trackpad.friction", "0.8"); err != nil {
-		t.Fatalf("SetValue(friction): %v", err)
-	}
 
-	// Booleans and floats have to land as TOML booleans and floats, not as
-	// quoted strings that unmarshal back to the zero value.
+	// A boolean has to land as a TOML boolean, not a quoted string that
+	// unmarshals back to false - which would silently leave the gate open.
 	cfg := loadFrom(t, path)
 	if !cfg.Agent.RequireLocalAuth {
 		t.Error("agent.require_local_auth = false, want true")
-	}
-	if cfg.Agent.Trackpad.Friction != 0.8 {
-		t.Errorf("agent.trackpad.friction = %v, want 0.8", cfg.Agent.Trackpad.Friction)
 	}
 }
 
@@ -111,7 +105,7 @@ func TestSetValueRejectsBadInput(t *testing.T) {
 		{"schemeless url", "controller.agent.url", "hades.tail1234.ts.net"},
 		{"unsupported scheme", "controller.agent.url", "ftp://hades"},
 		{"bad mac", "controller.agent.mac_address", "not-a-mac"},
-		{"friction at 1", "agent.trackpad.friction", "1"},
+		{"key nothing reads", "agent.trackpad.friction", "0.8"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

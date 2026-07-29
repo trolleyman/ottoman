@@ -26,14 +26,17 @@ type setting struct {
 // settings is the whole settable surface, in the order `config set` lists it.
 // Keys absent from here are refused: a config full of misspelled keys that
 // silently do nothing is the failure mode this command exists to prevent.
+//
+// Only keys something actually reads are listed. agent.trackpad.* and
+// agent.boot.linux_entry load into the config struct but are read by nobody
+// (the trackpad tuning lives in the SPA's own settings, and booting "linux" is
+// a plain reboot into the GRUB default), so offering them here would be the
+// same lie in a different place.
 var settings = []setting{
 	{"agent.listen_address", "address the agent binds, host:port (use 127.0.0.1:port behind a TLS front-end)", parseListenAddress},
 	{"agent.auth_token", "shared token the agent requires (see also: config rotate-token)", parseToken},
 	{"agent.require_local_auth", "gate loopback callers too; required when a TLS front-end forwards in from 127.0.0.1", parseBool},
-	{"agent.trackpad.sensitivity", "trackpad pointer sensitivity multiplier", parsePositiveFloat},
-	{"agent.trackpad.friction", "trackpad glide friction, 0 < f < 1", parseFriction},
-	{"agent.boot.linux_entry", "GRUB menuentry name for Linux", parseNonEmpty},
-	{"agent.boot.windows_entry", "GRUB menuentry name for Windows", parseNonEmpty},
+	{"agent.boot.windows_entry", "GRUB menuentry name for Windows, for a one-shot boot into Windows", parseNonEmpty},
 
 	{"controller.listen_address", "address the controller binds, host:port", parseListenAddress},
 	{"controller.auth_token", "shared token the controller requires; must match the agent's", parseToken},
@@ -130,29 +133,6 @@ func parseBool(v string) (any, error) {
 		return nil, errors.Errorf("%q is not a boolean; use true or false", v)
 	}
 	return b, nil
-}
-
-func parsePositiveFloat(v string) (any, error) {
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return nil, errors.Errorf("%q is not a number", v)
-	}
-	if f <= 0 {
-		return nil, errors.Errorf("%v must be greater than 0", f)
-	}
-	return f, nil
-}
-
-func parseFriction(v string) (any, error) {
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return nil, errors.Errorf("%q is not a number", v)
-	}
-	// 1 or more never decays, so the pointer would glide forever.
-	if f <= 0 || f >= 1 {
-		return nil, errors.Errorf("friction must be between 0 and 1 exclusive, got %v", f)
-	}
-	return f, nil
 }
 
 func parseNonEmpty(v string) (any, error) {
