@@ -153,14 +153,7 @@ func localAuthRequired(v *bool) bool { return v == nil || *v }
 // "boot into Linux" is a plain reboot, while "boot into Windows" needs a name to
 // hand grub-reboot for a one-shot next boot.
 type BootConfig struct {
-	LinuxEntry   string `json:"linux_entry"`   // GRUB menuentry name for Linux
 	WindowsEntry string `json:"windows_entry"` // GRUB menuentry name for Windows
-}
-
-// TrackpadConfig holds trackpad configuration
-type TrackpadConfig struct {
-	Sensitivity float64 `json:"sensitivity"`
-	Friction    float64 `json:"friction"`
 }
 
 var (
@@ -203,8 +196,6 @@ func setDefaults() {
 
 	v.SetDefault("agent.listen_address", ":17294")
 	v.SetDefault("agent.layouts", []api.Layout{})
-	v.SetDefault("agent.trackpad_sensitivity", 1.5)
-	v.SetDefault("agent.trackpad_friction", 0.92)
 }
 
 func addConfigPaths() {

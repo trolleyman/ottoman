@@ -32,9 +32,8 @@ const sampleConfig = `[agent]
 listen_address = ":17294"
 auth_token = "0123456789abcdef0123"
 
-[agent.trackpad]
-sensitivity = 1.5
-friction = 0.92
+[agent.boot]
+windows_entry = "Windows Boot Manager"
 
 [controller]
 listen_address = ":17293"
@@ -61,8 +60,8 @@ func TestSetValueLeavesEverythingElseAlone(t *testing.T) {
 	if cfg.Agent.AuthToken != "0123456789abcdef0123" {
 		t.Errorf("agent.auth_token = %q, want it untouched", cfg.Agent.AuthToken)
 	}
-	if cfg.Agent.Trackpad.Sensitivity != 1.5 || cfg.Agent.Trackpad.Friction != 0.92 {
-		t.Errorf("trackpad tuning = %+v, want it untouched", cfg.Agent.Trackpad)
+	if cfg.Agent.Boot.WindowsEntry != "Windows Boot Manager" {
+		t.Errorf("agent.boot.windows_entry = %q, want it untouched", cfg.Agent.Boot.WindowsEntry)
 	}
 	if cfg.Controller.ListenAddress != ":17293" || cfg.Controller.Agent.MACAddress != "aa:bb:cc:dd:ee:ff" {
 		t.Errorf("controller section = %+v, want it untouched", cfg.Controller)

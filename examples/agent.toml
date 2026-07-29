@@ -28,10 +28,10 @@ require_local_auth = true
 # (~/.local/share/ottoman/tv.json) so redeploying config can't drop them.
 
 # Dual-boot OS selection (plan §7). Set GRUB_DEFAULT=saved (keep GRUB_TIMEOUT=5),
-# then run `ottoman agent install` to get the grub-reboot sudoers rule. The
-# entry names come from: grep menuentry /boot/grub/grub.cfg
+# then run `ottoman agent install` to get the grub-reboot sudoers rule. Only the
+# Windows entry is configured: booting Linux just reboots into the GRUB default.
+# The entry name comes from: grep menuentry /boot/grub/grub.cfg
 # [agent.boot]
-# linux_entry   = 'Zorin OS'
 # windows_entry = 'Windows Boot Manager (on /dev/nvme0n1p1)'
 
 # Example layout (add more with `ottoman agent layout add`)
