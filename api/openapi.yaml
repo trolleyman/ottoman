@@ -2,6 +2,21 @@ openapi: 3.0.3
 info:
   title: Ottoman Controller API
   version: 1.0.0
+
+# Authentication: every /api/* path needs the shared token, presented in any of
+# the shapes under components.securitySchemes. The exceptions - reachable with
+# no credentials - are /health, /api/auth, /api/auth/logout and the simulator's
+# /api/sim/* admin endpoints, so that the login screen can always load.
+#
+# The requirement is deliberately not spelled as `security:` on each operation.
+# The gate is ordinary net/http middleware wrapped around the whole router (see
+# internal/common/auth.go); the generated handlers never see it, and declaring
+# it here only makes oapi-codegen emit per-operation scope plumbing that nothing
+# reads. Three further things the spec cannot express, all in auth.go:
+#   - a request whose immediate peer is loopback is waved through, unless
+#     require_local_auth is set;
+#   - an empty configured token disables authentication entirely;
+#   - the SPA shell and its assets are not gated, only /api/*.
 paths:
   /health:
     get:
@@ -895,6 +910,26 @@ paths:
           description: Switching Protocols
 
 components:
+  securitySchemes:
+    # One shared token, accepted in three shapes so every client has a way in:
+    # the SPA and the controller-to-agent calls send a Bearer header, a browser
+    # sends the cookie set at login (the only option for the trackpad
+    # WebSocket, which cannot carry a header), and Basic auth covers curl and
+    # anything that only speaks username/password.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Authorization: Bearer <token>, where <token> is agent.auth_token / controller.auth_token."
+    basicAuth:
+      type: http
+      scheme: basic
+      description: "HTTP Basic with the token as the password; the username is ignored."
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ottoman_auth
+      description: "Set by POST /api/auth. The value is hex(sha256(token)), not the token itself."
+
   schemas:
     # --- Shared Types ---
     ErrorResponse:
