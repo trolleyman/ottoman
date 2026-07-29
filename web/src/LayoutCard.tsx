@@ -127,6 +127,7 @@ function LayoutEditor({
 export function LayoutCard({
   layout,
   isCurrent,
+  isPending,
   disabled,
   scale,
   onClick,
@@ -135,6 +136,8 @@ export function LayoutCard({
 }: {
   layout: Layout;
   isCurrent: boolean;
+  /** Chosen while the desktop was off; applies when it comes up. */
+  isPending: boolean;
   disabled: boolean;
   scale: number;
   onClick: () => void;
@@ -205,7 +208,9 @@ export function LayoutCard({
           relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-[280px] text-left
           ${isCurrent
             ? "bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-indigo-500/20 text-blue-400 border border-blue-500/40 ring-1 ring-blue-500/20"
-            : "bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 text-zinc-300 border border-zinc-700/50 hover:border-zinc-600 hover:from-zinc-800 hover:to-zinc-800/80"
+            : isPending
+              ? "bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-zinc-900/80 text-amber-300 border border-amber-500/40 ring-1 ring-amber-500/20"
+              : "bg-gradient-to-br from-zinc-800/80 via-zinc-800/50 to-zinc-900/80 text-zinc-300 border border-zinc-700/50 hover:border-zinc-600 hover:from-zinc-800 hover:to-zinc-800/80"
           }
           disabled:opacity-50 disabled:cursor-wait
         `}
@@ -217,7 +222,15 @@ export function LayoutCard({
               {isCurrent && (
                 <span className="inline-block w-2 h-2 rounded-full bg-blue-400 shrink-0" />
               )}
+              {!isCurrent && isPending && (
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
+              )}
               <span className="font-semibold truncate">{layout.name}</span>
+              {isPending && (
+                <span className="text-[10px] uppercase tracking-wide text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 leading-none shrink-0">
+                  on wake
+                </span>
+              )}
             </span>
             {aliasList.length > 0 && (
               <span className="flex flex-wrap gap-1">

@@ -13,6 +13,7 @@ export function Layouts() {
   const switching = useStore((s) => s.switching);
   const switchLayout = useStore((s) => s.switchLayout);
   const layoutNotice = useStore((s) => s.layoutNotice);
+  const pendingLayout = useStore((s) => s.pendingLayout);
   const dismissLayoutNotice = useStore((s) => s.dismissLayoutNotice);
   const removeLayout = useStore((s) => s.removeLayout);
   const saveCurrentLayout = useStore((s) => s.saveCurrentLayout);
@@ -111,6 +112,7 @@ export function Layouts() {
                 key={l.id}
                 layout={l}
                 isCurrent={l.id === currentLayout}
+                isPending={l.id === pendingLayout}
                 disabled={switching}
                 scale={layoutScale}
                 onClick={() => void switchLayout(l.id)}

@@ -7,5 +7,9 @@ export type WakeRequest = {
      * linux | windows (optional; default boots the GRUB default)
      */
     target?: string;
+    /**
+     * layout id/alias to apply when the agent comes online
+     */
+    layout?: string;
 };
 

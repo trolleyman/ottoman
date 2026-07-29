@@ -971,6 +971,10 @@ components:
             - type: string
               format: ipv6
         port: { type: string, format: uint16 }
+        # (Agent only) true when this is the GDM login-screen agent rather than
+        # the user session's. They serve the same API on the same port, but a
+        # layout applied to the login screen doesn't carry into the session.
+        greeter: { type: boolean }
 
     Monitor:
       type: object
@@ -1067,6 +1071,9 @@ components:
           items:
             $ref: '#/components/schemas/Layout'
         current_layout: { type: string }
+        # (Controller only) a layout chosen while the desktop was off, to be
+        # applied when it next comes up. Empty when nothing is queued.
+        pending_layout: { type: string }
 
     SwitchLayoutRequest:
       type: object
@@ -1081,6 +1088,9 @@ components:
         success: { type: boolean }
         current_layout: { type: string }
         message: { type: string }
+        # True when the desktop was unreachable and the controller queued the
+        # switch instead of applying it - see pending_layout.
+        queued: { type: boolean }
         # What actually happened to the display, verified after applying. A
         # display server can accept a configuration and then roll it back, or
         # report a layout as already active while the screen shows something
@@ -1107,6 +1117,10 @@ components:
       type: object
       properties:
         target: { type: string, description: "linux | windows (optional; default boots the GRUB default)" }
+        # Layout to switch to once the woken agent answers. The machine is off
+        # when the request is made, so the controller holds the choice and
+        # applies it on the way up (see pending_layout).
+        layout: { type: string, description: "layout id/alias to apply when the agent comes online" }
 
     WakeResponse:
       type: object

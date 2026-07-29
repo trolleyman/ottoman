@@ -137,8 +137,8 @@ up until the affected component restarts.
 | `/api/auth/logout` | `POST` | No | Logout |
 | `/api/auth/check` | `GET` | Yes | Auth check |
 | `/api/wake` | `POST` | Wake agent (only on controller) |
-| `/api/layouts` | `GET` | Get all stored layouts |
-| `/api/layouts/switch` | `POST` | Switch to specified layout |
+| `/api/layouts` | `GET` | Get all stored layouts (controller: mirrored copy when the agent is down, plus `pending_layout`) |
+| `/api/layouts/switch` | `POST` | Switch to specified layout (controller: queued when the agent is down, `queued: true`) |
 | `/api/layouts/save-current` | `POST` | Save the current layout as a new layout |
 | `/api/layouts/remove` | `POST` | Remove the specified layout |
 | `/api/layouts/update` | `POST` | Update a layout's name, emoji, and aliases |
@@ -174,6 +174,23 @@ rotated token or a changed listen address reaches the login screen instead of
 drifting from the install-time copy. `config set` / `config rotate-token` mirror
 it too, for changes made while the agent isn't running.
 A GNOME Quick Settings extension lives in `gnome-extension/`.
+
+**Choosing a layout for a machine that is off** (`internal/controller/pending.go`):
+the desktop can't be told anything while it's asleep, so the controller holds
+the choice and applies it on the way up. `POST /api/layouts/switch` against a
+down agent returns `queued: true` instead of failing, `POST /api/wake` takes an
+optional `layout`, and the queued id comes back as `pending_layout` on
+`/api/layouts` so the UI can badge the card ("on wake"). It is applied twice:
+once to the GDM greeter (so the login screen lands on the right display) and
+again to the session agent when it takes over, since Mutter restores the
+session's own config on login - the agent's status carries `greeter` so the
+controller can tell them apart. The choice lapses after 15 minutes. The
+controller also **mirrors the agent's layouts** (`controller-layouts.json`,
+polled every 30s) and serves them when the agent is down, so the list is still
+there when you need to pick where the machine comes back up. This is the
+reliable answer to "the monitors are off, put it on the TV": whether a
+powered-off monitor drops off the bus is a property of the monitor, so intent
+can't be inferred - but it can be stated.
 
 The TV backend (`internal/tv`, LG webOS over SSAP + Wake-on-LAN) is shared: both
 the agent and the controller construct a `tv.Manager`. Normally the controller

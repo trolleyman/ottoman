@@ -331,6 +331,10 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		return api.GetStatus200JSONResponse{}, err
 	}
 
+	// greeter tells the controller which agent answered: the login screen's or
+	// the session's. They serve the same API on the same port, and a queued
+	// layout has to reach both (see controller/pending.go).
+	greeter := a.greeter
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
 		Version:   "dev",
@@ -338,6 +342,7 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		Hostname:  hostname,
 		IpAddress: ipAddr,
 		Port:      port,
+		Greeter:   &greeter,
 	}, nil
 }
 

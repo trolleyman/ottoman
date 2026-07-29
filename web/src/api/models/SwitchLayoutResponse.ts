@@ -6,6 +6,7 @@ export type SwitchLayoutResponse = {
     success: boolean;
     current_layout: string;
     message?: string;
+    queued?: boolean;
     /**
      * verified result of the switch
      */

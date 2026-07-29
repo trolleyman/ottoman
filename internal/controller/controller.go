@@ -51,6 +51,12 @@ type Controller struct {
 	// lastTVExport is the raw body of the last TV export written to the mirror;
 	// accessed only by the single sync goroutine, to skip unchanged rewrites.
 	lastTVExport []byte
+
+	// pending is a layout chosen while the desktop was off, applied when it
+	// next answers (see pending.go). pendingPollInterval is how often the
+	// orchestrator checks, while one is armed.
+	pending             pendingLayout
+	pendingPollInterval time.Duration
 }
 
 // Ensure Controller implements StrictServerInterface
@@ -96,6 +102,8 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		agentBase: agentBase,
 		startTime: time.Now(),
 		localIP:   getOutboundIP(),
+
+		pendingPollInterval: defaultPendingPollInterval,
 	}
 
 	// TV mirror. These cache files hold a copy of the agent's TV registry +
@@ -336,6 +344,13 @@ func (c *Controller) Wake(ctx context.Context, request api.WakeRequestObject) (a
 		msg += "; will boot into Windows once the agent is up"
 	}
 
+	// "Wake to the TV": the machine can't be told where to come up while it is
+	// off, so hold the choice here and apply it on the way up.
+	if request.Body != nil && request.Body.Layout != nil && *request.Body.Layout != "" {
+		c.queueLayout(*request.Body.Layout)
+		msg += fmt.Sprintf("; will switch to layout %q once the agent is up", *request.Body.Layout)
+	}
+
 	log.Printf("%s", msg)
 	return api.Wake200JSONResponse{
 		Success: true,
@@ -343,27 +358,74 @@ func (c *Controller) Wake(ctx context.Context, request api.WakeRequestObject) (a
 	}, nil
 }
 
-// GetLayouts implements api.StrictServerInterface
+// GetLayouts implements api.StrictServerInterface. When the agent is down it
+// falls back to the mirrored layouts, so the list is still there when you most
+// need it - choosing where the machine should come up before waking it.
 func (c *Controller) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
-	return proxyRequest(ctx, c, "GET", "/api/layouts", nil, func(resp *http.Response) (api.GetLayoutsResponseObject, error) {
+	resp, err := proxyRequest(ctx, c, "GET", "/api/layouts", nil, func(resp *http.Response) (api.GetLayoutsResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
 			var result api.LayoutsResponse
 			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 				return nil, err
 			}
-			return api.GetLayouts200JSONResponse(result), nil
+			return api.GetLayouts200JSONResponse(c.withPending(result)), nil
 		case http.StatusUnauthorized:
 			return api.GetLayouts401JSONResponse{Code: resp.StatusCode, Error: "Unauthorized"}, nil
 		default:
 			return api.GetLayouts502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
+	if err == nil {
+		if _, unreachable := resp.(api.GetLayouts502JSONResponse); !unreachable {
+			return resp, nil
+		}
+	}
+	if mirror, ok := mirroredLayouts(); ok {
+		return api.GetLayouts200JSONResponse(c.withPending(mirror)), nil
+	}
+	if err != nil {
+		return api.GetLayouts502JSONResponse{Code: http.StatusBadGateway, Error: err.Error()}, nil
+	}
+	return resp, nil
 }
 
-// SwitchLayout implements api.StrictServerInterface
+// withPending attaches the queued layout, if any, so the UI can show that a
+// choice is waiting for the desktop to come up.
+func (c *Controller) withPending(l api.LayoutsResponse) api.LayoutsResponse {
+	if id := c.PendingLayout(); id != "" {
+		l.PendingLayout = &id
+	}
+	return l
+}
+
+// SwitchLayout implements api.StrictServerInterface. A switch aimed at a
+// desktop that isn't up is queued rather than refused: picking "TV" from the
+// phone while the machine is off (or still booting) is a statement of where it
+// should come up, not a request that has failed.
 func (c *Controller) SwitchLayout(ctx context.Context, request api.SwitchLayoutRequestObject) (api.SwitchLayoutResponseObject, error) {
 	body, _ := json.Marshal(request.Body)
+	resp, err := c.switchLayoutOnAgent(ctx, body)
+	if err == nil {
+		if _, unreachable := resp.(api.SwitchLayout502JSONResponse); !unreachable {
+			return resp, nil
+		}
+	}
+	if request.Body == nil || request.Body.Layout == "" {
+		return resp, err
+	}
+	c.queueLayout(request.Body.Layout)
+	queued := true
+	msg := "Desktop is offline - will switch when it comes up"
+	return api.SwitchLayout200JSONResponse{
+		Success:       true,
+		CurrentLayout: "",
+		Message:       &msg,
+		Queued:        &queued,
+	}, nil
+}
+
+func (c *Controller) switchLayoutOnAgent(ctx context.Context, body []byte) (api.SwitchLayoutResponseObject, error) {
 	return proxyRequest(ctx, c, "POST", "/api/layouts/switch", body, func(resp *http.Response) (api.SwitchLayoutResponseObject, error) {
 		switch resp.StatusCode {
 		case http.StatusOK:
@@ -638,6 +700,7 @@ func (c *Controller) Start() error {
 	syncCtx, cancelSync := context.WithCancel(context.Background())
 	defer cancelSync()
 	c.startTVSync(syncCtx)
+	c.startLayoutsSync(syncCtx)
 
 	// Handle graceful shutdown
 	stop := make(chan os.Signal, 1)

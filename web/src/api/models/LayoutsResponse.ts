@@ -6,5 +6,6 @@ import type { Layout } from './Layout';
 export type LayoutsResponse = {
     layouts: Array<Layout>;
     current_layout: string;
+    pending_layout?: string;
 };
 

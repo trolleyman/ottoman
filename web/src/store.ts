@@ -61,6 +61,12 @@ interface OttomanStore {
   // ── Layouts ───────────────────────────────────────────
   layouts: Layout[];
   currentLayout: string;
+  /**
+   * A layout picked while the desktop was unreachable. The controller holds it
+   * and applies it when the machine next answers, so choosing "TV" from the
+   * phone decides where it comes up.
+   */
+  pendingLayout: string;
   layoutsLoading: boolean;
   layoutsError: string | null;
   switching: boolean;
@@ -169,6 +175,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       agentInfo: null,
       layouts: [],
       currentLayout: "",
+      pendingLayout: "",
       monitors: [],
     });
   },
@@ -181,6 +188,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   // ── Layouts ───────────────────────────────────────────
   layouts: [],
   currentLayout: "",
+  pendingLayout: "",
   layoutsLoading: false,
   layoutsError: null,
   switching: false,
@@ -256,6 +264,10 @@ export const useStore = create<OttomanStore>((set, get) => ({
         set({
           layouts: sortedLayouts(data.layouts),
           currentLayout: data.current_layout ?? "",
+          // The controller serves its mirrored copy while the desktop is off,
+          // so this list (and the queued choice) survives the machine going
+          // down - which is exactly when you pick where it comes back up.
+          pendingLayout: data.pending_layout ?? "",
           layoutsError: null,
         });
       } catch {
@@ -351,7 +363,18 @@ export const useStore = create<OttomanStore>((set, get) => ({
     set({ switching: true, layoutNotice: null });
     try {
       const data = await client.default.switchLayout({ layout: id });
-      if (data.success) {
+      if (data.queued) {
+        // The desktop was unreachable, so the controller is holding the choice
+        // for when it comes up. Leave currentLayout alone: nothing has changed
+        // on a machine that isn't running.
+        set({
+          pendingLayout: id,
+          layoutNotice: {
+            kind: "ok",
+            text: data.message || "Queued — will switch when the desktop comes up",
+          },
+        });
+      } else if (data.success) {
         set({ currentLayout: data.current_layout ?? "" });
         set({ layoutNotice: noticeForOutcome(data.outcome, data.message, wasCurrent) });
         void get().refreshAll(false);

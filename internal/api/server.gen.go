@@ -195,6 +195,7 @@ type LayoutMonitor struct {
 type LayoutsResponse struct {
 	CurrentLayout string   `json:"current_layout"`
 	Layouts       []Layout `json:"layouts"`
+	PendingLayout *string  `json:"pending_layout,omitempty"`
 }
 
 // Modifier defines model for Modifier.
@@ -353,6 +354,7 @@ type SimStateResponse struct {
 
 // StatusResponse defines model for StatusResponse.
 type StatusResponse struct {
+	Greeter   *bool                    `json:"greeter,omitempty"`
 	Hostname  string                   `json:"hostname"`
 	IpAddress StatusResponse_IpAddress `json:"ip_address"`
 	Port      string                   `json:"port"`
@@ -384,6 +386,7 @@ type SwitchLayoutResponse struct {
 
 	// Outcome verified result of the switch
 	Outcome *SwitchLayoutResponseOutcome `json:"outcome,omitempty"`
+	Queued  *bool                        `json:"queued,omitempty"`
 	Success bool                         `json:"success"`
 }
 
@@ -542,6 +545,9 @@ type UpdateLayoutResponse struct {
 
 // WakeRequest defines model for WakeRequest.
 type WakeRequest struct {
+	// Layout layout id/alias to apply when the agent comes online
+	Layout *string `json:"layout,omitempty"`
+
 	// Target linux | windows (optional; default boots the GRUB default)
 	Target *string `json:"target,omitempty"`
 }

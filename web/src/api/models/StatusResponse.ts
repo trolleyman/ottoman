@@ -9,5 +9,6 @@ export type StatusResponse = {
     hostname: string;
     ip_address: string;
     port: string;
+    greeter?: boolean;
 };
 
