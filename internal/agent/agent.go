@@ -331,13 +331,6 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		return api.GetStatus200JSONResponse{}, err
 	}
 
-	// The agent is itself the best endpoint — a SPA already served from here
-	// has nowhere better to hop to.
-	endpoints := make([]string, 0, 1)
-	if ip != "" && port != "" {
-		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", ip, port))
-	}
-
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
 		Version:   "dev",
@@ -346,7 +339,6 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		IpAddress: ipAddr,
 		Port:      port,
 		Secret:    "",
-		Endpoints: &endpoints,
 	}, nil
 }
 
@@ -1054,7 +1046,7 @@ func (w *logResponseWriter) WriteHeader(code int) {
 func (a *Agent) Start() error {
 	a.server = &http.Server{
 		Addr:         a.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(a.auth.Middleware(a.router))),
+		Handler:      common.LoggingMiddleware(a.auth.Middleware(a.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

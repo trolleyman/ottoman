@@ -956,13 +956,6 @@ components:
               format: ipv6
         port: { type: string, format: uint16 }
         secret: { type: string }
-        # Reachable UI origins in priority order, best first (agent direct
-        # beats controller proxy), so the SPA can hop to the lowest-latency
-        # endpoint. The controller only lists the agent while it answers
-        # /health.
-        endpoints:
-          type: array
-          items: { type: string, format: uri }
 
     Monitor:
       type: object

@@ -1187,7 +1187,7 @@ func (s *SimulatedController) SimSetState(ctx context.Context, request api.SimSe
 func (s *SimulatedController) Start() error {
 	s.server = &http.Server{
 		Addr:         s.controllerCfg.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(s.router)),
+		Handler:      common.LoggingMiddleware(s.router),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

@@ -10,6 +10,5 @@ export type StatusResponse = {
     ip_address: string;
     port: string;
     secret: string;
-    endpoints?: Array<string>;
 };
 

@@ -347,7 +347,6 @@ type SimStateResponse struct {
 
 // StatusResponse defines model for StatusResponse.
 type StatusResponse struct {
-	Endpoints *[]string                `json:"endpoints,omitempty"`
 	Hostname  string                   `json:"hostname"`
 	IpAddress StatusResponse_IpAddress `json:"ip_address"`
 	Port      string                   `json:"port"`

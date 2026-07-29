@@ -175,16 +175,6 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 		return nil, err
 	}
 
-	// Reachable UI origin: this controller on the LAN. The SPA hops here from a
-	// proxy/tunnel so it reaches the lowest-latency origin it can. The agent is
-	// deliberately not advertised as a hop target — it sleeps / powers off, and
-	// redirecting straight to it strands the UI whenever it's down (reaching it
-	// through the always-on controller proxy keeps working instead).
-	endpoints := make([]string, 0, 1)
-	if c.localIP != "" {
-		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", c.localIP, port))
-	}
-
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
 		Version:   "dev",
@@ -193,7 +183,6 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 		IpAddress: ipAddr,
 		Port:      port,
 		Secret:    c.secret,
-		Endpoints: &endpoints,
 	}, nil
 }
 
@@ -636,7 +625,7 @@ func Run(config *config.ControllerConfig) error {
 func (c *Controller) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(c.auth.Middleware(c.router))),
+		Handler:      common.LoggingMiddleware(c.auth.Middleware(c.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
