@@ -89,6 +89,11 @@ type applyLogicalMonitor struct {
 type MutterManager struct {
 	store *Layouts
 	conn  *dbus.Conn
+
+	// excludeFromBoot keeps monitors out of the persisted boot configuration
+	// (see boot_config_linux.go). nil persists everything, which is what a
+	// caller that never sets it gets.
+	excludeFromBoot func(edid string) bool
 }
 
 // newMutterManager connects to the session bus and verifies that the Mutter
@@ -323,8 +328,10 @@ func (m *MutterManager) applyLayout(layout api.Layout) (map[string]intentMonitor
 
 	// Best-effort persistence: the layout is already applied, so a failure to
 	// write monitors.xml only means it won't be restored after a reboot — don't
-	// fail the switch over it.
-	if err := writeMonitorsXML(persist, monitors); err != nil {
+	// fail the switch over it. Excluded monitors (the TV) are left out of the
+	// persisted copy, so switching to the TV is a choice for this session and
+	// not a decision about where the machine comes up next time.
+	if err := m.persistBootConfig(persist, monitors); err != nil {
 		log.Printf("Applied layout but failed to persist to monitors.xml: %v", err)
 	}
 	return intent, preMatched, nil

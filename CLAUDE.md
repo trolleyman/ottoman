@@ -175,6 +175,20 @@ drifting from the install-time copy. `config set` / `config rotate-token` mirror
 it too, for changes made while the agent isn't running.
 A GNOME Quick Settings extension lives in `gnome-extension/`.
 
+**The TV is never a boot default.** GNOME restores `monitors.xml` before any
+agent exists, and a TV in standby keeps its HDMI link up, so a persisted layout
+naming the TV paints the desktop onto a dark panel with nothing running to
+notice. So the agent excludes TV-backed monitors from what gets persisted
+(`display.BootConfigManager`, wired in `newAgent`): switching to the TV applies
+normally but never becomes the boot configuration, and `ReconcileBootConfig` at
+startup repairs a file written before that rule existed. Dropping the TV
+renormalises the survivors (origin back to 0,0, primary promoted), and a layout
+whose only screen is the TV leaves the previous boot configuration alone rather
+than persisting an empty one. `correctStartupDisplay` stays as the safety net,
+but it is conditional - `offScreenTVs` only probes TV-backed monitors the
+display actually came up *on* - so with the TV out of the boot configuration it
+almost never runs, and a normal boot costs no network probe.
+
 **Choosing a layout for a machine that is off** (`internal/controller/pending.go`):
 the desktop can't be told anything while it's asleep, so the controller holds
 the choice and applies it on the way up. `POST /api/layouts/switch` against a

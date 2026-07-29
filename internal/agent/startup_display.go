@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/trolleyman/ottoman/internal/api"
+	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/store"
 )
 
@@ -19,12 +20,20 @@ import (
 const tvProbeTimeout = 6 * time.Second
 
 // correctStartupDisplay steers the user session's display away from a
-// powered-off TV at startup. When the machine was last used on the TV and is now
-// booted with it switched off, the session comes up on the TV (which keeps its
-// HDMI link up in standby, so the compositor still drives it) and part or all of
-// the desktop lands on a dark panel. This detects that and switches to a layout
-// that only uses the monitors that are actually lit. Best-effort and safe: if
-// nothing is correctable it leaves the display untouched.
+// powered-off TV at startup. When the session comes up on a TV that is switched
+// off (it keeps its HDMI link up in standby, so the compositor still drives it),
+// part or all of the desktop lands on a dark panel. This detects that and
+// switches to a layout that only uses the monitors that are actually lit.
+// Best-effort and safe: if nothing is correctable it leaves the display
+// untouched.
+//
+// The network probe is conditional, and after the TV was excluded from the
+// persisted boot configuration it should almost never run: offScreenTVs only
+// probes TV-backed monitors the display actually came up *on* (m.Active), and a
+// boot configuration that doesn't name the TV doesn't bring one up. It stays as
+// the safety net for the cases that rule can't reach - a stale configuration, a
+// layout GNOME persisted itself, a TV that was on when the layout was applied -
+// where the alternative recovery is noticing and switching by hand.
 func (a *Agent) correctStartupDisplay() {
 	monitors, err := a.displayMgr.ListMonitors()
 	if err != nil {
@@ -223,4 +232,23 @@ func tvList(monitors []api.Monitor, off []string) string {
 		return "TV " + names[0]
 	}
 	return fmt.Sprintf("%d TVs (%s)", len(names), strings.Join(names, ", "))
+}
+
+// reconcileBootConfig repairs the display server's own boot configuration so it
+// doesn't name the TV.
+//
+// Applying a layout keeps the TV out of what gets persisted, so in steady state
+// there is nothing to repair. This covers the file as it was before that rule
+// existed: without it, a boot configuration naming the TV would survive until
+// some later layout switch happened to replace it, and every boot until then
+// would come up on the TV. Best-effort - a failure just means the next boot
+// behaves as it did before.
+func (a *Agent) reconcileBootConfig() {
+	bc, ok := a.displayMgr.(display.BootConfigManager)
+	if !ok {
+		return
+	}
+	if err := bc.ReconcileBootConfig(); err != nil {
+		log.Printf("Startup display check: could not reconcile the boot configuration: %v", err)
+	}
 }

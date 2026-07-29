@@ -136,6 +136,21 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	control := newMonitorControl(registry)
 	control.tv = tvMgr
 
+	// The TV is never where the machine comes up on its own. It keeps its HDMI
+	// link up in standby, so a display server restoring a TV-inclusive
+	// configuration paints the desktop onto a dark panel before any agent
+	// exists to notice - the fix has to be upstream of that, in what gets
+	// persisted. Moving to the TV stays a live choice, and one made while the
+	// machine is off is queued by the controller instead.
+	//
+	// Not in greeter mode: the login screen's display server reads gdm's own
+	// config, which this agent has no business writing.
+	if bc, ok := mgr.(display.BootConfigManager); ok && !greeter {
+		bc.ExcludeFromBootConfig(func(edid string) bool {
+			return control.backendFor(edid) == store.BackendTV
+		})
+	}
+
 	a := &Agent{
 		config:      cfg,
 		configPath:  config.ConfigPath(),
@@ -1078,12 +1093,15 @@ func (a *Agent) Start() error {
 		}
 	}()
 
-	// In a user session, correct the display if it came up stranded on a
-	// powered-off TV. Runs off the startup path (the TV probe dials the network)
-	// after a short settle so the session's own display setup has landed first.
+	// In a user session, settle the display: repair a boot configuration written
+	// before the TV was excluded from one, then - only if the display did come
+	// up on a TV - check whether that panel is actually lit. Off the startup
+	// path, after a short settle so the session's own display setup has landed
+	// first.
 	if !a.greeter {
 		go func() {
 			time.Sleep(3 * time.Second)
+			a.reconcileBootConfig()
 			a.correctStartupDisplay()
 		}()
 	}

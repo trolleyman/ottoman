@@ -150,10 +150,18 @@ func writeMonitorsXML(enabled []persistLogicalMonitor, connected []mutterMonitor
 	}
 	b.WriteString("</monitors>\n")
 
+	// Skip an identical rewrite. The boot configuration is reconciled on every
+	// agent start, and rewriting a file Mutter watches - to the same bytes - is
+	// pure churn.
+	content := b.String()
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == content {
+		return nil
+	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return errors.Wrap(err, "creating config dir")
 	}
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return errors.Wrap(err, "writing monitors.xml")
 	}
 	return nil

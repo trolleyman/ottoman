@@ -49,6 +49,30 @@ type LayoutApplyResult struct {
 	Detail  string
 }
 
+// BootConfigManager is implemented by display backends that persist a boot-time
+// configuration the display server restores on its own (GNOME writes
+// monitors.xml and applies it before any agent is running).
+//
+// That file is the reason a desktop can come up on a switched-off TV: the TV
+// keeps its HDMI link up in standby, so it looks connected, and if it was in
+// the last-applied layout the display server dutifully restores it. Nothing can
+// be inferred at that point - the display server has already painted. So the
+// fix is upstream: keep the TV out of what gets persisted, and it is never
+// where the machine comes up unless it is explicitly asked for.
+type BootConfigManager interface {
+	// ExcludeFromBootConfig installs a predicate over monitor EDIDs. Monitors
+	// it accepts are still driven normally; they are just never written into
+	// the persisted boot configuration.
+	ExcludeFromBootConfig(exclude func(edid string) bool)
+
+	// ReconcileBootConfig rewrites the persisted configuration for the current
+	// hardware from the live arrangement, applying that exclusion. It repairs a
+	// file written before the exclusion existed - otherwise a boot config
+	// naming the TV would survive until the next layout switch happened to
+	// replace it.
+	ReconcileBootConfig() error
+}
+
 // VerifyingManager is implemented by display backends that can confirm what
 // actually happened to the display after an apply, rather than just reporting
 // that the request was accepted.
