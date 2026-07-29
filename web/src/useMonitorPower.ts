@@ -28,11 +28,16 @@ export function useMonitorPower(edid: string, initialOn: boolean) {
   // Re-sync to the caller's power state when it changes — e.g. a TV's
   // `reachable` arrives after the first render, or a poll flips `active`. Skip
   // while a toggle is in flight so we don't clobber the optimistic switch.
-  const loadingRef = useRef(loading);
-  loadingRef.current = loading;
-  useEffect(() => {
-    if (!loadingRef.current) setOn(initialOn);
-  }, [initialOn]);
+  //
+  // Done during render rather than in an effect (react.dev: "adjusting state
+  // when a prop changes"): React re-renders with the new state before painting,
+  // so there's no flash of the stale value, and `loading` is read directly
+  // instead of through a ref written mid-render.
+  const [lastInitialOn, setLastInitialOn] = useState(initialOn);
+  if (initialOn !== lastInitialOn) {
+    setLastInitialOn(initialOn);
+    if (!loading) setOn(initialOn);
+  }
 
   const toggle = async (target: boolean) => {
     const id = ++runId.current; // supersedes any in-flight poll
