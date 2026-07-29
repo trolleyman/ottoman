@@ -3,9 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,7 +39,6 @@ type Controller struct {
 	startTime time.Time
 
 	mu      sync.RWMutex
-	secret  string
 	localIP string
 
 	// TV mirror: a registry + pairing-key store synced from the agent while it's
@@ -98,7 +95,6 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		auth:      common.NewAuthenticator(config.AuthToken, config.LocalAuthRequired()),
 		agentBase: agentBase,
 		startTime: time.Now(),
-		secret:    generateSecret(),
 		localIP:   getOutboundIP(),
 	}
 
@@ -182,7 +178,6 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 		Hostname:  "",
 		IpAddress: ipAddr,
 		Port:      port,
-		Secret:    c.secret,
 	}, nil
 }
 
@@ -691,10 +686,4 @@ func getOutboundIP() string {
 	defer conn.Close()
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
-}
-
-func generateSecret() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
 }

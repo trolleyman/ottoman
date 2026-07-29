@@ -356,7 +356,6 @@ type StatusResponse struct {
 	Hostname  string                   `json:"hostname"`
 	IpAddress StatusResponse_IpAddress `json:"ip_address"`
 	Port      string                   `json:"port"`
-	Secret    string                   `json:"secret"`
 	Status    string                   `json:"status"`
 	Uptime    string                   `json:"uptime"`
 	Version   string                   `json:"version"`

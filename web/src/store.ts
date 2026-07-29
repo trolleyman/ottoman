@@ -53,10 +53,6 @@ interface OttomanStore {
   login: (token: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
 
-  // ── Server Status ─────────────────────────────────────
-  status: StatusResponse | null;
-  statusLoading: boolean;
-
   // ── Agent Status ──────────────────────────────────────
   agentStatus: AgentOnlineStatus;
   agentInfo: StatusResponse | null;
@@ -88,7 +84,6 @@ interface OttomanStore {
 
   // ── Actions ───────────────────────────────────────────
   refreshAll: (silent: boolean) => Promise<void>;
-  fetchStatus: (silent: boolean) => Promise<void>;
   fetchAgentStatus: (silent: boolean) => Promise<void>;
   fetchLayouts: (silent: boolean) => Promise<void>;
   fetchMonitors: (silent: boolean) => Promise<void>;
@@ -135,7 +130,6 @@ interface OttomanStore {
 
   // ── Internal ──────────────────────────────────────────
   _pollTimer: ReturnType<typeof setInterval> | null;
-  _inflightStatus: Promise<void> | null;
   _inflightAgentStatus: Promise<void> | null;
   _inflightLayouts: Promise<void> | null;
   _inflightMonitors: Promise<void> | null;
@@ -171,7 +165,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
     get().stopPolling();
     set({
       authed: false,
-      status: null,
       agentStatus: "offline",
       agentInfo: null,
       layouts: [],
@@ -179,10 +172,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
       monitors: [],
     });
   },
-
-  // ── Server Status ─────────────────────────────────────
-  status: null,
-  statusLoading: false,
 
   // ── Agent Status ──────────────────────────────────────
   agentStatus: "offline",
@@ -212,7 +201,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
 
   // ── Internal ──────────────────────────────────────────
   _pollTimer: null,
-  _inflightStatus: null,
   _inflightAgentStatus: null,
   _inflightLayouts: null,
   _inflightMonitors: null,
@@ -220,26 +208,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
   _prevAgentOnline: null,
 
   // ── Fetch Actions ─────────────────────────────────────
-
-  fetchStatus: async (silent: boolean) => {
-    if (get()._inflightStatus) return get()._inflightStatus!;
-
-    if (!silent) set({ statusLoading: true });
-
-    const promise = (async () => {
-      try {
-        const data = await client.default.getStatus();
-        set({ status: data });
-      } catch {
-        // Ignore errors
-      } finally {
-        set({ statusLoading: false, _inflightStatus: null });
-      }
-    })();
-
-    set({ _inflightStatus: promise });
-    return promise;
-  },
 
   fetchAgentStatus: async (silent: boolean) => {
     if (get()._inflightAgentStatus) return get()._inflightAgentStatus!;
@@ -347,7 +315,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
   refreshAll: async (silent: boolean) => {
     set((s) => ({ refreshKey: s.refreshKey + 1 }));
     await Promise.allSettled([
-      get().fetchStatus(silent),
       get().fetchAgentStatus(silent),
       get().fetchLayouts(silent),
       get().fetchMonitors(silent),

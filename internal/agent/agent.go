@@ -338,7 +338,6 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 		Hostname:  hostname,
 		IpAddress: ipAddr,
 		Port:      port,
-		Secret:    "",
 	}, nil
 }
 

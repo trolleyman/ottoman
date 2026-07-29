@@ -9,6 +9,5 @@ export type StatusResponse = {
     hostname: string;
     ip_address: string;
     port: string;
-    secret: string;
 };
 

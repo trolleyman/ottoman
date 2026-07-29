@@ -958,7 +958,7 @@ components:
 
     StatusResponse:
       type: object
-      required: [status, version, uptime, hostname, ip_address, port, secret]
+      required: [status, version, uptime, hostname, ip_address, port]
       properties:
         status: { type: string }
         version: { type: string }
@@ -971,7 +971,6 @@ components:
             - type: string
               format: ipv6
         port: { type: string, format: uint16 }
-        secret: { type: string }
 
     Monitor:
       type: object

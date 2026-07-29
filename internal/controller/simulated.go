@@ -253,7 +253,6 @@ func (s *SimulatedController) GetStatus(ctx context.Context, request api.GetStat
 		Hostname:  "",
 		IpAddress: ipAddr,
 		Port:      port,
-		Secret:    "simulated-secret",
 	}, nil
 }
 
@@ -285,7 +284,6 @@ func (s *SimulatedController) GetAgentStatus(ctx context.Context, request api.Ge
 		Hostname:  hostname,
 		IpAddress: ipAddr,
 		Port:      fmt.Sprintf("%d", s.controllerCfg.Agent.Port),
-		Secret:    "",
 	}, nil
 }
 
