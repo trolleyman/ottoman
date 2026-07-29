@@ -11,6 +11,5 @@ export type StatusResponse = {
     port: string;
     secret: string;
     endpoints?: Array<string>;
-    client_is_local?: boolean;
 };
 

@@ -21,11 +21,10 @@ function normalizeOrigin(url: string): string {
 // advertised as a hop target: it sleeps / powers off, so redirecting straight
 // to it would strand the UI whenever it's down.
 //
-// On an http page each better-ranked candidate's /health is probed before
-// navigating (cross-origin, allowed by the servers' HealthCORS middleware).
-// On an https page (e.g. ngrok) mixed-content rules block probing http
-// targets, so we navigate optimistically instead — but only when the server
-// vouches that the client is on its own network (`client_is_local`).
+// Each better-ranked candidate's /health is probed before navigating
+// (cross-origin, allowed by the servers' HealthCORS middleware). On an https
+// page (e.g. ngrok) mixed-content rules block probing http targets, so we stay
+// put rather than guess at a hop that may strand the UI.
 export function useEndpointRedirect(status: StatusResponse | null) {
   useEffect(() => {
     if (!status?.endpoints?.length) return;
@@ -43,10 +42,7 @@ export function useEndpointRedirect(status: StatusResponse | null) {
         target + window.location.pathname + window.location.search + window.location.hash;
     };
 
-    if (window.location.protocol === "https:") {
-      if (status.client_is_local) navigate(candidates[0]);
-      return;
-    }
+    if (window.location.protocol === "https:") return;
 
     let cancelled = false;
     void (async () => {

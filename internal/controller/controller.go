@@ -41,8 +41,6 @@ type Controller struct {
 	secret  string
 	localIP string
 
-	endpoints endpointState
-
 	// TV mirror: a registry + pairing-key store synced from the agent while it's
 	// up (see syncTVFromAgent), and a manager that drives the TV directly when
 	// the agent is down (see the fallbacks in monitors.go). registry/tvStore are
@@ -154,23 +152,20 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 	// deliberately not advertised as a hop target — it sleeps / powers off, and
 	// redirecting straight to it strands the UI whenever it's down (reaching it
 	// through the always-on controller proxy keeps working instead).
-	publicIPs := c.refreshPublicIPs()
 	endpoints := make([]string, 0, 1)
 	if c.localIP != "" {
 		endpoints = append(endpoints, fmt.Sprintf("http://%s:%s", c.localIP, port))
 	}
-	local := c.clientIsLocal(ctx, publicIPs)
 
 	return api.GetStatus200JSONResponse{
-		Status:        "ok",
-		Version:       "dev",
-		Uptime:        uptime,
-		Hostname:      "",
-		IpAddress:     ipAddr,
-		Port:          port,
-		Secret:        c.secret,
-		Endpoints:     &endpoints,
-		ClientIsLocal: &local,
+		Status:    "ok",
+		Version:   "dev",
+		Uptime:    uptime,
+		Hostname:  "",
+		IpAddress: ipAddr,
+		Port:      port,
+		Secret:    c.secret,
+		Endpoints: &endpoints,
 	}, nil
 }
 
@@ -613,7 +608,7 @@ func Run(config *config.ControllerConfig) error {
 func (c *Controller) Start() error {
 	c.server = &http.Server{
 		Addr:         c.config.ListenAddress,
-		Handler:      common.LoggingMiddleware(common.HealthCORS(withClientInfo(c.router))),
+		Handler:      common.LoggingMiddleware(common.HealthCORS(c.router)),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
