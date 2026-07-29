@@ -1061,6 +1061,8 @@ func (a *Agent) Start() error {
 	// address) would otherwise leave the login screen stale indefinitely.
 	a.mirrorToGreeter()
 
+	common.WarnIfFrontEndBypassesAuth("agent", a.config.ListenAddress, a.config.RequireLocalAuth)
+
 	go func() {
 		log.Printf("Agent starting at http://%s", a.config.ListenAddress)
 		ln, err := common.ListenWithRetry("tcp", a.config.ListenAddress)

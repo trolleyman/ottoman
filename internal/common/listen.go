@@ -1,13 +1,10 @@
 package common
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
-	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -69,6 +66,7 @@ func isAddrInUse(err error) bool {
 // listenConflictHint explains an address-in-use failure whose cause is standing
 // configuration rather than a previous instance still shutting down. It returns
 // "" when there is nothing to say, in which case retrying is the right move.
+// The serve lookup it uses lives in tailscale.go.
 //
 // The case it catches: a `tailscale serve` mapping on the same port. tailscaled
 // binds that port on the machine's tailnet address, so a wildcard bind here
@@ -91,62 +89,4 @@ func listenConflictHint(addr string) string {
 		"Bind loopback instead - that is where the serve mapping forwards to:\n"+
 		"    ottoman config set agent.listen_address 127.0.0.1:%[1]s        (or controller.listen_address)\n"+
 		"    ottoman config set agent.require_local_auth true               (the front-end dials in from 127.0.0.1, so the loopback exemption has to go)", port)
-}
-
-// isWildcardHost reports whether host means "every interface".
-func isWildcardHost(host string) bool {
-	if host == "" || host == "*" {
-		return true
-	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
-	return ip != nil && ip.IsUnspecified()
-}
-
-// serveStatus is the slice of `tailscale serve status --json` this needs: TCP
-// is keyed by port, Web by "host:port".
-type serveStatus struct {
-	TCP map[string]json.RawMessage
-	Web map[string]json.RawMessage
-}
-
-// tailscaleServeStatus reads the serve config; a var so tests can stand in for
-// the CLI.
-var tailscaleServeStatus = readTailscaleServeStatus
-
-// tailscaleServesPort reports whether tailscaled holds a serve mapping on port.
-func tailscaleServesPort(port string) bool {
-	raw, ok := tailscaleServeStatus()
-	if !ok {
-		return false
-	}
-	var status serveStatus
-	if err := json.Unmarshal(raw, &status); err != nil {
-		return false
-	}
-	if _, ok := status.TCP[port]; ok {
-		return true
-	}
-	for hostPort := range status.Web {
-		if _, p, err := net.SplitHostPort(hostPort); err == nil && p == port {
-			return true
-		}
-	}
-	return false
-}
-
-// readTailscaleServeStatus runs the CLI, reporting false if tailscale isn't
-// installed or doesn't answer promptly. This sits on the startup path, so it
-// must never be the thing that hangs it.
-func readTailscaleServeStatus() ([]byte, bool) {
-	bin, err := exec.LookPath("tailscale")
-	if err != nil {
-		return nil, false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "serve", "status", "--json").Output()
-	if err != nil {
-		return nil, false
-	}
-	return out, true
 }

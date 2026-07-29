@@ -636,6 +636,8 @@ func (c *Controller) Start() error {
 		log.Printf("WARNING: %s", w)
 	}
 
+	common.WarnIfFrontEndBypassesAuth("controller", c.config.ListenAddress, c.config.RequireLocalAuth)
+
 	// Mirror the agent's TV registry + pairing keys so the TV stays controllable
 	// once the desktop is off. Stops when the controller shuts down.
 	syncCtx, cancelSync := context.WithCancel(context.Background())

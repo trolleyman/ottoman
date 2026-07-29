@@ -224,6 +224,12 @@ withdraw that exemption. You want it on as soon as a TLS front-end
 from `127.0.0.1`, so with the default exemption every proxied request looks
 local and is waved straight through.
 
+Both components check for that combination at startup: if a `tailscale serve`
+mapping forwards to their listen port while `require_local_auth` is off, they
+log a `SECURITY:` warning naming the tailnet address that reaches them - and
+say so more sharply when Funnel is on for it, because then the open API is
+facing the public internet rather than just your tailnet.
+
 The gate never trusts `X-Forwarded-For` or similar headers when deciding whether
 a peer is local - they are client-controlled, so honouring one would let any
 remote caller claim the exemption.
