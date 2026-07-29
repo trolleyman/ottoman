@@ -72,15 +72,18 @@ func TestSetValueLeavesEverythingElseAlone(t *testing.T) {
 func TestSetValueTypedValues(t *testing.T) {
 	path := writeTempConfig(t, sampleConfig)
 
-	if _, _, err := SetValue(path, "agent.require_local_auth", "true"); err != nil {
+	if _, _, err := SetValue(path, "agent.require_local_auth", "false"); err != nil {
 		t.Fatalf("SetValue(require_local_auth): %v", err)
 	}
 
 	// A boolean has to land as a TOML boolean, not a quoted string that
-	// unmarshals back to false - which would silently leave the gate open.
+	// unmarshals back to nil - which would silently take the default.
 	cfg := loadFrom(t, path)
-	if !cfg.Agent.RequireLocalAuth {
-		t.Error("agent.require_local_auth = false, want true")
+	if cfg.Agent.RequireLocalAuth == nil || *cfg.Agent.RequireLocalAuth {
+		t.Errorf("agent.require_local_auth = %v, want an explicit false", cfg.Agent.RequireLocalAuth)
+	}
+	if cfg.Agent.LocalAuthRequired() {
+		t.Error("LocalAuthRequired() = true, want the configured false")
 	}
 }
 

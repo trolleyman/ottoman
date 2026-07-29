@@ -95,7 +95,7 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		auth:      common.NewAuthenticator(config.AuthToken, config.RequireLocalAuth),
+		auth:      common.NewAuthenticator(config.AuthToken, config.LocalAuthRequired()),
 		agentBase: agentBase,
 		startTime: time.Now(),
 		secret:    generateSecret(),
@@ -636,7 +636,7 @@ func (c *Controller) Start() error {
 		log.Printf("WARNING: %s", w)
 	}
 
-	common.WarnIfFrontEndBypassesAuth("controller", c.config.ListenAddress, c.config.RequireLocalAuth)
+	common.WarnIfFrontEndBypassesAuth("controller", c.config.ListenAddress, c.config.LocalAuthRequired())
 
 	// Mirror the agent's TV registry + pairing keys so the TV stays controllable
 	// once the desktop is off. Stops when the controller shuts down.

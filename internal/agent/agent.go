@@ -148,7 +148,7 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		mouse:       mouse,
 		keyboard:    keyboard,
 		audio:       audioCtl,
-		auth:        common.NewAuthenticator(cfg.AuthToken, cfg.RequireLocalAuth),
+		auth:        common.NewAuthenticator(cfg.AuthToken, cfg.LocalAuthRequired()),
 		startTime:   time.Now(),
 		greeter:     greeter,
 	}
@@ -1061,7 +1061,7 @@ func (a *Agent) Start() error {
 	// address) would otherwise leave the login screen stale indefinitely.
 	a.mirrorToGreeter()
 
-	common.WarnIfFrontEndBypassesAuth("agent", a.config.ListenAddress, a.config.RequireLocalAuth)
+	common.WarnIfFrontEndBypassesAuth("agent", a.config.ListenAddress, a.config.LocalAuthRequired())
 
 	go func() {
 		log.Printf("Agent starting at http://%s", a.config.ListenAddress)

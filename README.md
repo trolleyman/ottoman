@@ -217,12 +217,13 @@ browser then sends it automatically - including on the `/api/trackpad`
 WebSocket, which is why the cookie exists at all: a browser cannot put an
 `Authorization` header on a WebSocket handshake.
 
-**Loopback callers are exempt by default**, so the CLI and a browser on the
-machine itself work with no credentials. Set `require_local_auth = true` to
-withdraw that exemption. You want it on as soon as a TLS front-end
-(`tailscale serve`, a reverse proxy) forwards outside traffic in: those dial
-from `127.0.0.1`, so with the default exemption every proxied request looks
-local and is waved straight through.
+**Loopback callers are gated too, by default.** Set `require_local_auth = false`
+to exempt them, so the CLI and a browser on the machine itself work with no
+credentials. That exemption is only safe while nothing on the host forwards
+outside traffic in: a TLS front-end (`tailscale serve`, a reverse proxy) dials
+from `127.0.0.1`, so every request it carries looks local and would be waved
+straight through. Nothing in a request distinguishes the two cases, which is
+why the default is the strict one.
 
 Both components check for that combination at startup: if a `tailscale serve`
 mapping forwards to their listen port while `require_local_auth` is off, they

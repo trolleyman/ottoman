@@ -39,12 +39,17 @@ type ControllerConfig struct {
 	AuthToken     string                `json:"auth_token"`
 	Agent         AgentControllerConfig `json:"agent"`
 
-	// RequireLocalAuth withdraws the loopback exemption, so a browser on this
-	// machine has to present the token too. Turn it on when a TLS front-end on
-	// this host forwards outside traffic in - `tailscale serve` and reverse
-	// proxies dial us from 127.0.0.1, so with the default exemption every
-	// proxied request looks local and is waved straight through.
-	RequireLocalAuth bool `json:"require_local_auth,omitempty"`
+	// RequireLocalAuth gates loopback callers too, so a browser on this machine
+	// has to present the token like anyone else.
+	//
+	// Unset means true. The setting only matters when something on this host
+	// forwards outside traffic in - `tailscale serve` and reverse proxies dial
+	// us from 127.0.0.1, so with the exemption every proxied request looks local
+	// and is waved straight through - and a request carries nothing that
+	// distinguishes that from a genuinely local browser. Defaulting to "off" put
+	// the burden on remembering to turn it on before exposing the box; the cost
+	// of defaulting the other way is logging in on the machine itself.
+	RequireLocalAuth *bool `json:"require_local_auth,omitempty"`
 }
 
 // AgentControllerConfig holds the configuration for how to contact the agent.
@@ -67,15 +72,14 @@ type AgentControllerConfig struct {
 
 // AgentConfig holds agent configuration
 type AgentConfig struct {
-	ListenAddress string         `json:"listen_address"`
-	AuthToken     string         `json:"auth_token"`
-	Layouts       []api.Layout   `json:"layouts"`
-	Trackpad      TrackpadConfig `json:"trackpad"`
-	Boot          BootConfig     `json:"boot"`
+	ListenAddress string       `json:"listen_address"`
+	AuthToken     string       `json:"auth_token"`
+	Layouts       []api.Layout `json:"layouts"`
+	Boot          BootConfig   `json:"boot"`
 
-	// RequireLocalAuth withdraws the loopback exemption - see the field of the
-	// same name on ControllerConfig.
-	RequireLocalAuth bool `json:"require_local_auth,omitempty"`
+	// RequireLocalAuth gates loopback callers too - see the field of the same
+	// name on ControllerConfig. Unset means true.
+	RequireLocalAuth *bool `json:"require_local_auth,omitempty"`
 }
 
 // DefaultAgentPort is the agent's listen port, and the port assumed when a
@@ -131,9 +135,23 @@ func (a *AgentControllerConfig) Normalize() {
 	a.Port = 0
 }
 
-// BootConfig holds GRUB dual-boot entry names for remote OS selection. The GRUB
-// default should be the Linux entry (GRUB_DEFAULT=saved); "boot into Windows"
-// uses grub-reboot for a one-shot next boot.
+// LocalAuthRequired reports whether loopback callers have to authenticate.
+func (c *ControllerConfig) LocalAuthRequired() bool { return localAuthRequired(c.RequireLocalAuth) }
+
+// LocalAuthRequired reports whether loopback callers have to authenticate.
+func (c *AgentConfig) LocalAuthRequired() bool { return localAuthRequired(c.RequireLocalAuth) }
+
+// localAuthRequired resolves an unset require_local_auth to true. It is a
+// pointer rather than a plain bool with a viper default so that a config built
+// in code - `config init` on a machine with no config yet, a test, a future
+// caller - can't land on the permissive setting by leaving a field at its zero
+// value.
+func localAuthRequired(v *bool) bool { return v == nil || *v }
+
+// BootConfig holds the GRUB entry for remote OS selection. Only the Windows one
+// is needed: the GRUB default is expected to be Linux (GRUB_DEFAULT=saved), so
+// "boot into Linux" is a plain reboot, while "boot into Windows" needs a name to
+// hand grub-reboot for a one-shot next boot.
 type BootConfig struct {
 	LinuxEntry   string `json:"linux_entry"`   // GRUB menuentry name for Linux
 	WindowsEntry string `json:"windows_entry"` // GRUB menuentry name for Windows
@@ -303,18 +321,9 @@ func ensureConfigDir(path string) error {
 func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.listen_address", cfg.ListenAddress)
 	w.Set("agent.auth_token", cfg.AuthToken)
-	if cfg.RequireLocalAuth {
-		w.Set("agent.require_local_auth", true)
-	}
-
-	// Preserve trackpad tuning so re-running `config init` over an existing
-	// config doesn't silently drop it.
-	if cfg.Trackpad.Sensitivity != 0 {
-		w.Set("agent.trackpad.sensitivity", cfg.Trackpad.Sensitivity)
-	}
-	if cfg.Trackpad.Friction != 0 {
-		w.Set("agent.trackpad.friction", cfg.Trackpad.Friction)
-	}
+	// Always written, not only when true: the default is the strict setting, so
+	// a file that omits the key looks the same as one that turned it off.
+	w.Set("agent.require_local_auth", cfg.LocalAuthRequired())
 
 	if len(cfg.Layouts) > 0 {
 		layouts := make([]map[string]any, len(cfg.Layouts))
@@ -373,9 +382,7 @@ func SaveAgent(cfg *AgentConfig, path string) error {
 func setController(w *viper.Viper, cfg *ControllerConfig) {
 	w.Set("controller.listen_address", cfg.ListenAddress)
 	w.Set("controller.auth_token", cfg.AuthToken)
-	if cfg.RequireLocalAuth {
-		w.Set("controller.require_local_auth", true)
-	}
+	w.Set("controller.require_local_auth", cfg.LocalAuthRequired())
 	w.Set("controller.agent.mac_address", cfg.Agent.MACAddress)
 	// Write the modern key only: a config round-tripped through `config init`
 	// comes back with url and no ip_address/port to disagree with it.

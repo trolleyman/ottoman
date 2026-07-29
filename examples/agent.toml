@@ -12,13 +12,13 @@
 listen_address = ':17294'
 auth_token = 'your-secret-token-here'
 
-# The API is gated by auth_token: an unauthenticated caller gets 401 on /api/*.
-# Loopback callers are exempt by default, so the CLI and a browser on this
-# machine keep working with no credentials. Turn this on to withdraw that
-# exemption - which you want as soon as a TLS front-end forwards outside traffic
-# in, because it dials from 127.0.0.1 and every proxied request would otherwise
-# look local.
-# require_local_auth = true
+# The API is gated by auth_token: an unauthenticated caller gets 401 on /api/*,
+# loopback callers included. Setting this to false exempts loopback, so the CLI
+# and a browser on this machine work with no credentials - only do that on a
+# machine where nothing forwards outside traffic in, because a TLS front-end
+# (tailscale serve, a reverse proxy) dials from 127.0.0.1 and every request it
+# carries would then be waved straight through.
+require_local_auth = true
 
 # Network-controlled TVs (LG webOS) are configured per monitor, not here: open
 # the monitor's settings (cog) in the web UI, set the backend to "tv", and fill

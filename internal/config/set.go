@@ -35,12 +35,12 @@ type setting struct {
 var settings = []setting{
 	{"agent.listen_address", "address the agent binds, host:port (use 127.0.0.1:port behind a TLS front-end)", parseListenAddress},
 	{"agent.auth_token", "shared token the agent requires (see also: config rotate-token)", parseToken},
-	{"agent.require_local_auth", "gate loopback callers too; required when a TLS front-end forwards in from 127.0.0.1", parseBool},
+	{"agent.require_local_auth", "gate loopback callers too (default true); false only when nothing forwards traffic in from 127.0.0.1", parseBool},
 	{"agent.boot.windows_entry", "GRUB menuentry name for Windows, for a one-shot boot into Windows", parseNonEmpty},
 
 	{"controller.listen_address", "address the controller binds, host:port", parseListenAddress},
 	{"controller.auth_token", "shared token the controller requires; must match the agent's", parseToken},
-	{"controller.require_local_auth", "gate loopback callers too; required when a TLS front-end forwards in from 127.0.0.1", parseBool},
+	{"controller.require_local_auth", "gate loopback callers too (default true); false only when nothing forwards traffic in from 127.0.0.1", parseBool},
 	{"controller.agent.url", "agent base URL including scheme, e.g. https://hades.tail1234.ts.net", parseAgentURL},
 	{"controller.agent.mac_address", "agent's MAC address, for Wake-on-LAN", parseMAC},
 }

@@ -82,8 +82,9 @@ web/                     # React frontend
   header, Basic auth (token as the password), or the `ottoman_auth` cookie, all
   compared in constant time. `/api/*` is gated; `/health`, `/api/auth*` and the
   SPA assets are not, so the login screen can always load. Loopback peers are
-  exempt unless `require_local_auth = true` - turn that on whenever a TLS
-  front-end forwards traffic in from `127.0.0.1`. The local-peer test reads
+  gated too unless `require_local_auth = false`; unset means gated, since the
+  case where the exemption is unsafe (a TLS front-end forwarding traffic in from
+  `127.0.0.1`) is invisible from inside a request. The local-peer test reads
   `RemoteAddr` only and never a forwarded header, which would be spoofable.
   `Authenticator.Permits` is the single source of truth: the middleware and
   `/api/auth/check` both call it, so the UI is never told something the gate

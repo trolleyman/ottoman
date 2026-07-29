@@ -20,11 +20,11 @@ const AuthCookieName = "ottoman_auth"
 
 // Authenticator gates the HTTP API with the configured shared token.
 //
-// Loopback requests are trusted by default, so a browser on the machine itself
-// and the CLI keep working with no credentials. requireLocal withdraws that
-// exemption: it matters as soon as something else on the host forwards outside
-// traffic in, because a `tailscale serve` or reverse-proxy front-end dials from
-// 127.0.0.1 and every proxied request would otherwise look local.
+// requireLocal decides whether loopback peers are gated too. Config defaults it
+// on (see config.localAuthRequired): the exemption is only safe while nothing
+// on the host forwards outside traffic in, and a request carries nothing that
+// tells the two apart - a `tailscale serve` or reverse-proxy front-end dials
+// from 127.0.0.1 exactly like a local browser does.
 //
 // An empty token disables authentication entirely.
 type Authenticator struct {
