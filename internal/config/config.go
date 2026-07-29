@@ -279,6 +279,18 @@ func SystemConfigPath() string {
 	return "/etc/ottoman/config.toml"
 }
 
+// configWriter is a viper set up to write a config file. The file holds the
+// auth token, so it is created 0600 rather than viper's default 0644 - on a
+// shared machine that default hands the token to every local user. An existing
+// file keeps whatever mode it already has; tightening one behind the operator's
+// back could lock out a service running as someone else.
+func configWriter() *viper.Viper {
+	w := viper.New()
+	w.SetConfigType("toml")
+	w.SetConfigPermissions(0600)
+	return w
+}
+
 // ensureConfigDir creates the config directory if needed
 func ensureConfigDir(path string) error {
 	dir := filepath.Dir(path)
@@ -349,9 +361,7 @@ func SaveAgent(cfg *AgentConfig, path string) error {
 		return err
 	}
 
-	w := viper.New()
-	w.SetConfigType("toml")
-
+	w := configWriter()
 	setAgent(w, cfg)
 
 	if err := w.WriteConfigAs(path); err != nil {
@@ -381,9 +391,7 @@ func SaveController(cfg *ControllerConfig, path string) error {
 		return err
 	}
 
-	w := viper.New()
-	w.SetConfigType("toml")
-
+	w := configWriter()
 	setController(w, cfg)
 
 	if err := w.WriteConfigAs(path); err != nil {
@@ -401,9 +409,7 @@ func Save(cfg *Config, path string) error {
 		return err
 	}
 
-	w := viper.New()
-	w.SetConfigType("toml")
-
+	w := configWriter()
 	setAgent(w, &cfg.Agent)
 	setController(w, &cfg.Controller)
 

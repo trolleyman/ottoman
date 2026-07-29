@@ -253,3 +253,37 @@ func TestRotateTokenNeedsAConfiguredComponent(t *testing.T) {
 		t.Error("RotateToken succeeded on a config with no agent or controller section")
 	}
 }
+
+func TestNewConfigFileIsNotWorldReadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+
+	if _, _, err := SetValue(path, "agent.auth_token", "0123456789abcdef0123"); err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	// The file holds the shared token; viper's default 0644 would hand it to
+	// every other local user.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("mode = %o, want 600", got)
+	}
+}
+
+func TestSaveAgentIsNotWorldReadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+
+	if err := SaveAgent(&AgentConfig{ListenAddress: ":17294", AuthToken: "0123456789abcdef0123"}, path); err != nil {
+		t.Fatalf("SaveAgent: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("mode = %o, want 600", got)
+	}
+}

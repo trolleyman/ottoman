@@ -261,7 +261,7 @@ func readSettings(path string) (map[string]any, error) {
 
 // writeSettings rewrites path from settings, keeping the file's existing
 // permissions - it holds the auth token, so a hardened mode must survive a
-// `config set`.
+// `config set`. A file created here is 0600 (see configWriter).
 func writeSettings(path string, values map[string]any) error {
 	if err := ensureConfigDir(path); err != nil {
 		return err
@@ -271,8 +271,7 @@ func writeSettings(path string, values map[string]any) error {
 		mode = info.Mode().Perm()
 	}
 
-	w := viper.New()
-	w.SetConfigType("toml")
+	w := configWriter()
 	if err := w.MergeConfigMap(values); err != nil {
 		return errors.Wrap(err, "failed to assemble config")
 	}
