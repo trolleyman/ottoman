@@ -107,6 +107,8 @@ Configuration is stored in `config.toml`:
 View config paths: `ottoman config paths`
 Show current config: `ottoman config show`
 Create default config: `ottoman config init`
+Change one setting: `ottoman config set agent.listen_address 127.0.0.1:17294`
+Rotate the auth token: `ottoman config rotate-token --push pi@ottoman.home`
 
 See `examples/` for sample configuration files.
 
@@ -165,7 +167,9 @@ ottoman server install                    # Install systemd service
 # Config
 ottoman config show                       # Show current config
 ottoman config paths                      # Show config search paths
-ottoman config init                       # Create default config
+ottoman config init                       # Create default config (interactive)
+ottoman config set <key> <value>          # Set one value, validated (see --help for keys)
+ottoman config rotate-token               # New auth token everywhere (--push for the Pi)
 
 # Status
 ottoman status                            # Check server and client status

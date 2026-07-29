@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -642,6 +643,162 @@ Examples:
 	},
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a single configuration value non-interactively",
+	Long: `Set one configuration value, validating it before it is written.
+
+The value is checked against what the key actually accepts, so a mistake is
+refused here rather than surfacing as a service that won't start. Only the
+named key changes; everything else in the file is preserved (though comments
+and key order are not - the file is rewritten from its parsed contents).
+
+Writes the file named by --config, or the config file that would be loaded,
+or the platform default path.
+
+Examples:
+  ottoman config set agent.listen_address 127.0.0.1:17294
+  ottoman config set agent.require_local_auth true
+  ottoman config set controller.agent.url https://hades.tail1234.ts.net
+  ottoman config set -c /etc/ottoman/config.toml controller.listen_address :17293
+
+Settable keys:
+` + strings.Join(config.SettableKeys(), "\n"),
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		config.Init(configFile)
+		// Locate the file that would be loaded; a missing one is fine, `set`
+		// creates it.
+		_, _ = config.Load()
+
+		path, value, err := config.SetValue(configFile, args[0], args[1])
+		if err != nil {
+			return err
+		}
+		log.Printf("%s: %s = %v\n", path, args[0], value)
+		mirrorConfigToGreeter(path)
+		log.Println(restartHint(args[0]))
+		return nil
+	},
+}
+
+var configRotateTokenCmd = &cobra.Command{
+	Use:   "rotate-token",
+	Short: "Generate a new auth token and write it to every copy that must match",
+	Long: `Rotate the shared auth token.
+
+The agent and the controller must present the same token, and on this machine
+it can live in up to three files: the config, the gdm greeter's copy of it (if
+the login-screen agent is installed) and the controller's config on the Pi.
+Editing them by hand is how they drift apart, so this generates the token once
+and writes every copy it can reach.
+
+Both auth_token keys already present in the local config file are updated;
+--push additionally sets controller.auth_token on a remote host over SSH.
+
+Examples:
+  ottoman config rotate-token
+  ottoman config rotate-token --token "$(cat token.txt)"
+  ottoman config rotate-token --push pi@ottoman.home`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		token, _ := cmd.Flags().GetString("token")
+		push, _ := cmd.Flags().GetString("push")
+		remoteBinary, _ := cmd.Flags().GetString("remote-binary")
+		remoteConfig, _ := cmd.Flags().GetString("remote-config")
+
+		config.Init(configFile)
+		if _, err := config.Load(); err != nil {
+			return errors.Wrap(err, "failed to load config")
+		}
+
+		rotation, err := config.RotateToken(configFile, token)
+		if err != nil {
+			return err
+		}
+		log.Printf("%s: rotated %s\n", rotation.Path, strings.Join(rotation.Keys, ", "))
+		log.Printf("New token: %s\n", rotation.Token)
+		mirrorConfigToGreeter(rotation.Path)
+
+		if push != "" {
+			if err := pushToken(push, remoteBinary, remoteConfig, rotation.Token); err != nil {
+				// The local half is already written, so say what is now out of
+				// step rather than pretending nothing happened.
+				return errors.Wrapf(err, "local config rotated, but %s was not updated - it will reject the new token until it is", push)
+			}
+			log.Printf("Pushed controller.auth_token to %s\n", push)
+		} else {
+			log.Println("Not pushed anywhere: set controller.auth_token on the Pi too, or re-run with --push <user@host>.")
+		}
+
+		log.Println("Restart both components to pick it up (systemctl --user restart ottoman-agent, and ottoman-controller on the Pi).")
+		return nil
+	},
+}
+
+// pushToken sets controller.auth_token on a remote host and restarts its
+// controller, using the remote ottoman binary's own `config set` so the value
+// gets the same validation it would locally.
+//
+// The token rides in the remote command line, so it is visible in that host's
+// process list for the moment the command runs. Acceptable here: the target is
+// a single-user Pi you already have shell on, and the alternative (feeding it
+// over stdin) needs a remote shell snippet that is harder to read than the risk
+// it removes.
+func pushToken(target, binary, remoteConfig, token string) error {
+	remote := remotePathArg(binary) + " config set"
+	if remoteConfig != "" {
+		remote += " --config " + remotePathArg(remoteConfig)
+	}
+	remote += " controller.auth_token " + shellQuote(token)
+	// Best-effort restart: a controller that isn't running as a user service
+	// (or isn't installed yet) shouldn't fail the rotation.
+	remote += "; systemctl --user restart ottoman-controller || true"
+
+	c := exec.Command("ssh", target, remote)
+	c.Stdout = os.Stderr
+	c.Stderr = os.Stderr
+	c.Stdin = os.Stdin
+	return c.Run()
+}
+
+// shellQuote wraps s for a remote /bin/sh command line.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// remotePathArg quotes a remote path, expanding a leading ~/ through $HOME:
+// tilde expansion only happens on an unquoted ~, so a quoted "~/..." would be
+// taken literally, while $HOME does expand inside double quotes.
+func remotePathArg(p string) string {
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return `"$HOME/` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "`", "\\`", "$", `\$`).Replace(rest) + `"`
+	}
+	return shellQuote(p)
+}
+
+// mirrorConfigToGreeter pushes a just-written config to the login-screen
+// agent's copy, so a CLI edit doesn't leave the greeter on a stale token.
+func mirrorConfigToGreeter(path string) {
+	copied, err := agent.MirrorConfigToGreeter(path)
+	if err != nil {
+		log.Printf("Warning: failed to mirror config to the greeter copy: %v\n", err)
+		return
+	}
+	if copied {
+		log.Println("Mirrored to the login-screen agent's copy.")
+	}
+}
+
+// restartHint says which component has to be restarted for a key to take
+// effect, since nothing rereads the config while running.
+func restartHint(key string) string {
+	if strings.HasPrefix(key, "controller.") {
+		return "Restart the controller to pick it up: systemctl --user restart ottoman-controller"
+	}
+	return "Restart the agent to pick it up: systemctl --user restart ottoman-agent"
+}
+
 // promptInput asks for user input with an optional default value
 func promptInput(reader *bufio.Reader, question, defaultVal string) (string, error) {
 	if defaultVal != "" {
@@ -861,6 +1018,12 @@ func init() {
 	configCmd.AddCommand(configPathsCmd)
 	configCmd.AddCommand(configInitCmd)
 	configInitCmd.Flags().StringP("output", "o", "", "output path for config file")
+	configCmd.AddCommand(configSetCmd)
+	configCmd.AddCommand(configRotateTokenCmd)
+	configRotateTokenCmd.Flags().String("token", "", "use this token instead of generating one")
+	configRotateTokenCmd.Flags().String("push", "", "also set controller.auth_token on this SSH target (user@host)")
+	configRotateTokenCmd.Flags().String("remote-binary", "~/.local/share/ottoman/ottoman", "path to the ottoman binary on the --push target")
+	configRotateTokenCmd.Flags().String("remote-config", "", "config path on the --push target (default: whatever it would load)")
 
 	// Add commands to root
 	rootCmd.AddCommand(controllerCmd)

@@ -108,10 +108,22 @@ Deployment settings are saved to `magefiles/deploy.toml` (gitignored).
 ## Config Commands
 
 ```bash
-ottoman config show      # Show current configuration
-ottoman config paths     # Show config search paths
-ottoman config init      # Create default config file
+ottoman config show                    # Show current configuration
+ottoman config paths                   # Show config search paths
+ottoman config init                    # Create a config file (interactive)
+ottoman config set <key> <value>       # Set one value, validated, non-interactively
+ottoman config rotate-token            # New auth token in every copy that must match
 ```
+
+`config set` validates the value against the key before writing (a listen
+address that isn't `host:port`, a URL with no scheme, a 5-character token are
+all refused), touches only that key, and lists the settable keys in its
+`--help`. It rewrites the file from its parsed contents, so comments and key
+order are not preserved. `config rotate-token` generates a token and writes it
+to every `auth_token` key the file already has, mirrors it to the greeter copy,
+and with `--push <user@host>` sets `controller.auth_token` on the Pi over SSH -
+the three copies that must agree, updated from one command. Neither is picked
+up until the affected component restarts.
 
 ## API Endpoints
 
