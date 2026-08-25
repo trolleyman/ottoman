@@ -212,6 +212,30 @@ func TestLayoutsMirrorRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLayoutsMirrorUsesCachedAgentExport(t *testing.T) {
+	requested := make(chan string, 1)
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested <- r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.LayoutsResponse{
+			Layouts:       []api.Layout{{Id: "tv", Name: "TV"}},
+			CurrentLayout: "tv",
+		})
+	}))
+	defer agent.Close()
+
+	c := newTestController(t, agent.URL)
+	if err := c.syncLayoutsFromAgent(t.Context()); err != nil {
+		t.Fatalf("syncLayoutsFromAgent: %v", err)
+	}
+	if path := <-requested; path != "/api/layouts/export" {
+		t.Fatalf("mirror requested %q, want cached export", path)
+	}
+	if got, ok := mirroredLayouts(); !ok || got.CurrentLayout != "tv" || len(got.Layouts) != 1 {
+		t.Fatalf("mirror = %+v, %v; want exported layouts", got, ok)
+	}
+}
+
 // writeTestMirror puts a layouts mirror on disk the way syncLayoutsFromAgent
 // would.
 func writeTestMirror(t *testing.T, l api.LayoutsResponse) {

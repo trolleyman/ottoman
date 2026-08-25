@@ -251,6 +251,10 @@ func (a *Agent) setupRoutes() error {
 	// endpoint (not in the OpenAPI spec) — a more specific ServeMux pattern than
 	// the SPA catch-all, so it takes precedence.
 	inner.HandleFunc("GET /api/tv/export", a.handleTVExport)
+	// The layouts mirror needs the saved definitions and last-known selection,
+	// not a fresh display probe. Keeping this separate from /api/layouts prevents
+	// the controller's background cache refresh from querying Mutter.
+	inner.HandleFunc("GET /api/layouts/export", a.handleLayoutsExport)
 
 	if err := common.SetupSPAHandler(inner); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")
@@ -282,6 +286,17 @@ func (a *Agent) handleTVExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(a.tv.Export()); err != nil {
 		log.Printf("TV export encode failed: %v", err)
+	}
+}
+
+// handleLayoutsExport serves the agent's in-memory layout state without asking
+// the display backend to rediscover the current arrangement. It is used only by
+// the controller's offline mirror; interactive /api/layouts requests still
+// reconcile the cache with Mutter so manual display changes remain detectable.
+func (a *Agent) handleLayoutsExport(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(a.cachedLayoutsResponse()); err != nil {
+		log.Printf("Layouts export encode failed: %v", err)
 	}
 }
 
@@ -373,8 +388,6 @@ func getOutboundIP() string {
 
 // GetLayouts implements api.StrictServerInterface
 func (a *Agent) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObject) (api.GetLayoutsResponseObject, error) {
-	allLayouts := a.layouts.List()
-
 	// Update current layout from display manager to ensure it's fresh. The
 	// layout we last switched to breaks ties between layouts the display can't
 	// tell apart, so it isn't replaced by an equally-matching sibling.
@@ -383,7 +396,14 @@ func (a *Agent) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObj
 			a.currentLayout = current
 		}
 	}
+	return a.cachedLayoutsResponse(), nil
+}
 
+// cachedLayoutsResponse returns the saved layouts and last-known current layout
+// without touching the display backend. Layout mutations and switches update
+// this state directly; interactive reads reconcile it with manual changes.
+func (a *Agent) cachedLayoutsResponse() api.GetLayouts200JSONResponse {
+	allLayouts := a.layouts.List()
 	// Sort by minimum integer alias (if any), then by ID
 	sort.Slice(allLayouts, func(i, j int) bool {
 		ai := minIntAlias(allLayouts[i].Aliases)
@@ -405,7 +425,7 @@ func (a *Agent) GetLayouts(ctx context.Context, request api.GetLayoutsRequestObj
 	return api.GetLayouts200JSONResponse{
 		Layouts:       allLayouts,
 		CurrentLayout: a.currentLayout,
-	}, nil
+	}
 }
 
 // minIntAlias returns the smallest integer alias, or nil if none

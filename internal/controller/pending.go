@@ -213,7 +213,7 @@ func (c *Controller) syncLayoutsFromAgent(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	resp, err := proxyRequest(ctx, c, "GET", "/api/layouts", nil, func(resp *http.Response) (api.LayoutsResponse, error) {
+	resp, err := proxyRequest(ctx, c, "GET", "/api/layouts/export", nil, func(resp *http.Response) (api.LayoutsResponse, error) {
 		if resp.StatusCode != http.StatusOK {
 			return api.LayoutsResponse{}, errors.Errorf("agent layouts %d", resp.StatusCode)
 		}
@@ -262,9 +262,10 @@ func mirroredLayouts() (api.LayoutsResponse, bool) {
 }
 
 // layoutsSyncInterval is how often the mirror refreshes while the desktop is
-// up. Layouts change rarely; what matters is that the copy is current by the
-// moment the desktop goes down and the list is all the UI has left.
-const layoutsSyncInterval = 30 * time.Second
+// up. Layouts change rarely, and this request asks the display backend for the
+// current monitor state, so keep the fallback refresh deliberately infrequent.
+// The mirror is also populated immediately when the controller starts.
+const layoutsSyncInterval = 5 * time.Minute
 
 // startLayoutsSync keeps the layouts mirror fresh, once immediately and then on
 // a ticker. Separate from the TV sync because it must run even when the TV

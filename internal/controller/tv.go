@@ -16,10 +16,10 @@ import (
 )
 
 // tvSyncInterval bounds how often the controller re-mirrors the agent's TV
-// registry + pairing keys. It's frequent enough that the mirror is fresh by the
-// time the desktop is turned off (the moment local control is needed), but the
-// data changes rarely so there's no need to poll hard.
-const tvSyncInterval = 30 * time.Second
+// registry + pairing keys. The data changes only during TV setup, so a
+// five-minute fallback refresh (plus the immediate startup sync) avoids waking
+// the agent continuously while keeping the offline mirror reasonably fresh.
+const tvSyncInterval = 5 * time.Minute
 
 // startTVSync mirrors the agent's TV registry + pairing keys into the local
 // store, once immediately and then on a ticker, so the controller can drive the
@@ -86,7 +86,7 @@ func (c *Controller) syncTVFromAgent(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "read TV export")
 	}
-	// Skip the store writes when nothing changed — this runs every 30s and the
+	// Skip the store writes when nothing changed — this runs periodically and the
 	// controller often lives on an SD card, so needless rewrites are real wear.
 	if bytes.Equal(raw, c.lastTVExport) {
 		return nil

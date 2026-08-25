@@ -150,6 +150,7 @@ up until the affected component restarts.
 | `/api/monitors/input` | `POST` | Switch a TV-backed monitor's external input |
 | `/api/monitors/settings` | `POST` | Update a monitor's registry entry (name, backend, visibility) |
 | `/api/tv/export` | `GET` | (Agent only) TV registry entries + pairing keys, for the controller to mirror |
+| `/api/layouts/export` | `GET` | (Agent only) cached layouts, for the controller to mirror without probing the display backend |
 | `/api/audio/sinks` | `GET` | List PipeWire output sinks |
 | `/api/audio/volume` | `POST` | Set a sink's volume/mute/default |
 | `/api/boot` | `POST` | Reboot into a specific OS (GRUB dual-boot) |
