@@ -7,8 +7,7 @@ import (
 )
 
 // CurrentLayoutPath returns the path to the file recording the last-applied
-// layout ID. The greeter agent reads this on startup so the login screen comes
-// up in the same layout the user last selected in their session.
+// layout ID. It is historical state, not a request to apply a layout on startup.
 func CurrentLayoutPath() string {
 	return filepath.Join(DataDir(), "current-layout")
 }

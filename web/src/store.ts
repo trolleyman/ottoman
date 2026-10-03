@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { describeApiError } from "./errors";
 import { OttomanClient, type StatusResponse, type Layout, type Monitor, type AudioSink, type MonitorSettingsRequest } from "./api";
 import { sortedLayouts, sortedMonitors } from "./utils";
 
@@ -385,7 +386,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
       set({
         layoutNotice: {
           kind: "warn",
-          text: e instanceof Error ? e.message : "Switch failed",
+          text: describeApiError(e, "Switch failed"),
         },
       });
     } finally {

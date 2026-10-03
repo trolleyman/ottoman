@@ -176,7 +176,7 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 			if len(matches) > 4 && matches[4] != "" {
 				currentActive = &api.ActiveMonitor{
 					Primary: primary,
-					Model:   "", // Not available from xrandr
+					Model:   "",  // Not available from xrandr
 					Scale:   1.0, // xrandr scaling isn't captured; assume 100%
 				}
 				geom := matches[4]
@@ -227,12 +227,18 @@ func parseXrandrOutput(output string) ([]api.Monitor, error) {
 
 // ApplyLayoutConfig applies a display configuration using xrandr
 func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
+	// Connector names can change between sessions and after hotplug. Never use
+	// a cached topology to decide which real outputs to disable.
+	m.invalidateCache()
 	monitors, err := m.ListMonitors()
 	if err != nil {
 		return err
 	}
 
-	args := m.buildXrandrArgs(layout, monitors)
+	args, err := m.buildXrandrArgs(layout, monitors)
+	if err != nil {
+		return err
+	}
 
 	output, err := common.RunCmdOutput("xrandr", args...)
 	if err != nil {
@@ -245,15 +251,30 @@ func (m *LinuxManager) ApplyLayoutConfig(layout api.Layout) error {
 }
 
 // buildXrandrArgs builds xrandr command arguments for a layout
-func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.Monitor) []string {
+func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.Monitor) ([]string, error) {
+	// xrandr may merely warn about an unknown output and still execute --off
+	// for all the others. Reject the entire request before issuing any command.
+	if len(layout.Monitors) == 0 {
+		return nil, errors.New("layout must enable at least one connected monitor")
+	}
+	connected := make(map[string]bool, len(currentMonitors))
+	for _, mon := range currentMonitors {
+		connected[mon.Port] = true
+	}
 	var args []string
 	configured := make(map[string]bool)
 
 	for _, mon := range layout.Monitors {
 		// Use Port for xrandr output name
 		outputName := mon.Port
-		if outputName == "" {
-			continue // Skip monitors without port specification
+		if outputName == "" || !connected[outputName] {
+			return nil, errors.Errorf("layout monitor %q (port=%q) is not connected; recapture the layout for this session", mon.Name, outputName)
+		}
+		if configured[outputName] {
+			return nil, errors.Errorf("layout contains output %q more than once", outputName)
+		}
+		if mon.Width <= 0 || mon.Height <= 0 {
+			return nil, errors.Errorf("layout monitor %q has an invalid resolution", outputName)
 		}
 		configured[outputName] = true
 
@@ -285,7 +306,7 @@ func (m *LinuxManager) buildXrandrArgs(layout api.Layout, currentMonitors []api.
 		}
 	}
 
-	return args
+	return args, nil
 }
 
 // GetAvailableModes returns available modes for a monitor

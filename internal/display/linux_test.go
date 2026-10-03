@@ -3,8 +3,37 @@
 package display
 
 import (
+	"reflect"
 	"testing"
+
+	"github.com/trolleyman/ottoman/internal/api"
 )
+
+func TestXrandrRejectsStaleOutputsBeforeDisablingScreens(t *testing.T) {
+	m := &LinuxManager{}
+	connected := []api.Monitor{{Port: "HDMI-0"}, {Port: "DP-0"}, {Port: "DP-4"}}
+	for _, ports := range [][]string{nil, {""}, {"HDMI-2"}, {"DP-0", "HDMI-2"}, {"DP-0", "DP-0"}} {
+		layout := api.Layout{}
+		for _, port := range ports {
+			layout.Monitors = append(layout.Monitors, api.LayoutMonitor{Port: port, Width: 1920, Height: 1080})
+		}
+		args, err := m.buildXrandrArgs(layout, connected)
+		if err == nil || len(args) != 0 {
+			t.Errorf("ports %v: got args %v, err %v; want no commands and an error", ports, args, err)
+		}
+	}
+}
+
+func TestXrandrValidLayoutEnablesTargetBeforeDisablingOthers(t *testing.T) {
+	m := &LinuxManager{}
+	args, err := m.buildXrandrArgs(api.Layout{Monitors: []api.LayoutMonitor{
+		{Port: "HDMI-0", Width: 3840, Height: 2160, RefreshRate: 60, Primary: true},
+	}}, []api.Monitor{{Port: "HDMI-0"}, {Port: "DP-0"}})
+	want := []string{"--output", "HDMI-0", "--mode", "3840x2160", "--rate", "60.00", "--pos", "0x0", "--primary", "--output", "DP-0", "--off"}
+	if err != nil || !reflect.DeepEqual(args, want) {
+		t.Fatalf("args=%v err=%v; want %v", args, err, want)
+	}
+}
 
 func TestParseXrandrOutput(t *testing.T) {
 	input := `Screen 0: minimum 8 x 8, current 4480 x 1440, maximum 32767 x 32767

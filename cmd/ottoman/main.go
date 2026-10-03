@@ -987,7 +987,7 @@ func init() {
 	controllerCmd.AddCommand(controllerUninstallCmd)
 
 	// Agent commands
-	agentRunCmd.Flags().BoolVar(&agentRunGreeter, "greeter", false, "run in GDM greeter mode: display/layouts only, applies the last-used layout on start")
+	agentRunCmd.Flags().BoolVar(&agentRunGreeter, "greeter", false, "run in GDM greeter mode: display/layouts only, preserves the current layout on start")
 	agentCmd.AddCommand(agentRunCmd)
 	agentCmd.AddCommand(layoutCmd)
 	agentCmd.AddCommand(monitorCmd)

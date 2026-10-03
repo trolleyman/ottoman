@@ -64,8 +64,7 @@ func New(cfg *config.AgentConfig) (*Agent, error) {
 
 // NewGreeter creates an agent for the GDM login screen: it runs as the gdm user
 // against the greeter's own Mutter, so it serves only display/layout control
-// (input and audio are skipped) and applies the last-used layout on startup so
-// the login screen mirrors the user's session.
+// (input and audio are skipped). Starting it never changes the display layout.
 func NewGreeter(cfg *config.AgentConfig) (*Agent, error) {
 	return newAgent(cfg, true)
 }
@@ -100,9 +99,8 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 	var keyboard input.KeyboardController
 	var audioCtl audio.Controller
 	if greeter {
-		// Input and audio need a real user session; the TV backend is still wired
-		// up so the login screen can tell whether a TV is powered off (see
-		// applyStartupLayout), but it's only read at startup, not driven.
+		// Input and audio need a real user session. Display and TV control remain
+		// available for explicit requests, without changing anything at startup.
 		log.Println("Greeter mode: input and audio are disabled")
 	} else {
 		mouse, err = input.NewMouseController()
@@ -172,49 +170,7 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		return nil, err
 	}
 
-	// In greeter mode, bring the login screen up in the user's last layout.
-	if greeter {
-		a.applyStartupLayout()
-	}
-
 	return a, nil
-}
-
-// applyStartupLayout brings the login screen up sensibly. Normally it mirrors
-// the user's last-used layout (recorded by the user's agent on each switch). But
-// if that layout would put the login screen on a TV whose panel is off — the
-// machine was last used on the TV and is now booted with it switched off — it
-// steers onto the monitors that are actually lit instead. Best-effort: any
-// problem just leaves the greeter's default layout in place.
-func (a *Agent) applyStartupLayout() {
-	if monitors, err := a.displayMgr.ListMonitors(); err == nil {
-		if off := a.offScreenTVs(monitors); len(off) > 0 {
-			a.applyOffTVRecovery(monitors, off)
-			return
-		}
-	}
-	a.restoreLastLayout()
-}
-
-// restoreLastLayout applies the user's last-used layout so the greeter mirrors
-// their session.
-func (a *Agent) restoreLastLayout() {
-	id := store.LoadCurrentLayout()
-	if id == "" {
-		log.Println("Greeter: no last-used layout recorded; leaving display as-is")
-		return
-	}
-	matches := a.layouts.FindByIDOrAlias(id)
-	if len(matches) != 1 {
-		log.Printf("Greeter: last-used layout %q not found; leaving display as-is", id)
-		return
-	}
-	if err := a.displayMgr.ApplyLayoutConfig(matches[0]); err != nil {
-		log.Printf("Greeter: failed to apply last-used layout %q: %v", id, err)
-		return
-	}
-	a.currentLayout = matches[0].Id
-	log.Printf("Greeter: applied last-used layout %q", matches[0].Name)
 }
 
 // agentHandler wraps the strict handler to allow manual handling of WebSockets
@@ -1113,18 +1069,8 @@ func (a *Agent) Start() error {
 		}
 	}()
 
-	// In a user session, settle the display: repair a boot configuration written
-	// before the TV was excluded from one, then - only if the display did come
-	// up on a TV - check whether that panel is actually lit. Off the startup
-	// path, after a short settle so the session's own display setup has landed
-	// first.
-	if !a.greeter {
-		go func() {
-			time.Sleep(3 * time.Second)
-			a.reconcileBootConfig()
-			a.correctStartupDisplay()
-		}()
-	}
+	// Preserve both the live layout and the display server's saved boot layout.
+	// A saved choice or an unreachable TV is not permission to change either.
 
 	<-stop
 	log.Println("Shutting down agent...")
@@ -1168,9 +1114,8 @@ func (a *Agent) saveLayouts() error {
 	return nil
 }
 
-// recordCurrentLayout persists the last-applied layout ID so the greeter agent
-// can restore it on the next login screen. The greeter itself doesn't record —
-// it follows the user's session choice rather than setting it.
+// recordCurrentLayout persists the user's last requested layout as metadata.
+// Neither agent restores it automatically at startup.
 func (a *Agent) recordCurrentLayout(id string) {
 	if a.greeter {
 		return
@@ -1209,9 +1154,7 @@ func (a *Agent) mirrorToGreeter() {
 		}
 		return
 	}
-	// registry.json and tv.json let the greeter identify which monitor is a TV
-	// and reach it (pairing key) so it can tell at the login screen whether the
-	// TV's panel is off — see applyStartupLayout.
+	// registry.json and tv.json support explicit TV control at the login screen.
 	for _, name := range []string{"layouts.json", "current-layout", "registry.json", "tv.json"} {
 		if err := copyFileInto(filepath.Join(store.DataDir(), name), filepath.Join(greeterDataDir, name)); err != nil {
 			log.Printf("Warning: failed to mirror %s to greeter: %v", name, err)

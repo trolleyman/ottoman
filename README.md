@@ -1,5 +1,13 @@
 # Ottoman
 
+Agent startup preserves the live display arrangement and its saved boot layout,
+including at the GDM login screen. Saved layouts are applied only on request;
+an unreachable TV does not trigger an automatic fallback. Layouts captured on
+Wayland use monitor identities to survive connector renumbering. On Xorg, stale
+or missing output names are rejected before any displays are disabled: recapture
+the layout in the current session. Failed switches show the server's error
+message in the Layouts panel.
+
 Home automation system for controlling a desktop computer from a Raspberry Pi Zero 2 W.
 
 ## Overview

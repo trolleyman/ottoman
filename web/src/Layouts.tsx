@@ -79,12 +79,13 @@ export function Layouts() {
 
       {layoutNotice && (
         <div
+          role={layoutNotice.kind === "warn" ? "alert" : "status"}
           className={`mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${layoutNotice.kind === "warn"
             ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
             : "border-zinc-700 bg-zinc-800/60 text-zinc-300"
             }`}
         >
-          <span className="flex-1">{layoutNotice.text}</span>
+          <span className="flex-1 whitespace-pre-wrap break-words">{layoutNotice.text}</span>
           {/* select-none keeps the button out of a triple-click selection, which
               otherwise copies the notice with a pile of blank lines after it. */}
           <button
