@@ -4,7 +4,7 @@ import { ApiError } from "../src/api";
 
 describe("failed layout switches", () => {
   test("shows the HTTP 500 body and keeps the active layout", async () => {
-    const original = client.default.switchLayout;
+    const original = client.default.switchLayout.bind(client.default);
     client.default.switchLayout = () => {
       throw new ApiError({ method: "POST", url: "/api/layouts/switch" }, {
         url: "/api/layouts/switch", ok: false, status: 500,

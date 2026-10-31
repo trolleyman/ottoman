@@ -11,6 +11,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const [cursorSupported, setCursorSupported] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (!authed) return;
@@ -35,7 +36,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       setConnecting(false);
       setCursorPos(null);
       // Attempt reconnect after 3 seconds
-      reconnectRef.current = setTimeout(connect, 3000);
+      reconnectRef.current = setTimeout(() => connectRef.current(), 3000);
     };
     ws.onmessage = (e) => {
       // First data message from client proves connection is live
@@ -56,7 +57,11 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   }, [authed]);
 
   useEffect(() => {
-    connect();
+    connectRef.current = connect;
+  }, [connect]);
+
+  useEffect(() => {
+    reconnectRef.current = setTimeout(() => connectRef.current(), 0);
     return () => {
       wsRef.current?.close();
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
@@ -65,7 +70,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
 
   useEffect(() => {
     if (!connected && authed) {
-      connect();
+      reconnectRef.current = setTimeout(() => connectRef.current(), 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);

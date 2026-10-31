@@ -42,7 +42,9 @@ export function useCoalescedSlider(
   const inflightRef = useRef(false);
   // Always commit through the latest closure (captures fresh ids/handlers).
   const commitRef = useRef(commit);
-  commitRef.current = commit;
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
 
   // Adopt the server value only when idle and it reflects our last write (or we
   // never wrote) — otherwise a lagging poll would snap the thumb backward.
