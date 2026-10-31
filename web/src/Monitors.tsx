@@ -276,11 +276,11 @@ function MonitorCard({ monitor }: { monitor: Monitor }) {
       ? "border-zinc-700/50 bg-zinc-800/50"
       : "border-zinc-800/50 bg-zinc-900/50 opacity-60"
       }`}>
-        <div className="flex items-center justify-between">
-          <h3 className={`font-semibold truncate ${a ? "text-zinc-100" : "text-zinc-400"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h3 className={`min-w-0 flex-1 basis-40 break-words font-semibold [overflow-wrap:anywhere] ${a ? "text-zinc-100" : "text-zinc-400"}`}>
             {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {monitor.control_backend === "tv" && <TVPairPill monitor={monitor} />}
             {!a && (
               <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">

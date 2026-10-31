@@ -205,7 +205,7 @@ export function LayoutCard({
         onClick={onClick}
         disabled={disabled}
         className={`
-          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-[280px] text-left
+          relative overflow-hidden rounded-xl text-sm font-medium transition-all cursor-pointer p-4 flex flex-col w-full gap-1.5 min-w-0 text-left
           ${isCurrent
             ? "bg-gradient-to-br from-blue-500/20 via-blue-500/10 to-indigo-500/20 text-blue-400 border border-blue-500/40 ring-1 ring-blue-500/20"
             : isPending
@@ -225,7 +225,7 @@ export function LayoutCard({
               {!isCurrent && isPending && (
                 <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
               )}
-              <span className="font-semibold truncate">{layout.name}</span>
+              <span className="font-semibold break-words [overflow-wrap:anywhere]">{layout.name}</span>
               {isPending && (
                 <span className="text-[10px] uppercase tracking-wide text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 leading-none shrink-0">
                   on wake
@@ -254,12 +254,12 @@ export function LayoutCard({
             {enabled.map((m, i) => (
               <div
                 key={m.port || m.edid || i}
-                className={`grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[11px] px-2 py-1.5 rounded border ${m.primary
+                className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 text-[11px] px-2 py-1.5 rounded border ${m.primary
                   ? "bg-blue-500/10 border-blue-500/20"
                   : "bg-zinc-900/40 border-transparent"
                   }`}
               >
-                <span className="truncate text-zinc-300 font-medium" title={m.name || m.port}>
+                <span className="col-span-2 min-w-0 break-words text-zinc-300 font-medium [overflow-wrap:anywhere]" title={m.name || m.port}>
                   {m.name || m.port || "Unknown"}
                 </span>
                 <span className="font-mono text-zinc-500">
@@ -268,7 +268,7 @@ export function LayoutCard({
                     <span className="ml-1 text-zinc-400">@{formatScalePercent(m.scale)}</span>
                   )}
                 </span>
-                <span className="font-mono text-zinc-600 text-[10px]">{m.edid}</span>
+                <span className="break-all text-right font-mono text-zinc-600 text-[10px]">{m.edid}</span>
               </div>
             ))}
           </div>

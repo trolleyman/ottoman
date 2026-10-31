@@ -53,8 +53,8 @@ export function ClientStatus() {
 
   return (
     <section className="mb-6">
-      <div className="flex items-center justify-between p-4 rounded-xl border border-zinc-700/50 bg-zinc-800/50">
-        <div>
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-zinc-700/50 bg-zinc-800/50">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`font-medium ${isOnline ? "text-green-400" : isOffline ? "text-red-400" : "text-zinc-300"}`}>
               {isOnline ? "Online" : isOffline ? "Offline" : formatStatus(clientStatus)}
@@ -68,31 +68,31 @@ export function ClientStatus() {
           </div>
           {clientInfo && (
             <>
-              <div className="text-xs text-zinc-500 font-mono mt-1">{clientInfo.hostname}</div>
-              <div className="text-[10px] text-zinc-600 font-mono">{clientInfo.ip_address}</div>
+              <div className="break-words text-xs text-zinc-500 font-mono mt-1">{clientInfo.hostname}</div>
+              <div className="break-all text-[10px] text-zinc-600 font-mono">{clientInfo.ip_address}</div>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {isOffline && (
             <>
               <button
                 onClick={() => void wake("linux")}
                 disabled={isBusy}
                 title="Wake the desktop (boots Linux)"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/15 hover:bg-green-500/25 text-green-300 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-green-500/15 hover:bg-green-500/25 text-green-300 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                <Power className="w-4 h-4" />
+                <Power className="w-4 h-4 shrink-0" />
                 Wake
               </button>
               <button
                 onClick={() => void wake("windows")}
                 disabled={isBusy}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
                 title="Wake the desktop, then boot into Windows once it's up"
               >
-                <Power className="w-4 h-4" />
+                <Power className="w-4 h-4 shrink-0" />
                 Wake to Windows
               </button>
             </>
@@ -102,19 +102,19 @@ export function ClientStatus() {
               <button
                 onClick={() => void reboot("windows")}
                 disabled={isBusy}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
                 title="Reboot into Windows once"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-4 h-4 shrink-0" />
                 Restart to Windows
               </button>
               <button
                 onClick={() => void shutdown()}
                 disabled={isBusy}
                 title="Shut down the desktop"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                <Power className="w-4 h-4" />
+                <Power className="w-4 h-4 shrink-0" />
                 Shut down
               </button>
             </>

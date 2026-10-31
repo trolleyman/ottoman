@@ -54,13 +54,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
-      <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-10 space-y-10">
         {/* Header */}
-        <header className="flex items-center justify-between">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <OttomanWithLogo>
             <p className="text-zinc-500 italic text-sm">Display Management</p>
           </OttomanWithLogo>
-          <div className="flex items-center gap-4">
+          <nav aria-label="Dashboard actions" className="flex flex-wrap items-center gap-x-5 gap-y-3 self-end whitespace-nowrap sm:shrink-0">
             <a href="/remote" className="text-xs text-blue-400 hover:text-blue-300">PC remote</a>
             <button
               onClick={() => void refreshAll(false)}
@@ -74,7 +74,7 @@ export default function App() {
             >
               Log out
             </button>
-          </div>
+          </nav>
         </header>
 
         <ClientStatus />
