@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
+import { RemotePage } from "./RemotePage";
 import { Trackpad } from "./Trackpad";
 import { useTrackpadWebSocket } from "./useTrackpadWebSocket";
 
@@ -49,6 +50,8 @@ export default function App() {
     return <LoginForm />;
   }
 
+  if (window.location.pathname === "/remote") return <RemotePage connected={connected} connecting={connecting} cursorPos={cursorPos} cursorSupported={cursorSupported} send={send} />;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-10">
@@ -58,6 +61,7 @@ export default function App() {
             <p className="text-zinc-500 italic text-sm">Display Management</p>
           </OttomanWithLogo>
           <div className="flex items-center gap-4">
+            <a href="/remote" className="text-xs text-blue-400 hover:text-blue-300">PC remote</a>
             <button
               onClick={() => void refreshAll(false)}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"

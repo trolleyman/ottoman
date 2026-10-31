@@ -130,6 +130,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                 ["Double-space period", "doubleSpacePeriod"],
                 ["Key haptics", "haptics"],
                 ["Period beside space", "periodKey"],
+                ["Comma beside space", "commaKey"],
                 ["Swipe typing", "swipeTyping"],
               ] as const).map(([label, key]) => (
                 <div

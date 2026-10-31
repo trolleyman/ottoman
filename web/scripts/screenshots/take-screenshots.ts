@@ -22,8 +22,7 @@
 // surfaces as the live loading text (and, once seen, stops treating ordinary
 // stdout as progress, so bun/vite/go chatter can't hijack the header).
 //
-// The artifact is deliberately best-effort: a build break or a boot failure
-// logs and exits 0 with no images rather than failing the head.
+// A failed interaction exits nonzero so screenshot checks cannot silently pass.
 //
 // Run by hand from web/:  bun scripts/screenshots/take-screenshots.ts
 
@@ -56,6 +55,7 @@ type Shot = {
   dpi: number
   tags: string[]
   keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav' | 'key-preview' | 'key-hold' | 'text-preview'
+  remote?: boolean
   settings?: boolean
   settingsTiming?: boolean
   scheme?: 'light' | 'dark'
@@ -63,6 +63,8 @@ type Shot = {
 }
 
 const SHOTS: Shot[] = [
+  { name: 'pc-remote-phone@2x', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::remote'], remote: true },
+  { name: 'pc-remote-desktop@2x', state: 'online', width: 1280, height: 900, dpi: 2, tags: ['viewport::desktop', 'feature::remote'], remote: true },
   { name: 'home-offline-phone', state: 'offline', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::offline'] },
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
   { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
@@ -152,14 +154,19 @@ async function main() {
         const data = await response.json() as Record<string, unknown>
         await route.fulfill({ response, json: { ...data, os: shot.platform === 'apple' ? 'darwin' : 'windows' } })
       })
-      await page.goto(base, { waitUntil: 'networkidle' })
+      await page.goto(base + (shot.remote ? "/remote" : ""), { waitUntil: 'networkidle' })
       await settle(page)
       let heldSpace = false
       let heldKey = false
-      if (shot.keyboard) {
-        const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
+      if (shot.remote) {
+        await page.getByLabel(/Trackpad\. Tap to click/).focus()
+        for (const letter of ["h", "e"]) await page.locator(`[data-letter="${letter}"]`).click()
+        await page.getByLabel("Word suggestions").getByRole("button").first().waitFor()
+        if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error("Remote page overflows horizontally")
+      } else if (shot.keyboard) {
+        const openKeyboard = page.getByLabel(/Trackpad\. Tap to click/)
         await openKeyboard.scrollIntoViewIfNeeded()
-        await openKeyboard.click()
+        await openKeyboard.focus()
         if (shot.keyboard === 'key-preview' || shot.keyboard === 'key-hold') {
           const key = page.locator('[data-letter="e"]')
           const box = await key.boundingBox()
@@ -171,7 +178,7 @@ async function main() {
         } else if (shot.keyboard === 'text-preview') {
           await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click()
           await page.getByRole('button', { name: 'Device', exact: true }).click()
-          await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
+          await page.getByLabel(/Trackpad\. Tap to click/).focus()
           await page.getByLabel('Type on the remote computer with the device keyboard').fill('This preview stays while I type. It wraps whole words and grows upwards from the bottom of the trackpad, without trimming letters or fading away on a timer.\n\nBritish symbols: £, #, backslash, ?, and apostrophe. More typing keeps pushing the earlier lines upwards. '.repeat(3))
           await page.getByRole('button', { name: 'Open keyboard settings' }).click()
           await page.getByRole('button', { name: 'Ottoman', exact: true }).click()
@@ -230,9 +237,9 @@ async function main() {
           await page.waitForTimeout(150)
         }
       } else if (shot.settings || shot.settingsTiming) {
-        const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
+        const openKeyboard = page.getByLabel(/Trackpad\. Tap to click/)
         await openKeyboard.scrollIntoViewIfNeeded()
-        await openKeyboard.click()
+        await openKeyboard.focus()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
         if (shot.settingsTiming) {
           await page.getByText('Timing', { exact: true }).scrollIntoViewIfNeeded()
@@ -244,20 +251,21 @@ async function main() {
         await page.waitForTimeout(150)
       }
       const file = join(OUT, `${shot.name}.png`)
-      await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings && !shot.settingsTiming })
+      await page.screenshot({ path: file, fullPage: !shot.remote && !shot.keyboard && !shot.settings && !shot.settingsTiming })
       if (shot.keyboard === 'key-hold') await page.locator('.custom-keyboard-shell').screenshot({ path: join(OUT, 'keyboard-press@2x.png') })
       if (shot.name === 'trackpad-keyboard-dark-phone') await checkKeyboardInteractions(page, sent)
       if (shot.keyboard) {
         if (heldSpace || heldKey) await page.mouse.up()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
         await page.getByRole('button', { name: 'Device', exact: true }).click()
-        await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
+        await page.getByLabel(/Trackpad\. Tap to click/).focus()
+        await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Type on the remote computer with the device keyboard")
         const nativeInput = page.getByLabel('Type on the remote computer with the device keyboard')
         if (!await nativeInput.evaluate((element) => document.activeElement === element))
           throw new Error('Device keyboard input did not receive focus')
         await page.getByRole('button', { name: 'Open keyboard settings' }).click()
         await page.getByRole('button', { name: 'Ottoman', exact: true }).click()
-        await page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' }).waitFor()
+        await page.getByLabel(/Trackpad\. Tap to click/).waitFor()
       }
       writeFileSync(`${file}.meta`, JSON.stringify({ tags: shot.tags, dpi: shot.dpi }))
       await ctx.close()

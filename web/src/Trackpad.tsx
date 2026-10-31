@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Keyboard,
+  Eraser,
   Settings,
   X,
 } from "lucide-react";
@@ -32,6 +32,7 @@ function combineModifiers(...groups: Modifier[][]): Modifier[] {
 }
 
 function TouchArea({
+  docked = false,
   connected,
   connecting,
   send,
@@ -41,6 +42,7 @@ function TouchArea({
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
+  docked?: boolean;
   settings: TrackpadSettings;
   onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
@@ -144,21 +146,22 @@ function TouchArea({
   const remoteOS = useStore((state) => state.agentInfo?.os ?? "");
 
   useEffect(() => {
-    if (!keyboardOpen) return;
+    if (!keyboardOpen || docked) return;
     const frame = requestAnimationFrame(() => {
       if (matchMedia("(max-width: 767px)").matches)
         trackpadRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [keyboardOpen]);
+  }, [keyboardOpen, docked]);
 
   const toggleModifier = useCallback((modifier: Modifier) => {
+    if (modifier !== Modifier.SHIFT) dismissDraft();
     setActiveModifiers((current) =>
       current.includes(modifier)
         ? current.filter((item) => item !== modifier)
         : [...current, modifier],
     );
-  }, []);
+  }, [dismissDraft]);
 
   const moveRemoteCursor = useCallback(
     (target: number) => {
@@ -276,6 +279,11 @@ function TouchArea({
     setDraftCursor(next.length);
     showDraftIndicator();
   }, [activeModifiers, sendKeyPress, showDraftIndicator]);
+
+  const activateKeyboard = () => {
+    if (settings.customKeyboard) setKeyboardOpen(true);
+    else inputRef.current?.focus();
+  };
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -535,6 +543,7 @@ function TouchArea({
 
   // Mouse drag via Pointer Lock (or fallback position tracking after Escape cooldown)
   const onPointerDown = (e: React.PointerEvent) => {
+    activateKeyboard();
     dismissDraft();
     if (e.pointerType === "touch") return;
     setDraftVisible(false);
@@ -562,7 +571,8 @@ function TouchArea({
       void trackpadRef.current?.requestPointerLock();
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     }
-    trackpadRef.current?.focus();
+    if (settings.customKeyboard) trackpadRef.current?.focus();
+    else inputRef.current?.focus();
 
     // Handle click/drag
     if (document.pointerLockElement && settings.clickAndDrag) {
@@ -701,13 +711,13 @@ function TouchArea({
 
 
   return (
-    <div className="w-full md:max-w-sm md:shrink-0 flex flex-col gap-2">
-      <div className="relative">
+    <div className={docked ? "remote-input flex min-h-0 flex-1 flex-col gap-2" : "w-full md:max-w-sm md:shrink-0 flex flex-col gap-2"}>
+      <div className={docked ? "relative min-h-28 flex-1" : "relative"}>
         <div
           ref={trackpadRef}
           tabIndex={0}
           aria-label="Trackpad. Tap to click, move one finger to point, tap two fingers to right click, or move two fingers to scroll."
-          className={`relative w-full aspect-square max-h-[60vh] overflow-hidden rounded-xl border-2 transition-colors select-none touch-none outline-none ${
+          className={`relative w-full ${docked ? "h-full" : "aspect-square max-h-[60vh]"} overflow-hidden rounded-xl border-2 transition-colors select-none touch-none outline-none ${
             connected
               ? focused || keyboardOpen
                 ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
@@ -720,11 +730,15 @@ function TouchArea({
                   backgroundImage:
                     "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
                   backgroundSize: "20px 20px",
-                  maxHeight: keyboardOpen ? "max(160px, calc(100dvh - 380px))" : undefined,
+                  maxHeight: !docked && keyboardOpen ? "max(160px, calc(100dvh - 380px))" : undefined,
                 }
               : undefined
           }
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            if (settings.customKeyboard) setKeyboardOpen(true);
+            else queueMicrotask(() => inputRef.current?.focus());
+          }}
           onBlur={() => setFocused(false)}
           onTouchStart={connected ? onTouchStart : undefined}
           onTouchMove={connected ? onTouchMove : undefined}
@@ -746,38 +760,23 @@ function TouchArea({
               )}
             </div>
           )}
-          {connected && draft && draftVisible && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-end overflow-hidden pb-14 pl-3 pr-14" data-text-preview>
-              <div aria-live="polite" aria-atomic="true"
-                className="w-full shrink-0 whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/65 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md [overflow-wrap:anywhere]">
+        </div>
+        {connected && draft && draftVisible && (
+          <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
+            <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
+              className="pointer-events-auto flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
+            <div className="flex min-h-0 flex-col justify-end overflow-hidden rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
+              <div aria-live="polite" aria-atomic="true" className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]">
                 {draft.slice(0, draftCursor)}
                 <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
                 {draft.slice(draftCursor)}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
         {connected && (
           <ScrollRail send={send} sensitivity={settings.scrollSensitivity} friction={settings.scrollFriction} haptics={settings.haptics} onInteract={dismissDraft} />
         )}
-        <button
-          type="button"
-          disabled={!connected}
-          aria-label={settings.customKeyboard
-            ? "Open Ottoman keyboard to type on the remote computer"
-            : "Open device keyboard to type on the remote computer"}
-          title={settings.customKeyboard ? "Open Ottoman keyboard" : "Open device keyboard"}
-          onClick={() => {
-            if (settings.customKeyboard) {
-              setKeyboardSettingsOpen(false);
-              setKeyboardOpen(true);
-            }
-            else inputRef.current?.focus();
-          }}
-          className="absolute bottom-3 left-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-950/75 text-zinc-300 shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-40"
-        >
-          <Keyboard className="h-[18px] w-[18px]" aria-hidden="true" />
-        </button>
         {!settings.customKeyboard && (
           <button
             type="button"
@@ -814,12 +813,16 @@ function TouchArea({
             onSelect={handleSelection}
           />
         )}
+      </div>
+      <div className={docked ? "shrink-0" : "relative"}>
         <CustomKeyboard
+          docked={docked}
           key={keyboardSettingsOpen ? "settings" : "keyboard"}
           open={keyboardOpen}
           connected={connected}
           remoteOS={remoteOS}
           textContext={textContext}
+          textBeforeCursor={draft.slice(0, draftCursor)}
           settings={settings}
           onText={appendText}
           onReplaceText={(previous, next) => {
@@ -863,7 +866,7 @@ function TouchArea({
           onToggleModifier={toggleModifier}
         />
       </div>
-      {keyboardOpen && (
+      {keyboardOpen && !docked && (
         <div className="h-[360px] md:hidden" aria-hidden="true" />
       )}
     </div>
@@ -871,6 +874,7 @@ function TouchArea({
 }
 
 export function Trackpad({
+  mode = "dashboard",
   connected,
   connecting,
   cursorPos,
@@ -881,6 +885,7 @@ export function Trackpad({
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean;
+  mode?: "dashboard" | "remote";
   send: (msg: TrackpadMessage) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
@@ -910,8 +915,8 @@ export function Trackpad({
   }, [showSettings]);
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-4">
+    <section className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : undefined}>
+      <div className={`flex items-center justify-between ${mode === "remote" ? "mb-2" : "mb-4"}`}>
         <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
           {"Trackpad"}
           <span
@@ -977,15 +982,17 @@ export function Trackpad({
           )}
         </div>
       </div>
-      <div className="flex flex-col-reverse md:flex-row gap-6 sm:items-start">
+      <div className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : "flex flex-col-reverse md:flex-row gap-6 sm:items-start"}>
         <TouchArea
+          key={connected ? "connected" : "disconnected"}
+          docked={mode === "remote"}
           connected={connected}
           connecting={connecting}
           send={send}
           settings={settings}
           onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
         />
-        <MonitorDisplay
+        {mode !== "remote" && <MonitorDisplay
           layouts={layouts}
           currentLayout={currentLayout}
           cursorPos={cursorPos}
@@ -996,7 +1003,7 @@ export function Trackpad({
               ? (x, y) => send({ type: "mousemoveto", x, y })
               : undefined
           }
-        />
+        />}
       </div>
     </section>
   );

@@ -2,6 +2,7 @@ export interface KeyboardSettings {
   keyboardLayout: "en-GB" | "en-US" | "auto";
   keyboardTheme: "dark" | "light" | "system";
   periodKey: boolean;
+  commaKey: boolean;
   swipeTyping: boolean;
   numberRow: boolean;
   symbolHints: boolean;
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: TrackpadSettings = {
   keyboardLayout: "en-GB",
   keyboardTheme: "dark",
   periodKey: true,
+  commaKey: true,
   swipeTyping: true,
   cursorSensitivity: 1.5,
   cursorFriction: 0.92,
@@ -38,7 +40,7 @@ export const DEFAULT_SETTINGS: TrackpadSettings = {
   symbolHints: true,
   doubleSpacePeriod: true,
   haptics: true,
-  longPressDelayMs: 430,
+  longPressDelayMs: 300,
   spaceHoldDelayMs: 320,
   backspaceRepeatDelayMs: 430,
   backspaceRepeatIntervalMs: 65,
@@ -66,7 +68,7 @@ export function parseSettings(value: unknown): TrackpadSettings {
   const settings = { ...DEFAULT_SETTINGS };
   if (!value || typeof value !== "object" || Array.isArray(value)) return settings;
   const saved = value as Record<string, unknown>;
-  for (const key of ["numberRow", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "swipeTyping"] as const) {
+  for (const key of ["numberRow", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "commaKey", "swipeTyping"] as const) {
     if (typeof saved[key] === "boolean") settings[key] = saved[key];
   }
   for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES]) {

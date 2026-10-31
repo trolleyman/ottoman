@@ -11,6 +11,8 @@ import {
   CornerDownLeft,
   Delete,
   Move,
+  MoreHorizontal,
+  Camera,
   Option,
   Search,
   Settings,
@@ -20,10 +22,11 @@ import {
 import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
 import { keyboardRows, resolveKeyboardLayout, SYMBOLS } from "./keyboardData";
+import { currentWord as getCurrentWord, matchWordCase } from "./wordPrediction";
 import { useSwipeTyping } from "./useSwipeTyping";
 const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ default: module.EmojiPicker })));
 import { loadRecentEmoji, savePreference } from "./preferences";
-import { ActionKey, WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
+import { ActionKey, KeyPreview, WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
 import { haptic } from "./keyboardHaptics";
 import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
 
@@ -32,6 +35,8 @@ type KeyboardMode = "letters" | "symbols" | "emoji";
 
 function KeyboardSession({
   connected,
+  docked = false,
+  textBeforeCursor = "",
   remoteOS,
   textContext,
   settings,
@@ -51,6 +56,8 @@ function KeyboardSession({
   onToggleModifier,
 }: {
   connected: boolean;
+  docked?: boolean;
+  textBeforeCursor?: string;
   remoteOS: string;
   textContext: number;
   settings: KeyboardSettings;
@@ -75,6 +82,7 @@ function KeyboardSession({
   );
   const [emojiSearching, setEmojiSearching] = useState(false);
   const [symbolSearching, setSymbolSearching] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [symbolQuery, setSymbolQuery] = useState("");
@@ -101,6 +109,21 @@ function KeyboardSession({
   useEffect(() => {
     if (mode === "emoji") void import("./emojiData").then(setEmojiData);
   }, [mode]);
+  const currentWord = getCurrentWord(textBeforeCursor);
+  const [predictor, setPredictor] = useState<((prefix: string) => string[]) | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    void import("./swipeDictionary").then((module) => {
+      if (!disposed) setPredictor(() => module.predictWords);
+    }).catch(() => {});
+    return () => { disposed = true; };
+  }, []);
+  const pendingSwipeSpace = useRef({ context: textContext, pending: false });
+  const takeWordPrefix = () => {
+    const prefix = pendingSwipeSpace.current.context === textContext && pendingSwipeSpace.current.pending ? " " : "";
+    pendingSwipeSpace.current = { context: textContext, pending: false };
+    return prefix;
+  };
   const swipeShift = useRef<ShiftState>("off");
   const swipe = useSwipeTyping(
     settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
@@ -109,14 +132,15 @@ function KeyboardSession({
     (word, previous) => {
       if (!previous) swipeShift.current = shift;
       const format = (value: string) => swipeShift.current === "locked" ? value.toUpperCase() : swipeShift.current === "once" ? value[0].toUpperCase() + value.slice(1) : value;
-      if (previous) onReplaceText(`${format(previous)} `, `${format(word)} `);
+      if (previous) onReplaceText(format(previous), format(word));
       else {
-        onText(`${format(word)} `);
+        onText(takeWordPrefix() + format(word));
         if (shift === "once") {
           setShift("off");
           if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
         }
       }
+      pendingSwipeSpace.current = { context: textContext, pending: true };
       haptic(settings.haptics);
     },
   );
@@ -141,7 +165,9 @@ function KeyboardSession({
     }
     const shifted = !wasLongPress && (mode === "letters" || symbolSearching) && shift !== "off";
     const next = shifted ? value.toUpperCase() : value;
-    onText(next, shifted);
+    const prefix = /^[a-z0-9]/i.test(next) ? takeWordPrefix() : "";
+    if (/\s/.test(next)) pendingSwipeSpace.current.pending = false;
+    onText(prefix + next, shifted);
     if (shift === "once") {
       setShift("off");
       if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
@@ -162,6 +188,7 @@ function KeyboardSession({
 
   const beginBackspace = () => {
     swipe.clear();
+    pendingSwipeSpace.current.pending = false;
     endBackspace();
     haptic(settings.haptics);
     const erase = () => {
@@ -251,6 +278,8 @@ function KeyboardSession({
   };
 
   const navigate = (key: string) => {
+    swipe.clear();
+    pendingSwipeSpace.current.pending = false;
     haptic(settings.haptics);
     onNavigate(key);
   };
@@ -277,8 +306,8 @@ function KeyboardSession({
   };
 
   return (
-    <div data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className="custom-keyboard-shell fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,.5)] backdrop-blur-xl md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border">
-      <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 py-1.5" aria-label="Keyboard controls">
+    <div data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
+      <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
           label="Control"
@@ -300,20 +329,35 @@ function KeyboardSession({
         ) : (
           <>
             <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier}>
-              {remoteOS === "windows" ? <WindowsIcon className="h-[17px] w-[17px]" /> : <span className="text-base" aria-hidden="true">◆</span>}
+              {remoteOS === "windows" && <WindowsIcon className="h-[17px] w-[17px]" />}
             </ModifierButton>
             <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
             </ModifierButton>
           </>
         )}
+        <div className="relative shrink-0">
+          <ActionKey type="button" aria-label="More keyboard actions" aria-expanded={moreOpen} aria-controls="keyboard-extra-actions"
+            onPress={() => setMoreOpen((open) => !open)}
+            className="custom-keyboard-utility flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400">
+            <MoreHorizontal className="h-4 w-4" />
+          </ActionKey>
+          {moreOpen && <div id="keyboard-extra-actions" role="group" aria-label="Additional keyboard keys" className="absolute bottom-full right-0 z-[80] mb-2 w-60 rounded-xl border border-zinc-700 bg-zinc-900 p-2 shadow-2xl">
+            <ActionKey type="button" onPress={() => { navigate("PrintScreen"); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-zinc-100 hover:bg-zinc-800"><Camera className="h-4 w-4" />Print Screen</ActionKey>
+            <div className="grid grid-cols-3 gap-1">
+              {["PageUp", "PageDown", "Insert", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map((key) => (
+                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="rounded-lg bg-zinc-800 px-1 py-2 text-xs text-zinc-200 hover:bg-zinc-700">{key === "PageUp" ? "Page up" : key === "PageDown" ? "Page down" : key}</ActionKey>
+              ))}
+            </div>
+          </div>}
+        </div>
         <ActionKey
           type="button"
           aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
           title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
           aria-pressed={settingsOpen}
           onPress={() => setSettingsOpen((current) => !current)}
-          className={`custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border ${
+          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
             settingsOpen
               ? "border-blue-400/60 bg-blue-500 text-white"
               : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
@@ -329,14 +373,16 @@ function KeyboardSession({
             setSettingsOpen(false);
             onClose();
           }}
-          className="custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+          className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
         >
           <X className="h-4 w-4" />
         </ActionKey>
       </div>
 
-      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-1.5" aria-label="Navigation keys">
+      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-0.5" aria-label="Navigation keys">
         <NavigationKey label="Escape" onPress={() => navigate("Escape")}>Esc</NavigationKey>
+        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
+        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
         <NavigationKey label="Arrow left" onPress={() => navigate("ArrowLeft")}>
           <ArrowLeft className="h-4 w-4" />
         </NavigationKey>
@@ -349,8 +395,6 @@ function KeyboardSession({
         <NavigationKey label="Arrow right" onPress={() => navigate("ArrowRight")}>
           <ArrowRight className="h-4 w-4" />
         </NavigationKey>
-        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
-        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
         <NavigationKey label="Delete" onPress={() => navigate("Delete")}>
           <Delete className="h-4 w-4 rotate-180" />
         </NavigationKey>
@@ -363,68 +407,47 @@ function KeyboardSession({
             usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
         ) : (
           <>
+        <div className="flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
+          {mode === "letters" ? (
+            (swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : []).map((word) => (
+              <ActionKey type="button" key={word} onPress={() => {
+                if (swipe.candidates.length) swipe.select(word);
+                else {
+                  if (word !== currentWord) onReplaceText(currentWord, matchWordCase(word, currentWord));
+                  swipe.clear();
+                  pendingSwipeSpace.current = { context: textContext, pending: true };
+                }
+                haptic(settings.haptics);
+              }} className="custom-keyboard-utility h-8 min-w-0 flex-1 truncate rounded-md px-2 text-sm text-zinc-200 hover:bg-zinc-700">{swipe.candidates.length ? word : matchWordCase(word, currentWord)}</ActionKey>
+            ))
+          ) : <>
+            <ActionKey type="button" aria-label={mode === "emoji" ? "Search Emoji" : "Search Symbols"}
+              onPress={() => mode === "emoji" ? setEmojiSearching(true) : setSymbolSearching(true)}
+              className="custom-keyboard-utility flex h-8 min-w-20 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs text-zinc-400">
+              <Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{(mode === "emoji" ? emojiQuery : symbolQuery) || `Search ${mode === "emoji" ? "emoji" : "symbols"}`}</span>
+            </ActionKey>
+            {mode === "emoji" && emojiSearching && matchingEmoji.slice(0, 4).map(([emoji]) => <ActionKey type="button" key={emoji} onPress={() => selectEmoji(emoji)} className="h-8 w-8 shrink-0 rounded text-lg">{emoji}</ActionKey>)}
+            {mode === "symbols" && symbolSearching && matchingSymbols.slice(0, 4).map(([symbol]) => <ActionKey type="button" key={symbol} aria-label={`Type ${symbol}`} onPress={() => selectSymbol(symbol)} className="h-8 w-8 shrink-0 rounded text-lg text-zinc-200">{symbol}</ActionKey>)}
+          </>}
+        </div>
         {mode === "emoji" && !emojiSearching ? (
-          <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSearch={() => setEmojiSearching(true)} onSelect={selectEmoji} /></Suspense>
+          <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSelect={selectEmoji} /></Suspense>
         ) : (
           <>
-            {mode === "emoji" && emojiSearching && (
-              <div className="flex h-11 shrink-0 items-center gap-1.5 overflow-hidden rounded-md bg-zinc-900/70 px-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                <span className="min-w-12 flex-1 truncate text-sm text-zinc-200">
-                  {emojiQuery || <span className="text-zinc-500">Search Emoji</span>}
-                </span>
-                {matchingEmoji.slice(0, 5).map(([emoji]) => (
-                  <ActionKey
-                    type="button"
-                    key={emoji}
-                    onPress={() => selectEmoji(emoji)}
-                    className="h-8 w-8 shrink-0 rounded text-lg hover:bg-zinc-800"
-                  >
-                    {emoji}
-                  </ActionKey>
-                ))}
-              </div>
-            )}
-            {mode === "symbols" && symbolSearching && (
-              <div className="flex h-11 shrink-0 items-center gap-1.5 overflow-hidden rounded-md bg-zinc-900/70 px-2">
-                <Search className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                <span className="min-w-12 flex-1 truncate text-sm text-zinc-200">
-                  {symbolQuery || <span className="text-zinc-500">Search Symbols</span>}
-                </span>
-                {matchingSymbols.slice(0, 6).map(([symbol]) => (
-                  <ActionKey
-                    type="button"
-                    key={symbol}
-                    aria-label={`Type ${symbol}`}
-                    onPress={() => selectSymbol(symbol)}
-                    className="h-8 w-8 shrink-0 rounded text-lg text-zinc-100 hover:bg-zinc-800"
-                  >
-                    {symbol}
-                  </ActionKey>
-                ))}
-              </div>
-            )}
-            <div className="flex h-7 shrink-0 items-center justify-center gap-1 text-[10px] text-zinc-500" aria-label="Word suggestions">
-              {swipe.candidates.length > 0 && mode === "letters" ? swipe.candidates.map((word) => (
-                <ActionKey type="button" key={word} onPress={() => swipe.select(word)} className="custom-keyboard-utility h-7 flex-1 rounded-md text-sm text-zinc-200 hover:bg-zinc-700">{word}</ActionKey>
-              )) : mode === "symbols" ? "Symbols match the letter-key hints" : settings.swipeTyping ? (swipe.ready ? "Tap or swipe to type · hold for symbols" : "Loading swipe typing…") : "Hold a key for its symbol"}
-            </div>
-            <div className="relative flex min-h-0 flex-1 flex-col gap-1.5 sm:gap-2" {...swipe.handlers}>
-            {settings.numberRow && mode !== "emoji" && (
-              <div className="flex min-h-0 flex-1 gap-1 sm:gap-1.5">
+            <div className="relative flex min-h-0 flex-1 flex-col" data-swipe-ready={swipe.ready} {...swipe.handlers}>
+            {settings.numberRow && (
+              <div className="flex min-h-0 flex-1">
                 {numberRow.map((definition) => (
-                  <Key key={definition.key} definition={mode === "letters" && shift !== "off" ? { key: definition.alt!, alt: definition.key } : definition} settings={settings} onType={type} />
+                  <Key key={definition.key} definition={{ key: mode === "letters" && shift !== "off" ? definition.alt! : definition.key }} settings={settings} onType={type} />
                 ))}
               </div>
             )}
             {rows.map((row, index) => (
               <div
                 key={index}
-                className={`flex min-h-0 flex-1 gap-1 sm:gap-1.5 ${index === 1 ? "px-[4.5%]" : ""}`}
+                className={`flex min-h-0 flex-1 ${index === 1 ? "px-[4.5%]" : ""}`}
               >
-                {index === 2 && mode === "symbols" && !symbolSearching && (
-                  <UtilityKey label="Search Symbols" wide onPress={() => setSymbolSearching(true)}><Search className="h-5 w-5" /></UtilityKey>
-                )}
+                {index === 2 && mode === "symbols" && !symbolSearching && <div className="min-w-[52px] flex-[1.4] border border-transparent" />}
                 {index === 2 && (mode === "letters" || symbolSearching) && (
                   <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
@@ -458,14 +481,17 @@ function KeyboardSession({
                     onPointerUp={endBackspace}
                     onPointerCancel={endBackspace}
                     onLostPointerCapture={endBackspace}
-                    className={`custom-keyboard-utility flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 ${backspaceHeld ? "ring-2 ring-blue-400/60 text-blue-200" : ""}`}
+                    className={`custom-keyboard-utility relative flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 ${backspaceHeld ? "ring-2 ring-blue-400/60 text-blue-200" : ""}`}
                   >
                     <Delete className="h-5 w-5" />
+                    {backspaceHeld && <KeyPreview><Delete className="h-5 w-5" /></KeyPreview>}
                   </button>
                 )}
               </div>
             ))}
-              {swipe.active && <svg className="pointer-events-none absolute inset-0 z-40 h-full w-full overflow-visible" aria-hidden="true"><polyline points={swipe.trail.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" /></svg>}
+              {swipe.trail.length > 1 && <svg className="pointer-events-none absolute inset-0 z-40 h-full w-full overflow-visible" aria-hidden="true" data-swipe-trail>
+                {swipe.trail.slice(1).map((point, index) => <line key={index} x1={swipe.trail[index].x} y1={swipe.trail[index].y} x2={point.x} y2={point.y} stroke="#60a5fa" strokeWidth={2 + point.opacity * 3} strokeLinecap="round" opacity={point.opacity * 0.8} />)}
+              </svg>}
             </div>
           </>
         )}
@@ -499,7 +525,6 @@ function KeyboardSession({
           <UtilityKey label="Tab" onPress={onTab}>
             <ArrowRightToLine className="h-5 w-5" />
           </UtilityKey>
-          <UtilityKey label="Comma" onPress={() => { haptic(settings.haptics); type(","); }}>,</UtilityKey>
           <button
             type="button"
             aria-label="Space. Hold and drag to move the cursor"
@@ -521,18 +546,21 @@ function KeyboardSession({
               </span>
             ) : "space"}
           </button>
+          {settings.commaKey && <UtilityKey label="Comma" onPress={() => { haptic(settings.haptics); type(","); }}>,</UtilityKey>}
           {settings.periodKey && <UtilityKey label="Period" onPress={() => { haptic(settings.haptics); type("."); }}>.</UtilityKey>}
           <ActionKey
             type="button"
             disabled={!connected}
             aria-label="Enter"
+            preview={<CornerDownLeft className="h-5 w-5" />}
             onPress={() => {
               swipe.clear();
+              pendingSwipeSpace.current.pending = false;
               if (emojiSearching && matchingEmoji[0]) selectEmoji(matchingEmoji[0][0]);
               else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
             }}
-            className="flex min-w-[54px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-blue-400/40 bg-blue-500 text-white shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-blue-400 disabled:opacity-40"
+            className="custom-keyboard-utility flex min-w-[48px] flex-[1.3] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-zinc-700 disabled:opacity-40"
           >
             <CornerDownLeft className="h-5 w-5" />
           </ActionKey>

@@ -38,7 +38,13 @@ func SetupSPAHandler(router *http.ServeMux) error {
 		return errors.Wrap(err, "failed to create dist/ FS")
 	}
 
-	router.Handle("/", http.FileServerFS(webFS))
+	files := http.FileServerFS(webFS)
+	router.HandleFunc("GET /remote", func(w http.ResponseWriter, r *http.Request) {
+		request := r.Clone(r.Context())
+		request.URL.Path = "/"
+		files.ServeHTTP(w, request)
+	})
+	router.Handle("/", files)
 	return nil
 }
 

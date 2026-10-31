@@ -1,14 +1,12 @@
 import { ActionKey } from "./KeyboardKeys";
 import { useState } from "react";
-import { Search } from "lucide-react";
 import { EMOJI_GROUPS, withSkinTone } from "./emojiData";
 
 const GROUP_ICONS = ["😀", "👋", "🌿", "🍎", "🚗", "⚽", "💡", "🔣", "🏳️"];
 const TONES = ["", "🏻", "🏼", "🏽", "🏾", "🏿"];
 
-export function EmojiPicker({ recent, onSearch, onSelect }: {
+export function EmojiPicker({ recent, onSelect }: {
   recent: string[];
-  onSearch: () => void;
   onSelect: (emoji: string) => void;
 }) {
   const [category, setCategory] = useState(0);
@@ -16,10 +14,6 @@ export function EmojiPicker({ recent, onSearch, onSelect }: {
   const group = EMOJI_GROUPS[category];
   return (
     <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-zinc-900/70 p-1.5">
-      <ActionKey type="button" onPress={onSearch}
-        className="custom-keyboard-utility mb-1 flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-2.5 text-left text-xs text-zinc-400">
-        <Search className="h-3.5 w-3.5" />Search Emoji
-      </ActionKey>
       <div role="tablist" aria-label="Emoji categories" className="flex shrink-0 gap-0.5 overflow-x-auto">
         <ActionKey type="button" role="tab" aria-selected={category === -1} aria-label="Recent emoji" onPress={() => setCategory(-1)}
           className={`h-8 min-w-8 flex-1 rounded text-lg ${category === -1 ? "bg-blue-500/25" : "hover:bg-zinc-700/40"}`}>◷</ActionKey>

@@ -14,6 +14,60 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     assert(box, `Missing key ${letter}`);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
+  const fastText = "qwertyqwertyqwertyqwerty";
+  const beforeFast = textMessages().length;
+  await page.evaluate((text) => {
+    // Preserve the browser method solely to restore it after synthetic events.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const capture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = () => {};
+    try {
+      for (let index = 0; index < text.length; index++) {
+        const key = document.querySelector<HTMLButtonElement>(`[data-letter="${text[index]}"]`)!;
+        const box = key.getBoundingClientRect();
+        const init = { bubbles: true, pointerId: index + 100, pointerType: "touch", isPrimary: true, button: 0, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+        key.dispatchEvent(new PointerEvent("pointerdown", { ...init, buttons: 1 }));
+        key.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons: 0 }));
+      }
+    } finally { Element.prototype.setPointerCapture = capture; }
+  }, fastText);
+  await page.waitForTimeout(80);
+  const fastReceived = textMessages().slice(beforeFast).map(({ message }) => message.type === "text" ? message.text : "").join("");
+  assert(fastReceived === fastText, `Rapid taps lost text: expected ${fastText}, received ${fastReceived}`);
+
+  const beforeRollover = textMessages().length;
+  await page.evaluate(() => {
+    // Preserve the browser method solely to restore it after synthetic events.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const capture = Element.prototype.setPointerCapture;
+    Element.prototype.setPointerCapture = () => {};
+    const send = (letter: string, type: string, pointerId: number, isPrimary: boolean) => {
+      const key = document.querySelector(`[data-letter="${letter}"]`)!;
+      const box = key.getBoundingClientRect();
+      key.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId, pointerType: "touch", isPrimary, button: 0, buttons: type === "pointerdown" ? 1 : 0, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 }));
+    };
+    try {
+      for (let index = 0; index < 12; index++) {
+        send("q", "pointerdown", 200 + index * 2, true);
+        send("w", "pointerdown", 201 + index * 2, false);
+        send("q", "pointerup", 200 + index * 2, true);
+        send("w", "pointerup", 201 + index * 2, false);
+      }
+      send("e", "pointerdown", 400, true); send("e", "pointerdown", 401, false);
+      send("e", "pointerup", 400, true); send("e", "pointerup", 401, false);
+    } finally { Element.prototype.setPointerCapture = capture; }
+  });
+  await page.waitForTimeout(80);
+  const rollover = textMessages().slice(beforeRollover).map(({ message }) => message.type === "text" ? message.text : "").join("");
+  assert(rollover === "qw".repeat(12) + "ee", `Overlapping fingers lost text: ${rollover}`);
+  await key("q").scrollIntoViewIfNeeded();
+  const noGaps = await page.locator('[data-letter="q"]').evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const next = document.querySelector('[data-letter="w"]')!.getBoundingClientRect();
+    return { gap: next.left - box.right, box: box.toJSON() as Record<string, number>, hit: document.elementFromPoint(box.right - 1, box.y + box.height / 2)?.closest('[data-letter]')?.getAttribute('data-letter'), height: innerHeight };
+  });
+  assert(Math.abs(noGaps.gap) < 0.1 && noGaps.hit === "q", `Letter key hit areas must meet at their edges: ${JSON.stringify(noGaps)}`);
+
   await page.getByRole("button", { name: "Windows", exact: true }).waitFor();
   assert(await page.evaluate(() => /Macintosh/.test(navigator.userAgent)), "Remote-OS test must use an Apple browser with a Windows agent");
   await key("e").scrollIntoViewIfNeeded();
@@ -43,6 +97,33 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.waitForTimeout(500);
   assert(textMessages().length === beforeCancel, "Cancelled press must not emit a delayed character");
 
+  const beforeClear = sent.length;
+  await page.getByRole("button", { name: "Clear preview", exact: true }).click();
+  await page.waitForTimeout(60);
+  assert(sent.length === beforeClear, "Clear preview must not send any remote input");
+  for (const letter of "hel") await key(letter).click();
+  const bar = page.getByLabel("Word suggestions");
+  const completions = await bar.getByRole("button").allTextContents();
+  assert(completions[0] === "hel" && completions.length > 1, `Word bar must preserve the literal prefix and offer completions: ${JSON.stringify(completions)}`);
+  const beforeCompletion = sent.length;
+  await bar.getByRole("button").nth(1).click();
+  await page.waitForTimeout(60);
+  assert(sent.slice(beforeCompletion).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 3, "Completion must replace only the typed prefix");
+  await page.getByRole("button", { name: "Clear preview", exact: true }).click();
+
+  const home = page.getByRole("button", { name: "Home", exact: true });
+  const homeBox = await home.boundingBox();
+  assert(homeBox, "Missing Home key");
+  await page.mouse.move(homeBox.x + homeBox.width / 2, homeBox.y + homeBox.height / 2);
+  await page.mouse.down();
+  assert(await page.locator('[data-key-preview="action"]').textContent() === "Home", "Navigation keys must show a press preview");
+  await page.mouse.up();
+  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
+  const beforePrint = sent.length;
+  await page.getByRole("button", { name: /Print screen/i }).click();
+  await page.waitForTimeout(60);
+  assert(sent.slice(beforePrint).some(({ message }) => message.type === "keydown" && message.key === "PrintScreen"), "More keys must send PrintScreen");
+
   // Every symbol should occupy exactly its hinted letter's rectangle.
   const rectangles = await page.locator("[data-letter]").evaluateAll((elements) => elements.map((element) => {
     const { x, y, width, height } = element.getBoundingClientRect();
@@ -53,10 +134,10 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     const { x, y, width, height } = element.getBoundingClientRect();
     return { x, y, width, height, symbol: element.getAttribute('aria-label') };
   }));
-  assert(JSON.stringify(rectangles) === JSON.stringify(symbolRectangles), "Symbol positions and sizes must match the letter hints");
+  assert(JSON.stringify(rectangles) === JSON.stringify(symbolRectangles), `Symbol positions and sizes must match the letter hints: ${JSON.stringify({ rectangles, symbolRectangles })}`);
   await page.getByRole("button", { name: "Letters", exact: true }).click();
 
-  await page.getByText("Tap or swipe to type · hold for symbols", { exact: true }).waitFor();
+  await page.locator('[data-swipe-ready="true"]').waitFor();
   const beforeSwipe = textMessages().length;
   const hello = await Promise.all(Array.from("helo").map(centre));
   await page.mouse.move(hello[0].x, hello[0].y);
@@ -65,7 +146,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.mouse.up();
   await page.waitForTimeout(100);
   const swiped = textMessages().slice(beforeSwipe);
-  assert(swiped.length === 1 && swiped[0].message.type === "text" && swiped[0].message.text?.toLowerCase() === "hello ", `Swipe must emit one decoded word without the initial letter: ${JSON.stringify(swiped)}`);
+  assert(swiped.length === 1 && swiped[0].message.type === "text" && swiped[0].message.text?.toLowerCase() === "hello", `Swipe must emit one decoded word without the initial letter: ${JSON.stringify(swiped)}`);
   await page.getByRole("button", { name: "hello", exact: true }).waitFor();
 
   const alternatives = await page.getByLabel("Word suggestions").getByRole("button").allTextContents();
@@ -74,8 +155,8 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     await page.getByLabel("Word suggestions").getByRole("button", { name: alternatives[1], exact: true }).click();
     await page.waitForTimeout(60);
     const correction = sent.slice(beforeCorrection);
-    assert(correction.filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 6, "Alternative word must replace the original word and its automatic space");
-    assert(correction.some(({ message }) => message.type === "text" && message.text === alternatives[1] + " "), "Chosen alternative must be inserted");
+    assert(correction.filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 5, "Alternative word must replace only the original word");
+    assert(correction.some(({ message }) => message.type === "text" && message.text === alternatives[1]), "Chosen alternative must be inserted");
   }
   const touchPath = await Promise.all(Array.from("world").map(centre));
   const beforeTouchSwipe = textMessages().length;
@@ -92,7 +173,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await page.waitForTimeout(100);
     const touchWords = textMessages().slice(beforeTouchSwipe);
-    assert(touchWords.length === 1 && touchWords[0].message.type === "text" && touchWords[0].message.text === "world ", `Touch swipe must emit exactly one decoded word: ${JSON.stringify(touchWords)}`);
+    assert(touchWords.length === 1 && touchWords[0].message.type === "text" && touchWords[0].message.text === " world", `Touch swipe must emit exactly one decoded word: ${JSON.stringify(touchWords)}`);
   } finally { await touch.detach(); }
 
   await page.getByRole("button", { name: "Comma", exact: true }).evaluate((element) => {

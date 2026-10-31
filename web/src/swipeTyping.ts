@@ -58,7 +58,7 @@ export function createSwipeDecoder(words: readonly string[]) {
         }
         previous = current;
       }
-      const score = previous[ideal.length] / samples.length + Math.log1p(rank) * 0.012;
+      const score = previous[ideal.length] / samples.length + Math.log1p(rank) * 0.025;
       return { word, score };
     });
     return ranked.sort((a, b) => a.score - b.score).slice(0, 3).map(({ word }) => word);
