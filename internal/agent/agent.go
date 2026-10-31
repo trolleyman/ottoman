@@ -981,35 +981,12 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// typeText types a run of text (from a mobile keyboard's input event, where the
-// individual keydown/keyup events are unreliable) as a sequence of discrete
-// key presses. Each character is pressed and released immediately so nothing is
-// left held. Shift is applied for characters that need it on a US layout.
+// typeText sends literal text through the backend's layout-aware text path.
+// Navigation and shortcut keys continue to use discrete key events.
 func (a *Agent) typeText(text string) {
-	for _, r := range text {
-		var mods []string
-		if charNeedsShift(r) {
-			mods = []string{"shift"}
-		}
-		key := string(r)
-		a.keyboard.KeyDown(key, mods)
-		a.keyboard.KeyUp(key, mods)
+	if err := a.keyboard.TypeText(text); err != nil {
+		log.Printf("Text input failed: %v", err)
 	}
-}
-
-// charNeedsShift reports whether typing r on a US keyboard layout requires the
-// Shift modifier. The backends map a character and its shifted glyph to the same
-// physical key, so Shift must be supplied out of band.
-func charNeedsShift(r rune) bool {
-	if r >= 'A' && r <= 'Z' {
-		return true
-	}
-	switch r {
-	case '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
-		'_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?':
-		return true
-	}
-	return false
 }
 
 // Run starts the agent

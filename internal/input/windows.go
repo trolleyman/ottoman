@@ -5,6 +5,7 @@ package input
 import (
 	"runtime"
 	"strings"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -266,6 +267,19 @@ func NewKeyboardController() (KeyboardController, error) {
 		return nil, errors.Wrap(err, "SendInput not available")
 	}
 	return &WindowsKeyboard{}, nil
+}
+
+// Unicode text packets avoid interpreting punctuation through a US virtual-key map.
+func (k *WindowsKeyboard) TypeText(text string) error {
+	for _, unit := range utf16.Encode([]rune(text)) {
+		if err := k.sendUnicodeChar(rune(unit), false); err != nil {
+			return err
+		}
+		if err := k.sendUnicodeChar(rune(unit), true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Browser event.key name -> Windows VK code mapping

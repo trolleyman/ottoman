@@ -109,18 +109,21 @@ func TestSplitEDID(t *testing.T) {
 	}
 }
 
-func TestCharNeedsShift(t *testing.T) {
-	shift := []rune{'A', 'Z', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
-		'_', '+', '{', '}', '|', ':', '"', '~', '<', '>', '?'}
-	for _, r := range shift {
-		if !charNeedsShift(r) {
-			t.Errorf("charNeedsShift(%q) = false, want true", r)
-		}
-	}
-	noShift := []rune{'a', 'z', '1', '0', '-', '=', '[', ']', ';', '\'', ',', '.', '/', ' '}
-	for _, r := range noShift {
-		if charNeedsShift(r) {
-			t.Errorf("charNeedsShift(%q) = true, want false", r)
-		}
+type recordingTextKeyboard struct {
+	text string
+	keys int
+}
+
+func (k *recordingTextKeyboard) TypeText(text string) error     { k.text += text; return nil }
+func (k *recordingTextKeyboard) KeyDown(string, []string) error { k.keys++; return nil }
+func (k *recordingTextKeyboard) KeyUp(string, []string) error   { k.keys++; return nil }
+
+func TestTextPreservesLiteralPunctuation(t *testing.T) {
+	keyboard := &recordingTextKeyboard{}
+	agent := &Agent{keyboard: keyboard}
+	text := `British: "@£#\| and emoji 👋`
+	agent.typeText(text)
+	if keyboard.text != text || keyboard.keys != 0 {
+		t.Fatalf("text=%q physical keys=%d", keyboard.text, keyboard.keys)
 	}
 }

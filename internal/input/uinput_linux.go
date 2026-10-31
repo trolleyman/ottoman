@@ -3,6 +3,8 @@
 package input
 
 import (
+	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -343,7 +345,10 @@ func (m *UinputMouse) scrollPrecise(dx, dy float64) error {
 
 // UinputKeyboard controls keyboard input via a virtual uinput key device.
 type UinputKeyboard struct {
-	dev *uinputDevice
+	dev        *uinputDevice
+	textMu     sync.Mutex
+	layout     string
+	layoutRead time.Time
 }
 
 func newUinputKeyboard() (*UinputKeyboard, error) {
@@ -376,6 +381,10 @@ func (k *UinputKeyboard) emitKey(key string, modifiers []string, value int32) er
 		return nil // unknown key: ignore rather than error
 	}
 
+	return k.emitCode(code, modifiers, value)
+}
+
+func (k *UinputKeyboard) emitCode(code uint16, modifiers []string, value int32) error {
 	// Explicit modifiers (rarely used on the trackpad path, which manages
 	// modifier keys separately). Press before / release after the key.
 	var mods []uint16

@@ -154,6 +154,8 @@ func allKeyCodes() []uintptr {
 	for _, c := range namedKeys {
 		add(c)
 	}
+	// ISO extra key used by British backslash/pipe.
+	add(86)
 	// Modifiers used for out-of-band shifting / combos.
 	for _, c := range []uint16{keyLeftShift, keyLeftCtrl, keyLeftAlt, keyLeftMeta, keyRightCtrl, keyRightAlt} {
 		add(c)

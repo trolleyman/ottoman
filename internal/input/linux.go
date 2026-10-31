@@ -205,6 +205,11 @@ func NewKeyboardController() (KeyboardController, error) {
 	return &LinuxKeyboard{}, nil
 }
 
+// xdotool resolves text through the X server's active keymap, including symbols.
+func (k *LinuxKeyboard) TypeText(text string) error {
+	return exec.Command("xdotool", "type", "--clearmodifiers", "--delay", "0", "--", text).Run()
+}
+
 // Browser event.key name -> xdotool key name mapping
 var browserKeyToXdotool = map[string]string{
 	"ArrowUp":     "Up",

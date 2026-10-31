@@ -79,6 +79,8 @@ type MouseController interface {
 
 // KeyboardController provides platform-specific keyboard input.
 type KeyboardController interface {
+	// TypeText inserts characters using the remote session layout or Unicode input.
+	TypeText(text string) error
 	// KeyDown presses a key.
 	KeyDown(key string, modifiers []string) error
 	// KeyUp releases a key.
