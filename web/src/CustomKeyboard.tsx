@@ -25,6 +25,7 @@ import { type KeyboardSettings } from "./trackpadSettings";
 import { keyboardRows, resolveKeyboardLayout } from "./keyboardData";
 import { currentWord as getCurrentWord, matchWordCase } from "./wordPrediction";
 import { searchSymbols } from "./symbolData";
+import { CaretText } from "./CaretText";
 import { useSwipeTyping } from "./useSwipeTyping";
 const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ default: module.EmojiPicker })));
 import { loadRecentEmoji, savePreference } from "./preferences";
@@ -425,7 +426,7 @@ function KeyboardSession({
         </NavigationKey>
       </div>
 
-      <div className={`mx-auto flex max-w-3xl flex-col gap-1.5 px-1.5 sm:gap-2 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
+      <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-1.5 px-1.5 sm:gap-2 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
         {settingsOpen ? (
           <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
             onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
@@ -456,11 +457,10 @@ function KeyboardSession({
               onPress={() => mode === "emoji" ? setEmojiSearching(true) : setSymbolSearching(true)}
               className="custom-keyboard-utility flex h-8 min-w-20 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs text-zinc-400">
               <Search className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex min-w-0 flex-1 items-center overflow-hidden text-left">
-                <span className="truncate">{searchQuery || (!searching && `Search ${mode === "emoji" ? "emoji" : "symbols"}`)}</span>
-                {searching && <span key={searchQuery} data-search-caret aria-hidden="true" className="keyboard-caret ml-0.5 inline-block h-4 w-px shrink-0 bg-blue-300" />}
-                {searching && !searchQuery && <span className="ml-1 text-zinc-500">Search {mode === "emoji" ? "emoji" : "symbols"}</span>}
-              </span>
+              <div className="relative min-w-0 flex-1 text-left">
+                <CaretText value={searchQuery} cursor={searchQuery.length} hideCaret={!searching} variant="search" className="h-4 overflow-hidden whitespace-pre text-xs leading-4" />
+                {!searchQuery && <span className="pointer-events-none absolute inset-0 ml-1 text-zinc-500">Search {mode === "emoji" ? "emoji" : "symbols"}</span>}
+              </div>
             </ActionKey>
           </>}
         </div>

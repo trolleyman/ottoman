@@ -35,6 +35,10 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const fastReceived = textMessages().slice(beforeFast).map(({ message }) => message.type === "text" ? message.text : "").join("");
   assert(fastReceived === fastText, `Rapid taps lost text: expected ${fastText}, received ${fastReceived}`);
 
+  const navBox = await page.getByLabel("Navigation keys", { exact: true }).boundingBox();
+  const suggestionBox = await page.getByLabel("Word suggestions", { exact: true }).boundingBox();
+  assert(navBox && suggestionBox && suggestionBox.y - navBox.y - navBox.height >= 5.9, "Suggestions must have a visible gap above the navigation row");
+
   const beforeRollover = textMessages().length;
   await page.evaluate(() => {
     // Preserve the browser method solely to restore it after synthetic events.
@@ -158,6 +162,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const results = page.getByRole("region", { name: "Symbol search results" });
   assert(await results.getByRole("button", { name: "Type θ", exact: true }).isVisible(), "Theta must be available in the search result row");
   assert(await page.locator('[data-search-caret]').isVisible(), "Symbol search must show a caret");
+  assert(await page.locator('[data-search-caret]').evaluate((element) => getComputedStyle(element).position) === "absolute", "Search caret must overlay the query without occupying text width");
   assert(await page.locator('[data-search-caret]').evaluate((element) => getComputedStyle(element).opacity) === "1", "Search caret must remain solid while typing");
   assert(await page.getByRole("button", { name: "1", exact: true }).count() === 0, "Search results must replace the number keys");
   const beforeTheta = textMessages().length;

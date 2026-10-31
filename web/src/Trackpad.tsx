@@ -10,6 +10,7 @@ import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
 import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
+import { CaretText } from "./CaretText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
 import { loadSettings, savePreference } from "./preferences";
@@ -868,14 +869,11 @@ function TouchArea({
             <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
               className="pointer-events-auto flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             <div className="flex min-h-0 flex-col justify-end overflow-hidden rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
-              <div aria-live="polite" aria-atomic="true"
+              <div className="shrink-0" aria-live="polite" aria-atomic="true"
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
-                data-password-preview={remote?.password || undefined}
-                className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]">
-                {preview.slice(0, previewCursor)}
-                <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
-                {!remote?.password && <span key={`${previewCursor}:${preview}`} data-preview-caret className="keyboard-caret mx-px inline-block h-[1.15em] w-px translate-y-0.5 bg-blue-300" />}
-                {preview.slice(previewSelectionEnd)}
+                data-password-preview={remote?.password || undefined}>
+                <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} hideCaret={!!remote?.password}
+                  variant="preview" className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]" />
               </div>
             </div>
           </div>

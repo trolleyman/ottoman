@@ -67,7 +67,27 @@ try {
   console.log("Checking Unicode selection replacement");
   // Use actual selection events; a synthetic `select` DOM event does not
   // exercise React's document selectionchange/keyup selection plugin.
+  const previewText = page.locator('[data-text-preview] [data-caret-text]');
+  const glyphPositions = () => previewText.evaluate((element) => {
+    const node = element.firstChild!;
+    const origin = element.getBoundingClientRect();
+    return Array.from({ length: node.textContent!.length - 1 }, (_, index) => {
+      const range = document.createRange();
+      range.setStart(node, index); range.setEnd(node, index + 1);
+      const rect = range.getBoundingClientRect();
+      return [rect.left - origin.left, rect.top - origin.top, rect.width];
+    });
+  });
+  const beforeCaretMove = await glyphPositions();
   for (let index = 0; index < 9; index++) await input.press('ArrowLeft');
+  if (JSON.stringify(await glyphPositions()) !== JSON.stringify(beforeCaretMove)) throw Error('Moving the preview caret shifted the text');
+  const caretAligned = await page.locator('[data-preview-caret]').evaluate((caret) => {
+    const node = document.querySelector('[data-text-preview] [data-caret-text]')!.firstChild!;
+    const range = document.createRange(); range.setStart(node, 17); range.collapse(true);
+    const expected = range.getBoundingClientRect(), actual = caret.getBoundingClientRect();
+    return getComputedStyle(caret).position === 'absolute' && Math.abs(expected.left - actual.left) < 1 && Math.abs(expected.top - actual.top) < 1;
+  });
+  if (!caretAligned) throw Error('Preview caret is not aligned with the native text position');
   for (let index = 0; index < 9; index++) await input.press('Shift+ArrowLeft');
   await page.waitForFunction(() => {
     const input = document.querySelector('textarea');
@@ -80,7 +100,7 @@ try {
   await page.getByRole('switch', { name: 'Mirror focused text' }).click();
   await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
   if (errors.length) throw Error(errors.join('\n'));
-  console.log('PASS: native typing, queued edits, Unicode selection replacement, and disable clearing');
+  console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, and disable clearing');
 } finally {
   await browser?.close();
   server.kill('SIGKILL');
