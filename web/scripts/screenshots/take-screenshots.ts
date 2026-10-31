@@ -54,14 +54,20 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
-  keyboard?: 'letters' | 'emoji'
+  keyboard?: 'letters' | 'emoji' | 'emoji-search'
+  settings?: boolean
+  scheme?: 'light' | 'dark'
+  platform?: 'apple' | 'pc'
 }
 
 const SHOTS: Shot[] = [
   { name: 'home-offline-phone', state: 'offline', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::offline'] },
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
-  { name: 'trackpad-keyboard-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard'], keyboard: 'letters' },
+  { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
+  { name: 'trackpad-keyboard-light-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::light', 'platform::apple'], keyboard: 'letters', scheme: 'light', platform: 'apple' },
   { name: 'trackpad-emoji-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji'], keyboard: 'emoji' },
+  { name: 'trackpad-emoji-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji-search'], keyboard: 'emoji-search' },
+  { name: 'trackpad-settings-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::settings'], settings: true },
   { name: 'home-online-desktop', state: 'online', width: 1280, height: 900, dpi: 1, tags: ['viewport::desktop', 'state::online'] },
 ]
 
@@ -114,7 +120,10 @@ async function main() {
       const ctx = await browser.newContext({
         viewport: { width: shot.width, height: shot.height },
         deviceScaleFactor: shot.dpi,
-        colorScheme: 'dark',
+        colorScheme: shot.scheme || 'dark',
+        ...(shot.platform === 'apple' ? {
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+        } : {}),
       })
       const page = await ctx.newPage()
       await page.goto(base, { waitUntil: 'networkidle' })
@@ -124,18 +133,32 @@ async function main() {
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.click()
         if (shot.keyboard === 'letters') {
-          await page.locator('button[aria-pressed]').filter({ hasText: 'Ctrl' }).last().click()
-          await page.locator('button[aria-pressed]').filter({ hasText: 'Shift' }).last().click()
-          await page.getByRole('button', { name: "c, hold for '" }).click()
+          await page.getByRole('button', { name: 'Control' }).click()
+          await page.getByRole('button', { name: 'Shift' }).click()
+          await page.getByRole('button', { name: 'c, hold for ¢' }).click()
         } else {
           await page.getByRole('button', { name: 'Emoji' }).click()
+          if (shot.keyboard === 'emoji-search') {
+            await page.getByRole('button', { name: 'Search Emoji' }).click()
+            for (const key of ['l', 'o', 'v', 'e'])
+              await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+          }
         }
+        await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
+          element.scrollIntoView({ block: 'start' }),
+        )
+        await page.waitForTimeout(150)
+      } else if (shot.settings) {
+        const settings = page.getByRole('button', { name: 'Trackpad settings' })
+        await settings.scrollIntoViewIfNeeded()
+        await settings.click()
         await page.waitForTimeout(150)
       }
       const file = join(OUT, `${shot.name}.png`)
-      await page.screenshot({ path: file, fullPage: !shot.keyboard })
+      await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings })
       if (shot.keyboard) {
-        await page.getByRole('button', { name: 'Device', exact: true }).last().click()
+        await page.getByRole('button', { name: 'Close keyboard' }).click()
+        await page.getByRole('button', { name: 'Device', exact: true }).click()
         await page.getByLabel('Type on the remote computer with the device keyboard').waitFor({ state: 'visible' })
       }
       writeFileSync(`${file}.meta`, JSON.stringify({ tags: shot.tags, dpi: shot.dpi }))

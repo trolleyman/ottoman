@@ -13,7 +13,6 @@ import { Modifier, MouseButton, type TrackpadMessage } from "./api";
 import { characterCount, diffText } from "./trackpadText";
 import {
   CustomKeyboard,
-  ModifierBar,
   type KeyboardSettings,
 } from "./CustomKeyboard";
 
@@ -233,10 +232,17 @@ function TouchArea({
   );
 
   const appendText = useCallback(
-    (value: string) => {
+    (value: string, shifted = false) => {
       const before = draftRef.current;
-      if (activeModifiers.length > 0 && characterCount(value) === 1) {
-        sendKeyPress(value, activeModifiers);
+      const commandModifiers = activeModifiers.filter(
+        (modifier) => modifier !== Modifier.SHIFT,
+      );
+      if (commandModifiers.length > 0 && characterCount(value) === 1) {
+        const shortcutModifiers = combineModifiers(
+          activeModifiers,
+          shifted ? [Modifier.SHIFT] : [],
+        );
+        sendKeyPress(value.toLocaleLowerCase(), shortcutModifiers);
         return;
       }
       if (
@@ -264,7 +270,7 @@ function TouchArea({
 
   const backspace = useCallback(() => {
     sendKeyPress("Backspace", activeModifiers);
-    if (activeModifiers.length > 0) return;
+    if (activeModifiers.some((modifier) => modifier !== Modifier.SHIFT)) return;
     const characters = Array.from(draftRef.current);
     characters.pop();
     const next = characters.join("");
@@ -777,11 +783,6 @@ function TouchArea({
             </button>
           </div>
         </div>
-        <ModifierBar
-          selected={activeModifiers}
-          onToggle={toggleModifier}
-          className="mb-2"
-        />
         <div className="flex items-center gap-2">
           <Keyboard
             className="h-4 w-4 shrink-0 text-zinc-400"
@@ -841,8 +842,12 @@ function TouchArea({
           settings={settings}
           onText={appendText}
           onBackspace={backspace}
-          onEnter={() => {
-            sendKeyPress("Enter", activeModifiers);
+          onEnter={(shifted) => {
+            const modifiers = combineModifiers(
+              activeModifiers,
+              shifted ? [Modifier.SHIFT] : [],
+            );
+            sendKeyPress("Enter", modifiers);
             if (activeModifiers.length > 0) return;
             const next = `${draftRef.current}\n`;
             draftRef.current = next;
@@ -854,15 +859,13 @@ function TouchArea({
             setKeyboardOpen(false);
             onOpenSettings();
           }}
-          onUseNative={() => {
-            onSettingsChange({ customKeyboard: false });
-            setKeyboardOpen(false);
-            requestAnimationFrame(() => inputRef.current?.focus());
-          }}
           modifiers={activeModifiers}
           onToggleModifier={toggleModifier}
         />
       </div>
+      {keyboardOpen && settings.customKeyboard && (
+        <div className="h-[360px] md:hidden" aria-hidden="true" />
+      )}
     </div>
   );
 }
