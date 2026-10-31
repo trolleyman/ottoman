@@ -4,59 +4,30 @@ export interface KeyDefinition {
   grow?: number;
 }
 
-export const NUMBER_ROW: KeyDefinition[] = [
-  { key: "1", alt: "!" },
-  { key: "2", alt: "@" },
-  { key: "3", alt: "#" },
-  { key: "4", alt: "$" },
-  { key: "5", alt: "%" },
-  { key: "6", alt: "^" },
-  { key: "7", alt: "&" },
-  { key: "8", alt: "*" },
-  { key: "9", alt: "(" },
-  { key: "0", alt: ")" },
-];
+export type KeyboardLayout = "en-GB" | "en-US";
 
-export const LETTER_ROWS: KeyDefinition[][] = [
-  [
-    { key: "q", alt: "\\" },
-    { key: "w", alt: "|" },
-    { key: "e", alt: "€" },
-    { key: "r", alt: "®" },
-    { key: "t", alt: "™" },
-    { key: "y", alt: "¥" },
-    { key: "u", alt: "_" },
-    { key: "i", alt: "[" },
-    { key: "o", alt: "]" },
-    { key: "p", alt: "=" },
-  ],
-  [
-    { key: "a", alt: "~" },
-    { key: "s", alt: "<" },
-    { key: "d", alt: ">" },
-    { key: "f", alt: "{" },
-    { key: "g", alt: "}" },
-    { key: "h", alt: "-" },
-    { key: "j", alt: "+" },
-    { key: "k", alt: ":" },
-    { key: "l", alt: ";" },
-  ],
-  [
-    { key: "z", alt: "`" },
-    { key: "x", alt: "×" },
-    { key: "c", alt: "¢" },
-    { key: "v", alt: "/" },
-    { key: "b", alt: '"' },
-    { key: "n", alt: "'" },
-    { key: "m", alt: "?" },
-  ],
-];
+export function resolveKeyboardLayout(choice: KeyboardLayout | "auto", locale: string): KeyboardLayout {
+  return choice === "auto" ? (/^en-US(?:-|$)/i.test(locale) ? "en-US" : "en-GB") : choice;
+}
 
-export const SYMBOL_ROWS: KeyDefinition[][] = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((key) => ({ key })),
-  ["@", "#", "£", "$", "%", "&", "-", "+", "(", ")"].map((key) => ({ key })),
-  ['"', "'", ":", ";", "!", "?", "/"].map((key) => ({ key })),
-];
+export function keyboardRows(layout: KeyboardLayout) {
+  const shiftedNumbers = layout === "en-GB" ? '!"£$%^&*()' : '!@#$%^&*()';
+  const numberRow: KeyDefinition[] = Array.from("1234567890", (key, index) => ({
+    key, alt: Array.from(shiftedNumbers)[index],
+  }));
+  // A compact mobile layout: hyphen on the left; question mark and apostrophe
+  // next to backspace. Symbol mode is the same grid with its grey hints promoted.
+  const letterRows: KeyDefinition[][] = [
+    Array.from("qwertyuiop", (key, index) => ({ key, alt: Array.from(shiftedNumbers)[index] })),
+    Array.from("asdfghjkl", (key, index) => ({ key, alt: Array.from("-/:;[]=+#")[index] })),
+    Array.from("zxcvbnm", (key, index) => ({ key, alt: Array.from("\\|,.@?'")[index] })),
+  ];
+  return {
+    numberRow,
+    letterRows,
+    symbolRows: letterRows.map((row) => row.map(({ alt }) => ({ key: alt! }))),
+  };
+}
 
 export const SYMBOLS = [
   ["£", "pound sterling currency british gbp"], ["€", "euro currency"],
@@ -70,24 +41,6 @@ export const SYMBOLS = [
   ["•", "bullet dot"], ["…", "ellipsis dots"], ["§", "section"], ["¶", "paragraph"],
   ["†", "dagger"], ["‡", "double dagger"], ["✓", "check tick"], ["—", "em dash"],
   ["–", "en dash"], ["№", "number numero"], ["@", "at sign"], ["#", "hash pound number"],
-] as const;
-
-export const EMOJIS = [
-  ["😀", "grinning happy smile"], ["😂", "laugh tears funny"],
-  ["🥰", "love hearts smiling"], ["😍", "heart eyes love"],
-  ["😊", "smile blush happy"], ["😉", "wink playful"],
-  ["😎", "cool sunglasses"], ["🤔", "thinking wonder"],
-  ["😅", "sweat smile nervous"], ["😭", "cry sob sad"],
-  ["😤", "angry steam"], ["🥳", "party celebrate"],
-  ["👍", "thumbs up yes good"], ["👎", "thumbs down no bad"],
-  ["👏", "clap applause"], ["🙏", "pray thanks please"],
-  ["💪", "strong muscle"], ["👀", "eyes look"],
-  ["❤️", "red heart love"], ["🔥", "fire hot"],
-  ["✨", "sparkles magic"], ["🎉", "party popper celebrate"],
-  ["✅", "check done yes"], ["❌", "cross no wrong"],
-  ["💯", "hundred perfect"], ["🚀", "rocket launch"],
-  ["👋", "wave hello goodbye"], ["🤝", "handshake deal"],
-  ["💡", "idea light bulb"], ["📌", "pin location"],
 ] as const;
 
 export const STARTER_RECENTS = ["😂", "❤️", "👍", "🙏", "🔥", "🎉"];

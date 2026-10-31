@@ -33,6 +33,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Browser, type Page } from 'playwright'
+import { checkKeyboardInteractions, type SentMessage } from './keyboard-checks'
 
 const progress = '::hydra:progress::'
 const p = (msg: string) => console.log(progress + msg)
@@ -54,7 +55,7 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
-  keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav'
+  keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav' | 'key-preview' | 'key-hold' | 'text-preview'
   settings?: boolean
   settingsTiming?: boolean
   scheme?: 'light' | 'dark'
@@ -66,6 +67,9 @@ const SHOTS: Shot[] = [
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
   { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
   { name: 'trackpad-keyboard-light-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::light', 'platform::apple'], keyboard: 'letters', scheme: 'light', platform: 'apple' },
+  { name: 'trackpad-key-preview-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::key-preview'], keyboard: 'key-preview', platform: 'pc' },
+  { name: 'trackpad-key-hold-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::key-hold'], keyboard: 'key-hold', platform: 'pc' },
+  { name: 'trackpad-text-preview-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::text-preview'], keyboard: 'text-preview', platform: 'pc' },
   { name: 'trackpad-space-navigation-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::space-navigation'], keyboard: 'space-nav', platform: 'pc' },
   { name: 'trackpad-symbols-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::symbols', 'platform::pc'], keyboard: 'symbols', platform: 'pc' },
   { name: 'trackpad-symbol-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::symbol-search', 'platform::pc'], keyboard: 'symbol-search', platform: 'pc' },
@@ -126,24 +130,56 @@ async function main() {
         viewport: { width: shot.width, height: shot.height },
         deviceScaleFactor: shot.dpi,
         colorScheme: shot.scheme || 'dark',
-        ...(shot.platform === 'apple' ? {
-          // Exercise the Apple modifier order without Chromium applying its
-          // synthetic iPhone text autosizing to an otherwise desktop context.
+        locale: 'en-GB',
+        hasTouch: shot.width < 768,
+        ...(shot.platform === 'pc' ? {
+          // Deliberately use an Apple browser for a Windows remote; modifiers
+          // must follow the agent status, not this user agent.
           userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
         } : {}),
       })
+      await ctx.addInitScript((theme) => {
+        localStorage.setItem('ottoman-trackpad-settings', JSON.stringify({ keyboardTheme: theme, keyboardLayout: 'en-GB' }))
+      }, shot.scheme || 'dark')
       const page = await ctx.newPage()
+      const sent: SentMessage[] = []
+      page.on('websocket', (socket) => socket.on('framesent', (frame) => {
+        try { sent.push({ message: JSON.parse(frame.payload.toString()) as SentMessage['message'], time: Date.now() }) } catch { /* ignore non-JSON frames */ }
+      }))
+      if (shot.platform) await page.route('**/api/status/agent', async (route) => {
+        const response = await route.fetch()
+        if (!response.ok()) { await route.fulfill({ response }); return }
+        const data = await response.json() as Record<string, unknown>
+        await route.fulfill({ response, json: { ...data, os: shot.platform === 'apple' ? 'darwin' : 'windows' } })
+      })
       await page.goto(base, { waitUntil: 'networkidle' })
       await settle(page)
       let heldSpace = false
+      let heldKey = false
       if (shot.keyboard) {
         const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.click()
-        if (shot.keyboard === 'letters' || shot.keyboard === 'space-nav') {
+        if (shot.keyboard === 'key-preview' || shot.keyboard === 'key-hold') {
+          const key = page.locator('[data-letter="e"]')
+          const box = await key.boundingBox()
+          if (!box) throw new Error('Missing E key')
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+          await page.mouse.down()
+          await page.waitForTimeout(shot.keyboard === 'key-hold' ? 480 : 80)
+          heldKey = true
+        } else if (shot.keyboard === 'text-preview') {
+          await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click()
+          await page.getByRole('button', { name: 'Device', exact: true }).click()
+          await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
+          await page.getByLabel('Type on the remote computer with the device keyboard').fill('This preview stays while I type. It wraps whole words and grows upwards from the bottom of the trackpad, without trimming letters or fading away on a timer.\n\nBritish symbols: £, #, backslash, ?, and apostrophe. More typing keeps pushing the earlier lines upwards. '.repeat(3))
+          await page.getByRole('button', { name: 'Open keyboard settings' }).click()
+          await page.getByRole('button', { name: 'Ottoman', exact: true }).click()
+          await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click()
+        } else if (shot.keyboard === 'letters' || shot.keyboard === 'space-nav') {
           await page.getByRole('button', { name: 'Control' }).click()
           await page.getByRole('button', { name: 'Shift' }).click()
-          await page.getByRole('button', { name: 'c, hold for ¢' }).click()
+          await page.getByRole('button', { name: 'c, hold for ,' }).click()
           await page.getByRole('button', { name: 'Control' }).click()
           for (const key of ['h', 'e', 'l', 'l', 'o'])
             await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
@@ -187,7 +223,7 @@ async function main() {
             await page.getByRole('button', { name: '£', exact: true }).waitFor()
           }
         }
-        if (!heldSpace) {
+        if (!heldSpace && !heldKey) {
           await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
             element.scrollIntoView({ block: 'start' }),
           )
@@ -209,8 +245,10 @@ async function main() {
       }
       const file = join(OUT, `${shot.name}.png`)
       await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings && !shot.settingsTiming })
+      if (shot.keyboard === 'key-hold') await page.locator('.custom-keyboard-shell').screenshot({ path: join(OUT, 'keyboard-press@2x.png') })
+      if (shot.name === 'trackpad-keyboard-dark-phone') await checkKeyboardInteractions(page, sent)
       if (shot.keyboard) {
-        if (heldSpace) await page.mouse.up()
+        if (heldSpace || heldKey) await page.mouse.up()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
         await page.getByRole('button', { name: 'Device', exact: true }).click()
         await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
@@ -350,6 +388,5 @@ primary = true
 
 main().catch((err) => {
   console.error(err)
-  // Best-effort: never fail the head over a screenshot.
-  process.exit(0)
+  process.exitCode = 1
 })

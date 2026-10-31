@@ -35,3 +35,15 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" bun scripts/screenshots/take-screens
 
 Set `HYDRA_ARTIFACT_OUTPUT` to override the default output directory,
 `scripts/screenshots/out/`. The script stops its simulated server when done.
+
+Keyboard settings default to British symbols and dark appearance. Layout,
+appearance, swipe typing, the period key, number row, and hold/repeat timings are
+configurable. Device-locale layout selection is optional; modifier labels always
+follow the remote agent's reported OS. Symbol mode uses the same key positions
+as the letter-key hold hints.
+
+Swipe suggestions run locally using a frequency-ranked English dictionary. The
+dictionary and grouped Unicode emoji data load on demand. Dataset notices ship
+in `public/keyboard-data-licenses.txt`. Native key vibration is used only where
+the browser supports it; iPhone Safari gets visual press/hold/scroll feedback.
+For a launch without Safari's address bar, add Ottoman to the home screen.

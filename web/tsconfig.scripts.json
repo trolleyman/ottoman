@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.scripts.tsbuildinfo",
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
@@ -7,6 +8,7 @@
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
@@ -14,5 +16,5 @@
 
     "strict": true
   },
-  "include": ["scripts", "tests"]
+  "include": ["scripts", "tests", "src/norvig-frequencies.d.ts"]
 }

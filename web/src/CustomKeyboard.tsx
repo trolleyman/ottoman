@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   ArrowBigUp,
   ArrowDown,
@@ -7,7 +7,6 @@ import {
   ArrowRightToLine,
   ArrowUp,
   ChevronUp,
-  Clock3,
   Command,
   CornerDownLeft,
   Delete,
@@ -20,9 +19,11 @@ import {
 } from "lucide-react";
 import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
-import { NUMBER_ROW, LETTER_ROWS, SYMBOL_ROWS, SYMBOLS, EMOJIS } from "./keyboardData";
+import { keyboardRows, resolveKeyboardLayout, SYMBOLS } from "./keyboardData";
+import { useSwipeTyping } from "./useSwipeTyping";
+const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ default: module.EmojiPicker })));
 import { loadRecentEmoji, savePreference } from "./preferences";
-import { WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
+import { ActionKey, WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
 import { haptic } from "./keyboardHaptics";
 import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
 
@@ -31,8 +32,11 @@ type KeyboardMode = "letters" | "symbols" | "emoji";
 
 function KeyboardSession({
   connected,
+  remoteOS,
+  textContext,
   settings,
   onText,
+  onReplaceText,
   onBackspace,
   onEnter,
   onTab,
@@ -47,8 +51,11 @@ function KeyboardSession({
   onToggleModifier,
 }: {
   connected: boolean;
+  remoteOS: string;
+  textContext: number;
   settings: KeyboardSettings;
   onText: (text: string, shifted?: boolean) => void;
+  onReplaceText: (previous: string, next: string) => void;
   onBackspace: () => void;
   onEnter: (shifted: boolean) => void;
   onTab: () => void;
@@ -74,21 +81,54 @@ function KeyboardSession({
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
   const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backspaceRepeat = useRef<ReturnType<typeof setInterval> | null>(null);
+  const backspaceRepeat = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [backspaceHeld, setBackspaceHeld] = useState(false);
   const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spaceHeld = useRef(false);
   const spaceLast = useRef({ x: 0, y: 0 });
   const [spaceNavigating, setSpaceNavigating] = useState(false);
-  const applePlatform = typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+  const applePlatform = remoteOS === "darwin";
+  const { numberRow, letterRows, symbolRows } = keyboardRows(resolveKeyboardLayout(settings.keyboardLayout, navigator.language));
+  const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    const change = () => setSystemDark(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+
+  const [emojiData, setEmojiData] = useState<typeof import("./emojiData") | null>(null);
+  useEffect(() => {
+    if (mode === "emoji") void import("./emojiData").then(setEmojiData);
+  }, [mode]);
+  const swipeShift = useRef<ShiftState>("off");
+  const swipe = useSwipeTyping(
+    settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
+    settings.longPressDelayMs,
+    textContext,
+    (word, previous) => {
+      if (!previous) swipeShift.current = shift;
+      const format = (value: string) => swipeShift.current === "locked" ? value.toUpperCase() : swipeShift.current === "once" ? value[0].toUpperCase() + value.slice(1) : value;
+      if (previous) onReplaceText(`${format(previous)} `, `${format(word)} `);
+      else {
+        onText(`${format(word)} `);
+        if (shift === "once") {
+          setShift("off");
+          if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
+        }
+      }
+      haptic(settings.haptics);
+    },
+  );
 
   useEffect(() => () => {
     if (backspaceTimer.current) clearTimeout(backspaceTimer.current);
-    if (backspaceRepeat.current) clearInterval(backspaceRepeat.current);
+    if (backspaceRepeat.current) clearTimeout(backspaceRepeat.current);
     if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
   }, []);
 
-  const type = (value: string) => {
+  const type = (value: string, wasLongPress = false) => {
+    swipe.clear();
     if (mode === "emoji" && emojiSearching) {
       setEmojiQuery((current) => `${current}${value.toLocaleLowerCase()}`);
       haptic(settings.haptics);
@@ -99,7 +139,7 @@ function KeyboardSession({
       haptic(settings.haptics);
       return;
     }
-    const shifted = (mode === "letters" || symbolSearching) && shift !== "off";
+    const shifted = !wasLongPress && (mode === "letters" || symbolSearching) && shift !== "off";
     const next = shifted ? value.toUpperCase() : value;
     onText(next, shifted);
     if (shift === "once") {
@@ -121,6 +161,7 @@ function KeyboardSession({
   };
 
   const beginBackspace = () => {
+    swipe.clear();
     endBackspace();
     haptic(settings.haptics);
     const erase = () => {
@@ -131,15 +172,24 @@ function KeyboardSession({
       else onBackspace();
     };
     erase();
-    backspaceTimer.current = setTimeout(() => {
-      backspaceRepeat.current = setInterval(erase, settings.backspaceRepeatIntervalMs);
-    }, settings.backspaceRepeatDelayMs);
+    setBackspaceHeld(true);
+    let repeats = 0;
+    const repeat = () => {
+      erase();
+      if (repeats % 3 === 0) haptic(settings.haptics, 4);
+      repeats++;
+      backspaceRepeat.current = setTimeout(repeat,
+        Math.max(18, settings.backspaceRepeatIntervalMs * Math.pow(0.8, Math.floor(repeats / 4))),
+      );
+    };
+    backspaceTimer.current = setTimeout(repeat, settings.backspaceRepeatDelayMs);
   };
   const endBackspace = () => {
     if (backspaceTimer.current) clearTimeout(backspaceTimer.current);
-    if (backspaceRepeat.current) clearInterval(backspaceRepeat.current);
+    if (backspaceRepeat.current) clearTimeout(backspaceRepeat.current);
     backspaceTimer.current = null;
     backspaceRepeat.current = null;
+    setBackspaceHeld(false);
   };
 
   const beginSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -156,22 +206,29 @@ function KeyboardSession({
   };
 
   const moveSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!spaceHeld.current) return;
-    const step = 18;
+    if (!spaceHeld.current) {
+      spaceLast.current = { x: event.clientX, y: event.clientY };
+      return;
+    }
+    // One vertical step changes an entire line; horizontal steps change one
+    // character. Give horizontal motion the finer resolution.
+    const horizontalStep = 12;
+    const verticalStep = 30;
     const dx = event.clientX - spaceLast.current.x;
     const dy = event.clientY - spaceLast.current.y;
-    const horizontalSteps = Math.trunc(dx / step);
-    const verticalSteps = Math.trunc(dy / step);
+    const horizontalSteps = Math.trunc(dx / horizontalStep);
+    const verticalSteps = Math.trunc(dy / verticalStep);
     const emit = (key: string, count: number) => {
       for (let i = 0; i < Math.min(Math.abs(count), 6); i++) onNavigate(key);
     };
-    if (horizontalSteps !== 0) {
+    if (horizontalSteps !== 0 && Math.abs(dx) / horizontalStep >= Math.abs(dy) / verticalStep) {
       emit(horizontalSteps > 0 ? "ArrowRight" : "ArrowLeft", horizontalSteps);
-      spaceLast.current.x += horizontalSteps * step;
-    }
-    if (verticalSteps !== 0) {
+      spaceLast.current.x += horizontalSteps * horizontalStep;
+      spaceLast.current.y = event.clientY;
+    } else if (verticalSteps !== 0) {
       emit(verticalSteps > 0 ? "ArrowDown" : "ArrowUp", verticalSteps);
-      spaceLast.current.y += verticalSteps * step;
+      spaceLast.current.y += verticalSteps * verticalStep;
+      spaceLast.current.x = event.clientX;
     }
   };
 
@@ -198,8 +255,8 @@ function KeyboardSession({
     onNavigate(key);
   };
 
-  const rows = mode === "symbols" && !symbolSearching ? SYMBOL_ROWS : LETTER_ROWS;
-  const matchingEmoji = EMOJIS.filter(([, keywords]) =>
+  const rows = mode === "symbols" && !symbolSearching ? symbolRows : letterRows;
+  const matchingEmoji = (emojiData?.EMOJIS ?? []).filter(([, keywords]) =>
     !emojiQuery.trim() || keywords.includes(emojiQuery.trim().toLocaleLowerCase()),
   );
   const matchingSymbols = SYMBOLS.filter(([, keywords]) =>
@@ -220,27 +277,7 @@ function KeyboardSession({
   };
 
   return (
-    <div className="custom-keyboard-shell fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,.5)] backdrop-blur-xl md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border">
-      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-1.5" aria-label="Navigation keys">
-        <NavigationKey label="Escape" onPress={() => navigate("Escape")}>Esc</NavigationKey>
-        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
-        <NavigationKey label="Arrow left" onPress={() => navigate("ArrowLeft")}>
-          <ArrowLeft className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow up" onPress={() => navigate("ArrowUp")}>
-          <ArrowUp className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow down" onPress={() => navigate("ArrowDown")}>
-          <ArrowDown className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow right" onPress={() => navigate("ArrowRight")}>
-          <ArrowRight className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
-        <NavigationKey label="Delete" onPress={() => navigate("Delete")}>
-          <Delete className="h-4 w-4 rotate-180" />
-        </NavigationKey>
-      </div>
+    <div data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className="custom-keyboard-shell fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,.5)] backdrop-blur-xl md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border">
       <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 py-1.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
@@ -262,87 +299,72 @@ function KeyboardSession({
           </>
         ) : (
           <>
-            <ModifierButton modifier={Modifier.META} label="Windows" text="Win" selected={modifiers} onToggle={onToggleModifier}>
-              <WindowsIcon className="h-[17px] w-[17px]" />
+            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier}>
+              {remoteOS === "windows" ? <WindowsIcon className="h-[17px] w-[17px]" /> : <span className="text-base" aria-hidden="true">◆</span>}
             </ModifierButton>
             <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
             </ModifierButton>
           </>
         )}
-        <button
+        <ActionKey
           type="button"
-          aria-label="Keyboard settings"
-          title="Keyboard settings"
+          aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
+          title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
           aria-pressed={settingsOpen}
-          onClick={() => setSettingsOpen((current) => !current)}
+          onPress={() => setSettingsOpen((current) => !current)}
           className={`custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border ${
             settingsOpen
               ? "border-blue-400/60 bg-blue-500 text-white"
               : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
           }`}
         >
-          <Settings className="h-4 w-4" />
-        </button>
-        <button
+          {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
+        </ActionKey>
+        <ActionKey
           type="button"
           aria-label="Close keyboard"
           title="Close keyboard"
-          onClick={() => {
+          onPress={() => {
             setSettingsOpen(false);
             onClose();
           }}
           className="custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
         >
           <X className="h-4 w-4" />
-        </button>
+        </ActionKey>
+      </div>
+
+      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-1.5" aria-label="Navigation keys">
+        <NavigationKey label="Escape" onPress={() => navigate("Escape")}>Esc</NavigationKey>
+        <NavigationKey label="Arrow left" onPress={() => navigate("ArrowLeft")}>
+          <ArrowLeft className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow up" onPress={() => navigate("ArrowUp")}>
+          <ArrowUp className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow down" onPress={() => navigate("ArrowDown")}>
+          <ArrowDown className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow right" onPress={() => navigate("ArrowRight")}>
+          <ArrowRight className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
+        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
+        <NavigationKey label="Delete" onPress={() => navigate("Delete")}>
+          <Delete className="h-4 w-4 rotate-180" />
+        </NavigationKey>
       </div>
 
       <div className="mx-auto flex h-[252px] max-w-3xl flex-col gap-1.5 px-1.5 sm:h-[274px] sm:gap-2 sm:px-2">
         {settingsOpen ? (
           <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
             onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
-            usingCustomKeyboard={usingCustomKeyboard} />
+            usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
         ) : (
           <>
         {mode === "emoji" && !emojiSearching ? (
-          <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-zinc-900/70 p-1.5">
-            <button
-              type="button"
-              onClick={() => setEmojiSearching(true)}
-              className="custom-keyboard-utility mb-1.5 flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-2.5 text-left text-xs text-zinc-400"
-            >
-              <Search className="h-3.5 w-3.5" />
-              Search Emoji
-            </button>
-            <div className="mb-1 flex shrink-0 items-center gap-1 overflow-x-auto">
-              <Clock3 className="mx-1 h-3.5 w-3.5 shrink-0 text-zinc-500" aria-label="Recent emoji" />
-              {recentEmoji.map((emoji) => (
-                <button
-                  type="button"
-                  key={emoji}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => selectEmoji(emoji)}
-                  className="h-9 w-9 shrink-0 rounded-md text-xl hover:bg-zinc-800 active:bg-zinc-700"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-            <div className="grid min-h-0 flex-1 auto-rows-[36px] grid-cols-8 content-start gap-0.5 overflow-y-auto sm:grid-cols-10">
-              {EMOJIS.map(([emoji]) => (
-                <button
-                  type="button"
-                  key={emoji}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => selectEmoji(emoji)}
-                  className="rounded-md text-xl hover:bg-zinc-800 active:bg-zinc-700"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
+          <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSearch={() => setEmojiSearching(true)} onSelect={selectEmoji} /></Suspense>
         ) : (
           <>
             {mode === "emoji" && emojiSearching && (
@@ -352,26 +374,16 @@ function KeyboardSession({
                   {emojiQuery || <span className="text-zinc-500">Search Emoji</span>}
                 </span>
                 {matchingEmoji.slice(0, 5).map(([emoji]) => (
-                  <button
+                  <ActionKey
                     type="button"
                     key={emoji}
-                    onClick={() => selectEmoji(emoji)}
+                    onPress={() => selectEmoji(emoji)}
                     className="h-8 w-8 shrink-0 rounded text-lg hover:bg-zinc-800"
                   >
                     {emoji}
-                  </button>
+                  </ActionKey>
                 ))}
               </div>
-            )}
-            {mode === "symbols" && !symbolSearching && (
-              <button
-                type="button"
-                onClick={() => setSymbolSearching(true)}
-                className="custom-keyboard-utility flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-2.5 text-left text-xs text-zinc-400"
-              >
-                <Search className="h-3.5 w-3.5" />
-                Search Symbols
-              </button>
             )}
             {mode === "symbols" && symbolSearching && (
               <div className="flex h-11 shrink-0 items-center gap-1.5 overflow-hidden rounded-md bg-zinc-900/70 px-2">
@@ -380,22 +392,28 @@ function KeyboardSession({
                   {symbolQuery || <span className="text-zinc-500">Search Symbols</span>}
                 </span>
                 {matchingSymbols.slice(0, 6).map(([symbol]) => (
-                  <button
+                  <ActionKey
                     type="button"
                     key={symbol}
                     aria-label={`Type ${symbol}`}
-                    onClick={() => selectSymbol(symbol)}
+                    onPress={() => selectSymbol(symbol)}
                     className="h-8 w-8 shrink-0 rounded text-lg text-zinc-100 hover:bg-zinc-800"
                   >
                     {symbol}
-                  </button>
+                  </ActionKey>
                 ))}
               </div>
             )}
-            {settings.numberRow && mode === "letters" && (
+            <div className="flex h-7 shrink-0 items-center justify-center gap-1 text-[10px] text-zinc-500" aria-label="Word suggestions">
+              {swipe.candidates.length > 0 && mode === "letters" ? swipe.candidates.map((word) => (
+                <ActionKey type="button" key={word} onPress={() => swipe.select(word)} className="custom-keyboard-utility h-7 flex-1 rounded-md text-sm text-zinc-200 hover:bg-zinc-700">{word}</ActionKey>
+              )) : mode === "symbols" ? "Symbols match the letter-key hints" : settings.swipeTyping ? (swipe.ready ? "Tap or swipe to type · hold for symbols" : "Loading swipe typing…") : "Hold a key for its symbol"}
+            </div>
+            <div className="relative flex min-h-0 flex-1 flex-col gap-1.5 sm:gap-2" {...swipe.handlers}>
+            {settings.numberRow && mode !== "emoji" && (
               <div className="flex min-h-0 flex-1 gap-1 sm:gap-1.5">
-                {NUMBER_ROW.map((definition) => (
-                  <Key key={definition.key} definition={definition} settings={settings} onType={type} />
+                {numberRow.map((definition) => (
+                  <Key key={definition.key} definition={mode === "letters" && shift !== "off" ? { key: definition.alt!, alt: definition.key } : definition} settings={settings} onType={type} />
                 ))}
               </div>
             )}
@@ -404,6 +422,9 @@ function KeyboardSession({
                 key={index}
                 className={`flex min-h-0 flex-1 gap-1 sm:gap-1.5 ${index === 1 ? "px-[4.5%]" : ""}`}
               >
+                {index === 2 && mode === "symbols" && !symbolSearching && (
+                  <UtilityKey label="Search Symbols" wide onPress={() => setSymbolSearching(true)}><Search className="h-5 w-5" /></UtilityKey>
+                )}
                 {index === 2 && (mode === "letters" || symbolSearching) && (
                   <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
@@ -421,6 +442,8 @@ function KeyboardSession({
                     label={(mode === "letters" || symbolSearching) && shift !== "off" ? definition.key.toUpperCase() : undefined}
                     settings={settings}
                     onType={type}
+                    swipeActive={swipe.active}
+                    suppressTap={swipe.suppressTap}
                   />
                 ))}
                 {index === 2 && (
@@ -429,18 +452,21 @@ function KeyboardSession({
                     aria-label="Backspace"
                     onPointerDown={(event) => {
                       event.preventDefault();
+                      event.currentTarget.setPointerCapture(event.pointerId);
                       beginBackspace();
                     }}
                     onPointerUp={endBackspace}
                     onPointerCancel={endBackspace}
-                    onPointerLeave={endBackspace}
-                    className="custom-keyboard-utility flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700"
+                    onLostPointerCapture={endBackspace}
+                    className={`custom-keyboard-utility flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 ${backspaceHeld ? "ring-2 ring-blue-400/60 text-blue-200" : ""}`}
                   >
                     <Delete className="h-5 w-5" />
                   </button>
                 )}
               </div>
             ))}
+              {swipe.active && <svg className="pointer-events-none absolute inset-0 z-40 h-full w-full overflow-visible" aria-hidden="true"><polyline points={swipe.trail.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" /></svg>}
+            </div>
           </>
         )}
 
@@ -473,6 +499,7 @@ function KeyboardSession({
           <UtilityKey label="Tab" onPress={onTab}>
             <ArrowRightToLine className="h-5 w-5" />
           </UtilityKey>
+          <UtilityKey label="Comma" onPress={() => { haptic(settings.haptics); type(","); }}>,</UtilityKey>
           <button
             type="button"
             aria-label="Space. Hold and drag to move the cursor"
@@ -494,13 +521,13 @@ function KeyboardSession({
               </span>
             ) : "space"}
           </button>
-          <UtilityKey label="Period" onPress={() => type(".")}>.</UtilityKey>
-          <button
+          {settings.periodKey && <UtilityKey label="Period" onPress={() => { haptic(settings.haptics); type("."); }}>.</UtilityKey>}
+          <ActionKey
             type="button"
             disabled={!connected}
             aria-label="Enter"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => {
+            onPress={() => {
+              swipe.clear();
               if (emojiSearching && matchingEmoji[0]) selectEmoji(matchingEmoji[0][0]);
               else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
@@ -508,7 +535,7 @@ function KeyboardSession({
             className="flex min-w-[54px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-blue-400/40 bg-blue-500 text-white shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-blue-400 disabled:opacity-40"
           >
             <CornerDownLeft className="h-5 w-5" />
-          </button>
+          </ActionKey>
         </div>
           </>
         )}

@@ -32,15 +32,22 @@ describe("trackpad preferences", () => {
 
   test("rejects invalid types and non-finite values", () => {
     for (const value of [null, [], "settings", 5]) expect(parseSettings(value)).toEqual(DEFAULT_SETTINGS);
-    expect(parseSettings({ cursorSensitivity: "fast", cursorFriction: Infinity, previewFadeMs: NaN, haptics: "false" })).toEqual(DEFAULT_SETTINGS);
+    expect(parseSettings({ cursorSensitivity: "fast", cursorFriction: Infinity, longPressDelayMs: NaN, haptics: "false" })).toEqual(DEFAULT_SETTINGS);
   });
 
   test("clamps stored values to the same bounds as the controls", () => {
-    const settings = parseSettings({ cursorFriction: 1, cursorSensitivity: -1, backspaceRepeatIntervalMs: 0, previewFadeMs: 100000 });
+    const settings = parseSettings({ cursorFriction: 1, cursorSensitivity: -1, backspaceRepeatIntervalMs: 0, longPressDelayMs: 100000 });
     expect(settings.cursorFriction).toBe(0.99);
     expect(settings.cursorSensitivity).toBe(0.1);
     expect(settings.backspaceRepeatIntervalMs).toBe(25);
-    expect(settings.previewFadeMs).toBe(10000);
+    expect(settings.longPressDelayMs).toBe(1000);
+  });
+
+  test("keeps explicit layout, appearance, swipe and period preferences", () => {
+    expect(parseSettings({ keyboardLayout: "en-US", keyboardTheme: "light", periodKey: false, swipeTyping: false })).toEqual({
+      ...DEFAULT_SETTINGS, keyboardLayout: "en-US", keyboardTheme: "light", periodKey: false, swipeTyping: false,
+    });
+    expect(parseSettings({ keyboardLayout: "invalid", keyboardTheme: "bright", periodKey: "no" })).toEqual(DEFAULT_SETTINGS);
   });
 
   test("recovers from malformed JSON and non-array emoji storage", () => {

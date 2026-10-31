@@ -1,22 +1,28 @@
+import { ActionKey } from "./KeyboardKeys";
+import { ArrowLeft } from "lucide-react";
+import { supportsHaptics } from "./keyboardHaptics";
 import { KEYBOARD_TIMINGS, type KeyboardSettings } from "./trackpadSettings";
 
 function SettingSwitch({
   label,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <button
+    <ActionKey
       type="button"
+      disabled={disabled}
       role="switch"
       aria-label={label}
       aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+      onPress={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 disabled:opacity-40 rounded-full border transition-colors ${
         checked
           ? "border-blue-400/60 bg-blue-500"
           : "border-zinc-600 bg-zinc-700"
@@ -27,7 +33,7 @@ function SettingSwitch({
           checked ? "translate-x-[18px]" : "translate-x-0.5"
         }`}
       />
-    </button>
+    </ActionKey>
   );
 }
 
@@ -70,7 +76,8 @@ function TimingField({
   );
 }
 
-export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomKeyboard, onUseDeviceKeyboard, usingCustomKeyboard }: {
+export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomKeyboard, onUseDeviceKeyboard, usingCustomKeyboard, onBack }: {
+  onBack: () => void;
   settings: KeyboardSettings;
   onSettingsChange: (patch: Partial<KeyboardSettings>) => void;
   onUseCustomKeyboard: () => void;
@@ -79,26 +86,42 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
 }) {
   return (
           <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-zinc-900/70 p-3">
-            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Keyboard settings
+            <ActionKey type="button" onPress={onBack} className="custom-keyboard-utility mb-3 flex min-h-9 shrink-0 items-center gap-2 rounded-md bg-zinc-800 px-3 text-sm font-medium text-zinc-200">
+              <ArrowLeft className="h-4 w-4" />Back to keyboard
+            </ActionKey>
+            <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-zinc-300">
+              <label className="flex flex-col gap-1">Keyboard layout
+                <select aria-label="Keyboard layout" value={settings.keyboardLayout}
+                  onChange={(event) => onSettingsChange({ keyboardLayout: event.target.value as KeyboardSettings["keyboardLayout"] })}
+                  className="custom-keyboard-utility rounded-md border border-zinc-600 bg-zinc-800 p-2">
+                  <option value="en-GB">British (UK)</option><option value="en-US">English (US)</option><option value="auto">From device locale</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">Keyboard appearance
+                <select aria-label="Keyboard appearance" value={settings.keyboardTheme}
+                  onChange={(event) => onSettingsChange({ keyboardTheme: event.target.value as KeyboardSettings["keyboardTheme"] })}
+                  className="custom-keyboard-utility rounded-md border border-zinc-600 bg-zinc-800 p-2">
+                  <option value="dark">Dark</option><option value="light">Light</option><option value="system">Match device</option>
+                </select>
+              </label>
             </div>
             <div className="mb-3 grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
-              <button
+              <ActionKey
                 type="button"
-                onClick={onUseCustomKeyboard}
+                onPress={onUseCustomKeyboard}
                 className={`rounded-md px-2 py-2 ${usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800"}`}
                 aria-pressed={usingCustomKeyboard}
               >
                 Ottoman
-              </button>
-              <button
+              </ActionKey>
+              <ActionKey
                 type="button"
-                onClick={onUseDeviceKeyboard}
+                onPress={onUseDeviceKeyboard}
                 className={`rounded-md px-2 py-2 ${!usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"}`}
                 aria-pressed={!usingCustomKeyboard}
               >
                 Device
-              </button>
+              </ActionKey>
             </div>
             <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
               {([
@@ -106,6 +129,8 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                 ["Long-press symbols", "symbolHints"],
                 ["Double-space period", "doubleSpacePeriod"],
                 ["Key haptics", "haptics"],
+                ["Period beside space", "periodKey"],
+                ["Swipe typing", "swipeTyping"],
               ] as const).map(([label, key]) => (
                 <div
                   key={key}
@@ -115,11 +140,13 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                   <SettingSwitch
                     label={label}
                     checked={settings[key]}
+                    disabled={key === "haptics" && !supportsHaptics()}
                     onChange={(checked) => onSettingsChange({ [key]: checked })}
                   />
                 </div>
               ))}
             </div>
+            {!supportsHaptics() && <p className="mt-2 text-[11px] leading-4 text-zinc-400">This browser does not support key vibration. Press previews and scroll feedback stay enabled. The device keyboard uses your phone’s keyboard feedback settings.</p>}
             <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Timing
             </div>
@@ -129,6 +156,10 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                   onChange={(value) => onSettingsChange({ [key]: value })} />
               ))}
             </div>
+            {document.fullscreenEnabled && <ActionKey type="button"
+              onPress={() => { void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {}); }}
+              className="custom-keyboard-utility mt-3 min-h-9 shrink-0 rounded-md border border-zinc-600 bg-zinc-800 px-3 text-xs text-zinc-200">Toggle fullscreen</ActionKey>}
+            <p className="mt-3 text-[11px] leading-4 text-zinc-400">On iPhone, use Share → Add to Home Screen, then open Ottoman from that icon to type without Safari’s address bar.</p>
             <p className="mt-3 text-[11px] leading-4 text-zinc-500">
               Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
             </p>

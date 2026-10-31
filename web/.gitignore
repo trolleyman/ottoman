@@ -27,3 +27,6 @@ scripts/screenshots/out
 *.njsproj
 *.sln
 *.sw?
+
+# Worktree-local dependency metadata cache
+.npm-cache

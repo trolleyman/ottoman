@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ChevronDown,
-  ChevronUp,
   Keyboard,
   Settings,
   X,
 } from "lucide-react";
+import { ScrollRail } from "./ScrollRail";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage } from "./api";
@@ -62,8 +61,8 @@ function TouchArea({
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftVisible, setDraftVisible] = useState(false);
+  const [textContext, setTextContext] = useState(0);
   const draftRef = useRef("");
-  const draftFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteCursor = useRef(0);
   // Fallback mouse position tracking when pointer lock is unavailable (e.g. after Escape cooldown)
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
@@ -133,18 +132,25 @@ function TouchArea({
     [send],
   );
 
-  const showDraftIndicator = useCallback(() => {
-    setDraftVisible(true);
-    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
-    draftFadeTimer.current = setTimeout(
-      () => setDraftVisible(false),
-      settings.previewFadeMs,
-    );
-  }, [settings.previewFadeMs]);
-
-  useEffect(() => () => {
-    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
+  const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
+  const dismissDraft = useCallback(() => {
+    setTextContext((value) => value + 1);
+    setDraftVisible(false);
+    draftRef.current = "";
+    remoteCursor.current = 0;
+    setDraft("");
+    setDraftCursor(0);
   }, []);
+  const remoteOS = useStore((state) => state.agentInfo?.os ?? "");
+
+  useEffect(() => {
+    if (!keyboardOpen) return;
+    const frame = requestAnimationFrame(() => {
+      if (matchMedia("(max-width: 767px)").matches)
+        trackpadRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [keyboardOpen]);
 
   const toggleModifier = useCallback((modifier: Modifier) => {
     setActiveModifiers((current) =>
@@ -273,7 +279,7 @@ function TouchArea({
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
-    setDraftVisible(false);
+    dismissDraft();
 
     // Stop any active inertia scrolling when the user touches the screen again
     if (inertiaFrame.current) {
@@ -529,6 +535,7 @@ function TouchArea({
 
   // Mouse drag via Pointer Lock (or fallback position tracking after Escape cooldown)
   const onPointerDown = (e: React.PointerEvent) => {
+    dismissDraft();
     if (e.pointerType === "touch") return;
     setDraftVisible(false);
 
@@ -661,6 +668,7 @@ function TouchArea({
     if (!el || !connected) return;
 
     const handleWheel = (e: WheelEvent) => {
+      dismissDraft();
       e.preventDefault();
       // deltaMode: 0 = pixels (trackpads), 1 = lines (mouse wheels), 2 = pages
       if (e.deltaMode === 1) {
@@ -689,12 +697,8 @@ function TouchArea({
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [connected, send, settings.scrollSensitivity]);
+  }, [connected, dismissDraft, send, settings.scrollSensitivity]);
 
-  const indicatorStart = Math.max(0, draftCursor - 160);
-  const indicatorEnd = Math.min(draft.length, indicatorStart + 260);
-  const indicatorBefore = draft.slice(indicatorStart, draftCursor);
-  const indicatorAfter = draft.slice(draftCursor, indicatorEnd);
 
   return (
     <div className="w-full md:max-w-sm md:shrink-0 flex flex-col gap-2">
@@ -716,6 +720,7 @@ function TouchArea({
                   backgroundImage:
                     "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
                   backgroundSize: "20px 20px",
+                  maxHeight: keyboardOpen ? "max(160px, calc(100dvh - 380px))" : undefined,
                 }
               : undefined
           }
@@ -741,26 +746,19 @@ function TouchArea({
               )}
             </div>
           )}
-          {connected && draft && (
-            <div
-              aria-live="polite"
-              aria-atomic="true"
-              className={`pointer-events-none absolute bottom-14 left-3 right-14 z-10 max-h-24 select-none overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/55 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md transition-all duration-300 ${
-                draftVisible
-                  ? "translate-y-0 opacity-100"
-                  : "translate-y-1 opacity-0"
-              }`}
-            >
-              {indicatorStart > 0 && <span className="text-zinc-500">…</span>}
-              {indicatorBefore}
-              <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
-              {indicatorAfter}
-              {indicatorEnd < draft.length && <span className="text-zinc-500">…</span>}
+          {connected && draft && draftVisible && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-end overflow-hidden pb-14 pl-3 pr-14" data-text-preview>
+              <div aria-live="polite" aria-atomic="true"
+                className="w-full shrink-0 whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/65 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md [overflow-wrap:anywhere]">
+                {draft.slice(0, draftCursor)}
+                <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
+                {draft.slice(draftCursor)}
+              </div>
             </div>
           )}
         </div>
         {connected && (
-          <ScrollRail send={send} sensitivity={settings.scrollSensitivity} />
+          <ScrollRail send={send} sensitivity={settings.scrollSensitivity} friction={settings.scrollFriction} haptics={settings.haptics} onInteract={dismissDraft} />
         )}
         <button
           type="button"
@@ -820,8 +818,16 @@ function TouchArea({
           key={keyboardSettingsOpen ? "settings" : "keyboard"}
           open={keyboardOpen}
           connected={connected}
+          remoteOS={remoteOS}
+          textContext={textContext}
           settings={settings}
           onText={appendText}
+          onReplaceText={(previous, next) => {
+            for (let index = 0; index < characterCount(previous); index++) sendKeyPress("Backspace");
+            draftRef.current = draftRef.current.slice(0, -previous.length);
+            remoteCursor.current = Math.max(0, remoteCursor.current - characterCount(previous));
+            appendText(next);
+          }}
           onBackspace={backspace}
           onEnter={(shifted) => {
             const modifiers = combineModifiers(
@@ -837,8 +843,8 @@ function TouchArea({
             setDraftCursor(next.length);
             showDraftIndicator();
           }}
-          onTab={() => sendKeyPress("Tab", activeModifiers)}
-          onNavigate={(key) => sendKeyPress(key, activeModifiers)}
+          onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
+          onNavigate={(key) => { dismissDraft(); sendKeyPress(key, activeModifiers); }}
           onClose={() => {
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);
@@ -860,48 +866,6 @@ function TouchArea({
       {keyboardOpen && (
         <div className="h-[360px] md:hidden" aria-hidden="true" />
       )}
-    </div>
-  );
-}
-
-function ScrollRail({
-  send,
-  sensitivity,
-}: {
-  send: (msg: TrackpadMessage) => void;
-  sensitivity: number;
-}) {
-  const lastY = useRef<number | null>(null);
-
-  const start = (e: React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    lastY.current = e.touches[0]?.clientY ?? null;
-  };
-  const move = (e: React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const y = e.touches[0]?.clientY;
-    if (y == null || lastY.current == null) return;
-    const dy = (y - lastY.current) * sensitivity;
-    lastY.current = y;
-    if (Math.abs(dy) >= 0.5)
-      send({ type: "mousescroll", dx: 0, dy: Math.round(-dy), precise: true });
-  };
-
-  return (
-    <div
-      className="absolute inset-y-3 right-2 flex w-10 touch-none select-none flex-col items-center justify-between rounded-full border border-zinc-600/80 bg-zinc-950/80 py-3 text-zinc-400 shadow-lg backdrop-blur"
-      aria-label="One-finger scroll control"
-      onTouchStart={start}
-      onTouchMove={move}
-      onTouchEnd={() => {
-        lastY.current = null;
-      }}
-    >
-      <ChevronUp className="h-4 w-4" />
-      <div className="h-12 w-1 rounded-full bg-zinc-600" />
-      <ChevronDown className="h-4 w-4" />
     </div>
   );
 }
