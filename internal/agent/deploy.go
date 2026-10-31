@@ -134,7 +134,7 @@ func installLinuxService() error {
 
 	setUpLinuxHost()
 
-	return nil
+	return refreshInstalledGreeter()
 }
 
 const taskXmlTemplate = `<?xml version="1.0"?>

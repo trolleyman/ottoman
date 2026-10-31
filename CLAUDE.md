@@ -164,10 +164,15 @@ config never clobbers it. Linux backends: displays via GNOME Mutter D-Bus
 brightness/power via `ddcutil`. One-time host setup (uinput/i2c/grub-reboot) is
 applied natively as root by `ottoman agent host-setup` (self-elevates via
 sudo), offered interactively at the end of `agent install`. `host-setup
---greeter` additionally deploys a **login-screen layout agent**: `ottoman agent
+--greeter` additionally deploys a **login-screen agent**: `ottoman agent
 run --greeter` runs as the `gdm` user against the GDM greeter's own Mutter
-(display/layouts only — input/audio are skipped), so you can switch display
-layouts on the login screen and it mirrors the user's last-used layout there. It
+(display/layouts and uinput keyboard/trackpad control; audio and accessible text
+mirroring are disabled), so you can control the login screen and mirror the
+user's last-used layout there. The dedicated `ottoman-input` group grants only
+`/dev/uinput` access to the user and `gdm`; reboot once after setup for GDM to
+acquire its group membership. Future `DeployAgent`/`DeployAll` runs verify the
+greeter binary copy, and its inode watcher re-execs updated copies without
+restarting GDM. GNOME's lock screen uses the normal session agent. It
 reads a gdm-readable copy of config + layouts under `/var/lib/ottoman/greeter`
 (owned `<user>:gdm`, setgid, group-readable) that the user's agent keeps in sync
 - `config.toml` included, on every layout change and at agent startup, so a
