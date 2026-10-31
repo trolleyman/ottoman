@@ -323,6 +323,7 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 	greeter := a.greeter
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
+		Os:        runtime.GOOS,
 		Version:   "dev",
 		Uptime:    uptime,
 		Hostname:  hostname,

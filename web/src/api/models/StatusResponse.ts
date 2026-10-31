@@ -3,6 +3,10 @@
 /* tslint:disable */
 /* eslint-disable */
 export type StatusResponse = {
+    /**
+     * Operating system of the responding computer (Go GOOS, e.g. windows, linux, darwin).
+     */
+    os: string;
     status: string;
     version: string;
     uptime: string;
