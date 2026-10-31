@@ -92,7 +92,8 @@ type fakeBus struct{ Address string }
 func (b fakeBus) GetAddress() (string, *dbus.Error) { return b.Address, nil }
 func (fakeBus) GetActive() (bool, *dbus.Error)      { return false, nil }
 
-func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
+func privateTextBus(t *testing.T) (*dbus.Conn, context.Context, string) {
+	t.Helper()
 	path, err := exec.LookPath("dbus-daemon")
 	if err != nil {
 		t.Skip("dbus-daemon is unavailable")
@@ -115,7 +116,7 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close()
+	t.Cleanup(func() { server.Close() })
 	for _, name := range []string{"org.a11y.Bus", "org.a11y.atspi.Registry", "org.ottoman.Test", "org.gnome.ScreenSaver"} {
 		if _, err = server.RequestName(name, dbus.NameFlagDoNotQueue); err != nil {
 			t.Fatal(err)
@@ -129,6 +130,21 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	}
 	export(fakeBus{address}, "/org/a11y/bus", "org.a11y.Bus")
 	export(fakeBus{}, "/org/gnome/ScreenSaver", "org.gnome.ScreenSaver")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return server, ctx, address
+}
+
+func exportTextObject(t *testing.T, server *dbus.Conn, v interface{}, path dbus.ObjectPath, iface string) {
+	t.Helper()
+	if err := server.Export(v, path, iface); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
+	server, ctx, _ := privateTextBus(t)
+	export := func(v interface{}, path dbus.ObjectPath, iface string) { exportTextObject(t, server, v, path, iface) }
 	root := &fakeAccessible{root: true}
 	field := &fakeAccessible{value: "ab😀cd", start: 3, end: 3}
 	export(root, "/org/a11y/atspi/accessible/root", accessible)
@@ -136,8 +152,6 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	for _, iface := range []string{accessible, textInterface, "org.a11y.atspi.EditableText", "org.freedesktop.DBus.Properties"} {
 		export(field, "/field", iface)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	backend, err := Native(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -184,5 +198,97 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	defer field.mu.Unlock()
 	if field.reads != reads {
 		t.Fatal("password field text was read")
+	}
+}
+
+type fakeRegistry struct {
+	fakeAccessible
+	children []reference
+}
+
+func (r *fakeRegistry) GetChildren() ([]reference, *dbus.Error) { return r.children, nil }
+
+type testRelation struct {
+	Kind    uint32
+	Targets []reference
+}
+type lazyChrome struct {
+	mu     sync.Mutex
+	active bool
+	bus    string
+}
+
+func (*lazyChrome) GetState() ([]uint32, *dbus.Error) { return []uint32{0, 0}, nil }
+func (c *lazyChrome) GetChildren() ([]reference, *dbus.Error) {
+	return []reference{{c.bus, "/frame"}}, nil
+}
+func (c *lazyChrome) GetRelationSet() ([]testRelation, *dbus.Error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.active = true
+	return nil, nil
+}
+
+type lazyChromeFrame struct{ app *lazyChrome }
+
+func (*lazyChromeFrame) GetState() ([]uint32, *dbus.Error) { return []uint32{1 << 12, 0}, nil }
+func (*lazyChromeFrame) GetRole() (uint32, *dbus.Error)    { return 23, nil }
+func (f *lazyChromeFrame) GetChildren() ([]reference, *dbus.Error) {
+	f.app.mu.Lock()
+	defer f.app.mu.Unlock()
+	if !f.app.active {
+		return nil, nil
+	}
+	return []reference{{f.app.bus, "/field"}}, nil
+}
+
+func TestChromeAccessibilityActivationAndFocusedWindowRecovery(t *testing.T) {
+	registry, ctx, address := privateTextBus(t)
+	chrome, err := dbus.Connect(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer chrome.Close()
+	bus := chrome.Names()[0]
+	app := &lazyChrome{bus: bus}
+	root := &fakeRegistry{fakeAccessible: fakeAccessible{root: true}, children: []reference{{bus, "/org/a11y/atspi/accessible/root"}}}
+	exportTextObject(t, registry, root, "/org/a11y/atspi/accessible/root", accessible)
+	exportTextObject(t, registry, root, "/org/a11y/atspi/registry", "org.a11y.atspi.Registry")
+	exportTextObject(t, chrome, app, "/org/a11y/atspi/accessible/root", accessible)
+	exportTextObject(t, chrome, &lazyChromeFrame{app: app}, "/frame", accessible)
+	field := &fakeAccessible{value: "Chrome field", start: 6, end: 6}
+	for _, iface := range []string{accessible, textInterface, "org.a11y.atspi.EditableText", "org.freedesktop.DBus.Properties"} {
+		exportTextObject(t, chrome, field, "/field", iface)
+	}
+	backend, err := Native(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	app.mu.Lock()
+	active := app.active
+	app.mu.Unlock()
+	if active {
+		t.Fatal("activated renderer before a text snapshot was requested")
+	}
+	snapshot, err := backend.Snapshot(ctx, 128)
+	if err != nil || !snapshot.Available || snapshot.Value != "Chrome field" {
+		t.Fatalf("did not activate the lazy Chrome tree and find its editable child: %v", err)
+	}
+	app.mu.Lock()
+	active = app.active
+	app.mu.Unlock()
+	if !active {
+		t.Fatal("no assistive-client activation request was made")
+	}
+	// A window focus signal must not pin the provider to a non-editable frame.
+	provider := backend.(*atspi)
+	provider.focused = reference{bus, "/frame"}
+	if _, err = backend.Snapshot(ctx, 128); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := backend.Snapshot(ctx, 128)
+	if err != nil || !recovered.Available || recovered.Value != "Chrome field" {
+		t.Fatal("window focus prevented later editable-field discovery")
 	}
 }

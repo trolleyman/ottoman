@@ -77,3 +77,13 @@ export function textPreview(context: TextContext | null, fallback: string): stri
   if (context?.protected) return "";
   return context?.available ? context.value : fallback;
 }
+
+// Explain connection state without exposing field contents, names or errors.
+export function textMirroringStatus(connected: boolean, context: TextContext | null): string {
+  if (!connected) return "Desktop text: disconnected";
+  if (!context) return "Desktop text: waiting for the agent";
+  if (context.password) return "Desktop text: password field (contents hidden)";
+  if (context.protected) return "Desktop text: access unavailable or screen locked";
+  if (context.available) return "Desktop text: connected";
+  return "Desktop text: no accessible text field detected";
+}

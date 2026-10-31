@@ -80,8 +80,20 @@ func (a *atspi) discover(ctx context.Context) reference {
 			continue
 		}
 		if state(states, 12) {
-			return r
-		} // ATSPI_STATE_FOCUSED
+			if state(states, 7) {
+				return r
+			} // Focus must be on an editable control, not its window.
+			var role uint32
+			if a.object(r).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role) == nil && role == 40 {
+				return r
+			}
+		}
+		if r.Bus != "org.a11y.atspi.Registry" && r.Path == "/org/a11y/atspi/accessible/root" {
+			// Chromium enables renderer accessibility when assistive clients query
+			// relations. State/child queries alone can leave only a window skeleton.
+			// Ask at the application root; do not read field names, values or attributes.
+			_ = a.object(r).CallWithContext(ctx, accessible+".GetRelationSet", 0).Err
+		}
 		var children []reference
 		if a.object(r).CallWithContext(ctx, accessible+".GetChildren", 0).Store(&children) == nil {
 			queue = append(queue, children...)
@@ -155,6 +167,10 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		return masked, nil
 	}
 	if !state(states, 7) || !state(states, 8) || !state(states, 24) {
+		// A focus event can identify a window before its renderer publishes the
+		// focused input. Do not pin discovery to that non-editable object forever.
+		a.focused = reference{}
+		a.searched = time.Time{}
 		return Snapshot{}, nil
 	} // ATSPI_STATE_EDITABLE
 	var interfaces []string

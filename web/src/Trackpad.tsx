@@ -8,7 +8,7 @@ import { ScrollRail } from "./ScrollRail";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
-import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview } from "./remoteText";
+import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
@@ -997,6 +997,11 @@ function TouchArea({
           onToggleModifier={toggleModifier}
         />
       </div>
+      {settings.mirrorFocusedText && (
+        <p role="status" data-native-text-status className="px-1 text-xs text-zinc-400">
+          {textMirroringStatus(connected, remote)}
+        </p>
+      )}
       {keyboardOpen && !docked && (
         <div className="h-[360px] md:hidden" aria-hidden="true" />
       )}

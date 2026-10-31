@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview } from "../src/remoteText";
+import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "../src/remoteText";
 import { diffText } from "../src/trackpadText";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "../src/api";
 const context: TrackpadMessageTextContext = {
@@ -70,4 +70,13 @@ describe("password preview masking", () => {
   expect(model.replace(0,1,"x")).toBe(false);
   expect(sent.length).toBe(0);
  });
+});
+
+test("native mirroring status distinguishes a real context from fallback typing", () => {
+ expect(textMirroringStatus(false, context)).toBe("Desktop text: disconnected");
+ expect(textMirroringStatus(true, null)).toBe("Desktop text: waiting for the agent");
+ expect(textMirroringStatus(true, context)).toBe("Desktop text: connected");
+ expect(textMirroringStatus(true, {...context, available:false})).toBe("Desktop text: no accessible text field detected");
+ expect(textMirroringStatus(true, {...context, protected:true, available:false, value:"sensitive"})).toBe("Desktop text: access unavailable or screen locked");
+ expect(textMirroringStatus(true, {...context, protected:true, password:true})).toBe("Desktop text: password field (contents hidden)");
 });
