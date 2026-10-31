@@ -60,19 +60,19 @@ var _ api.StrictServerInterface = (*Agent)(nil)
 
 // New creates a new agent instance.
 func New(cfg *config.AgentConfig) (*Agent, error) {
-	return newAgent(cfg, false)
+	return newAgent(cfg, false, nil)
 }
 
 // NewGreeter creates an agent for the GDM login screen: it runs as the gdm user
-// against the greeter's own Mutter, so it serves only display/layout control
-// (input and audio are skipped). Starting it never changes the display layout.
+// against the greeter's own Mutter, with uinput mouse/keyboard control. Audio
+// and accessible text mirroring stay disabled. Startup preserves the layout.
 func NewGreeter(cfg *config.AgentConfig) (*Agent, error) {
-	return newAgent(cfg, true)
+	return newAgent(cfg, true, input.NewGreeterControllers)
 }
 
-// newAgent builds an agent. In greeter mode it skips the input and audio
-// controllers, which need a real user session that the gdm greeter doesn't have.
-func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
+// newAgent builds an agent. The greeter factory is injectable so construction
+// tests never access host input devices.
+func newAgent(cfg *config.AgentConfig, greeter bool, greeterInput func() (input.MouseController, input.KeyboardController, error)) (*Agent, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid config")
 	}
@@ -93,16 +93,18 @@ func newAgent(cfg *config.AgentConfig, greeter bool) (*Agent, error) {
 		return nil, errors.Wrap(err, "failed to create display manager")
 	}
 
-	// Input and audio need an interactive user session (uinput permissions /
-	// PipeWire) that the greeter doesn't have, so greeter mode leaves them nil;
-	// the corresponding endpoints report the feature as unavailable.
+	// GDM can inject input through /dev/uinput once host setup grants access.
+	// PipeWire and accessibility APIs remain restricted to the user session.
 	var mouse input.MouseController
 	var keyboard input.KeyboardController
 	var audioCtl audio.Controller
 	if greeter {
-		// Input and audio need a real user session. Display and TV control remain
-		// available for explicit requests, without changing anything at startup.
-		log.Println("Greeter mode: input and audio are disabled")
+		mouse, keyboard, err = greeterInput()
+		if err != nil {
+			mouse, keyboard = nil, nil
+			log.Printf("Greeter input unavailable: %v; run ottoman agent host-setup --greeter and reboot once", err)
+		}
+		log.Println("Greeter mode: uinput control enabled when available; audio and text mirroring disabled")
 	} else {
 		mouse, err = input.NewMouseController()
 		if err != nil {
@@ -788,7 +790,7 @@ func (a *Agent) SimState(ctx context.Context, request api.SimStateRequestObject)
 // handleTrackpad handles WebSocket connections for trackpad input
 // This is called by the wrapper, bypassing the strict handler
 func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
-	// Input control is unavailable in greeter mode (no uinput as the gdm user).
+	// Greeter input remains optional when device permissions have not been set up.
 	if a.mouse == nil || a.keyboard == nil {
 		http.Error(w, "input control not available", http.StatusServiceUnavailable)
 		return
@@ -927,7 +929,7 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	conn.SetReadLimit(64 * 1024)
-	textSession := textcontext.New(ctx, textcontext.Native, func(v api.TrackpadMessageTextContext) error {
+	textSession := textcontext.New(ctx, a.textContextBackend, func(v api.TrackpadMessageTextContext) error {
 		data, err := json.Marshal(v)
 		if err != nil {
 			return err
@@ -996,6 +998,14 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// textContextBackend never starts accessibility observers on the login screen.
+func (a *Agent) textContextBackend(ctx context.Context) (textcontext.Backend, error) {
+	if a.greeter {
+		return nil, textcontext.ErrUnavailable
+	}
+	return textcontext.Native(ctx)
+}
+
 // typeText sends literal text through the backend's layout-aware text path.
 // Navigation and shortcut keys continue to use discrete key events.
 func (a *Agent) typeText(text string) {
@@ -1014,13 +1024,16 @@ func Run(config *config.AgentConfig) error {
 	return agent.Start()
 }
 
-// RunGreeter starts the agent in GDM greeter mode (display/layouts only).
+// RunGreeter starts GDM display/layout and uinput control without text mirroring.
 func RunGreeter(config *config.AgentConfig) error {
 	agent, err := NewGreeter(config)
 	if err != nil {
 		return err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startGreeterReload(ctx)
 	return agent.Start()
 }
 

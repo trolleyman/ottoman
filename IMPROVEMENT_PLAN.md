@@ -108,7 +108,8 @@ Replace xdotool with a virtual input device via `/dev/uinput` (e.g. `bendahl/uin
   path), and keyboard.
 - One-time host setup (needs sudo): load module + grant access, e.g.
   `/etc/udev/rules.d/99-ottoman-uinput.rules` with
-  `KERNEL=="uinput", GROUP="input", MODE="0660"`, add the user to the `input` group, and
+  `KERNEL=="uinput", GROUP="ottoman-input", MODE="0660"`, add the user (and
+  `gdm` for login-screen control) to that dedicated group, and
   `uinput` in `/etc/modules-load.d/`.
   **Host setup is unified across §2b/§3a/§7 and runs from `agent install`:** it detects what's
   already done (checks `input`/`i2c` group membership, the udev rule, the grub sudoers file), lists

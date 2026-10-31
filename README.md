@@ -119,6 +119,35 @@ Swipes leave no trailing space; the next word gets a leading separator. The smal
 erase icon above the preview clears its local display without deleting remote text.
 Print Screen and other extra keys are in the keyboard's **…** menu.
 
+## Linux login and lock screens
+
+GNOME's lock screen uses the normal session agent. Keyboard and trackpad input
+use `/dev/uinput`, so they can also operate the locked session; accessible text
+mirroring stays blank while locked. `mage deployAll` restarts that session agent
+through `DeployAgent` as part of the normal deployment.
+
+The GDM login screen uses a separate `gdm` agent. After deploying this version,
+run the one-time setup on the desktop:
+
+```bash
+ottoman agent host-setup --greeter
+```
+
+It requests sudo, installs the greeter copy, and grants your user and `gdm`
+membership in `ottoman-input`, a dedicated group for `/dev/uinput`. It does not
+grant GDM read access to physical keyboard event devices. Reboot once so GDM
+starts with its new group membership and the updated agent. The greeter supports
+authenticated keyboard/trackpad and layout control; audio and native text
+mirroring remain disabled before login. Without uinput permission, it continues
+serving display/layout control and reports input as unavailable.
+
+Future `deployAll`/`deployAgent` runs verify and atomically refresh the binary at
+`/var/lib/ottoman/greeter/bin/ottoman`. A running greeter agent notices replacement
+within two seconds and re-executes in the same GDM session; the phone reconnects.
+Deployment reports an error if an installed greeter cannot be refreshed. Agents
+from versions without this watcher need the initial reboot above. Deployment
+does not restart GDM or log out your desktop session.
+
 ## Focused text on the trackpad
 
 Open the trackpad keyboard settings and enable **Mirror focused text** to show

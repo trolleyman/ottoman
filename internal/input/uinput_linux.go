@@ -114,7 +114,7 @@ func ioctl(fd int, req uintptr, arg uintptr) error {
 func openUinput(name string, evBits []uintptr, keyCodes, relCodes []uintptr) (*uinputDevice, error) {
 	fd, err := unix.Open("/dev/uinput", unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, errors.Wrap(err, "open /dev/uinput (is the uinput module loaded and is the user in the input group?)")
+		return nil, errors.Wrap(err, "open /dev/uinput (is the uinput module loaded and is the user in the ottoman-input group?)")
 	}
 
 	d := &uinputDevice{fd: fd}

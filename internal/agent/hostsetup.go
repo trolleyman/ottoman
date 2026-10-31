@@ -20,13 +20,14 @@ import (
 // validated by visudo before it's installed.
 
 const (
+	uinputGroup      = "ottoman-input"
 	uinputModuleConf = "/etc/modules-load.d/ottoman-uinput.conf"
 	uinputUdevRule   = "/etc/udev/rules.d/99-ottoman-uinput.rules"
 	i2cModuleConf    = "/etc/modules-load.d/ottoman-i2c.conf"
 	grubSudoers      = "/etc/sudoers.d/ottoman-grub"
 	grubDefaults     = "/etc/default/grub"
 
-	uinputRuleContent = "KERNEL==\"uinput\", GROUP=\"input\", MODE=\"0660\", OPTIONS+=\"static_node=uinput\"\n"
+	uinputRuleContent = "KERNEL==\"uinput\", GROUP=\"ottoman-input\", MODE=\"0660\", OPTIONS+=\"static_node=uinput\"\n"
 )
 
 const (
@@ -58,7 +59,7 @@ NoDisplay=true
 `, greeterRoot, greeterBin)
 }
 
-// installGreeter deploys the login-screen layout agent: a system copy of the
+// installGreeter deploys the login-screen agent: a system copy of the
 // ottoman binary, a gdm-readable copy of the user's config + layouts under
 // greeterRoot, and the greeter autostart entry that launches it. Returns
 // whether it changed anything. Must run as root.
@@ -125,8 +126,15 @@ func installGreeter(username string) (bool, error) {
 	if err := run("install", "-d", "-m", "2750", "-o", username, "-g", "gdm", filepath.Dir(greeterBin)); err != nil {
 		return false, errors.Wrap(err, "failed to create greeter bin dir")
 	}
-	if err := run("install", "-m", "0750", "-o", username, "-g", "gdm", self, greeterBin); err != nil {
+	data, err := os.ReadFile(self)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to read greeter binary")
+	}
+	if err := atomicWrite(greeterBin, data, 0750); err != nil {
 		return false, errors.Wrap(err, "failed to install greeter binary")
+	}
+	if err := run("chown", username+":gdm", greeterBin); err != nil {
+		return false, errors.Wrap(err, "failed to set greeter binary ownership")
 	}
 	fmt.Printf("  installed %s\n", greeterBin)
 	if err := os.Remove(legacyGreeterBin); err == nil {
@@ -218,15 +226,31 @@ func applyHostSetup(username string, greeter bool) error {
 	} else if c {
 		changed = true
 	}
+	if err := ensureGroup(uinputGroup); err != nil {
+		return err
+	}
 	udevChanged, err := writeFileIfChanged(uinputUdevRule, []byte(uinputRuleContent), 0644)
 	if err != nil {
 		return err
 	}
 	changed = changed || udevChanged
-	if added, err := ensureUserInGroup(username, "input"); err != nil {
+	if added, err := ensureUserInGroup(username, uinputGroup); err != nil {
 		return err
 	} else if added {
 		changed, relogin = true, true
+	}
+
+	// A dedicated uinput-only group gives gdm virtual-device access without
+	// granting read access to the physical keyboards in /dev/input/event*.
+	if greeter || fileExists(greeterDesktop) {
+		if _, err := user.Lookup("gdm"); err != nil {
+			return errors.Wrap(err, "no gdm user found")
+		}
+		if added, err := ensureUserInGroup("gdm", uinputGroup); err != nil {
+			return err
+		} else if added {
+			changed, relogin = true, true
+		}
 	}
 
 	// --- i2c: DDC/CI monitor brightness & power ---
@@ -255,9 +279,9 @@ func applyHostSetup(username string, greeter bool) error {
 	}
 	warnIfGrubDefaultNotSaved()
 
-	// --- GDM login-screen layout agent (opt-in) ---
+	// --- GDM login-screen agent (opt-in) ---
 	if greeter {
-		fmt.Println("[greeter] GDM login-screen layout agent (ottoman agent run --greeter)")
+		fmt.Println("[greeter] GDM login-screen agent with uinput control (ottoman agent run --greeter)")
 		if c, err := installGreeter(username); err != nil {
 			return err
 		} else if c {
@@ -281,8 +305,8 @@ func applyHostSetup(username string, greeter bool) error {
 			fmt.Println("Log out and back in (or reboot) for new group memberships to take effect.")
 		}
 		if greeter {
-			fmt.Println("Login-screen layout agent installed. Log out to test it on the GDM")
-			fmt.Println("greeter. Future deploys refresh its binary copy automatically, no sudo.")
+			fmt.Println("Login-screen agent installed. Reboot once to activate GDM input permissions.")
+			fmt.Println("Future deploys refresh its binary and the running greeter reloads automatically.")
 		}
 	}
 	return nil
@@ -460,11 +484,19 @@ type hostCheck struct {
 // installer can tell the user what (if anything) still needs doing.
 func checkLinuxHostSetup(username string) []hostCheck {
 	groups := userGroups(username)
-	return []hostCheck{
-		{"input group + uinput udev rule", "mouse/keyboard control on Wayland", groups["input"] && fileExists(uinputUdevRule)},
+	checks := []hostCheck{
+		{"uinput group + udev rule", "mouse/keyboard control on Wayland and lock screens", groups[uinputGroup] && uinputRuleCurrent()},
 		{"i2c group + i2c-dev module", "monitor brightness/power over DDC/CI", groups["i2c"] && fileExists(i2cModuleConf)},
 		{"grub-reboot sudoers rule", "remote 'boot into Windows'", fileExists(grubSudoers)},
 	}
+	if fileExists(greeterDesktop) {
+		checks = append(checks, hostCheck{"GDM uinput group", "login-screen keyboard/trackpad (reboot after setup)", userGroups("gdm")[uinputGroup]})
+	}
+	return checks
+}
+func uinputRuleCurrent() bool {
+	data, err := os.ReadFile(uinputUdevRule)
+	return err == nil && string(data) == uinputRuleContent
 }
 
 // setUpLinuxHost is called at the end of `agent install`. It reports what host
@@ -522,7 +554,7 @@ func setUpLinuxHost() {
 	case greeterInstalled:
 		greeterMark = "ok"
 	}
-	fmt.Printf("  [%-11s] %s  (%s)\n", greeterMark, "GDM login-screen layout agent", "switch layouts on the login screen (opt-in)")
+	fmt.Printf("  [%-11s] %s  (%s)\n", greeterMark, "GDM login-screen agent", "layouts and keyboard/trackpad (opt-in)")
 
 	if pending == 0 && greeterInstalled && !greeterStale && !greeterNeedsMigration {
 		fmt.Println("\nEverything is already configured. Nothing to do.")
@@ -532,10 +564,10 @@ func setUpLinuxHost() {
 	if !stdinIsTerminal() {
 		if pending > 0 {
 			fmt.Println("\n  Run:  sudo ottoman agent host-setup")
-			fmt.Println("Then log out and back in (group changes) and restart the agent.")
+			fmt.Println("Then reboot once if GDM input was configured; otherwise log out and back in, and restart the agent.")
 		}
 		if !greeterInstalled {
-			fmt.Println("  Login-screen layouts:  sudo ottoman agent host-setup --greeter")
+			fmt.Println("  Login-screen control:  sudo ottoman agent host-setup --greeter")
 		}
 		if greeterNeedsMigration {
 			fmt.Println("  Migrate the login-screen agent (one-time):  sudo ottoman agent host-setup --greeter")
@@ -554,9 +586,9 @@ func setUpLinuxHost() {
 	// for a fresh install, the one-time migration, or a failed refresh.
 	greeterWanted := false
 	if !greeterInstalled {
-		fmt.Println("\nOptional: a GDM login-screen agent lets you switch display layouts on")
-		fmt.Println("the login screen and mirrors your session's layout there (runs as gdm).")
-		greeterWanted = promptYesNo("Install the login-screen layout agent? [y/N] ")
+		fmt.Println("\nOptional: a GDM login-screen agent provides layouts and keyboard/trackpad")
+		fmt.Println("control before login (runs as gdm, without audio or text mirroring).")
+		greeterWanted = promptYesNo("Install the login-screen agent with keyboard/trackpad control? [y/N] ")
 	} else if greeterNeedsMigration {
 		fmt.Println("\nThe login-screen layout agent needs a one-time migration: its binary")
 		fmt.Println("moves into " + greeterRoot + " so future deploys can refresh")
@@ -671,4 +703,45 @@ func promptYesNo(question string) bool {
 	default:
 		return false
 	}
+}
+
+// refreshInstalledGreeter verifies deployment of an existing greeter rather
+// than reporting success after a best-effort refresh failure.
+func refreshInstalledGreeter() error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	installed, err := refreshGreeterInstallation(greeterDesktop, greeterBin, self)
+	if err != nil {
+		return err
+	}
+	if installed {
+		fmt.Println("Greeter binary is current; running greeters reload updates automatically (older versions need one reboot).")
+	}
+	return nil
+}
+
+func refreshGreeterInstallation(entryPath, binaryPath, source string) (bool, error) {
+	entry, err := os.ReadFile(entryPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, errors.Wrap(err, "cannot inspect greeter installation")
+	}
+	if string(entry) != greeterDesktopContent() {
+		return false, errors.New("greeter installation needs setup: run ottoman agent host-setup --greeter and reboot once")
+	}
+	if filesEqual(source, binaryPath) {
+		return true, nil
+	}
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return false, errors.Wrap(err, "cannot read deployed agent binary")
+	}
+	if err := atomicWrite(binaryPath, data, 0750); err != nil {
+		return false, errors.Wrap(err, "failed to deploy greeter binary; run ottoman agent host-setup --greeter")
+	}
+	return true, nil
 }
