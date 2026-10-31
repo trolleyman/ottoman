@@ -28,5 +28,8 @@ scripts/screenshots/out
 *.sln
 *.sw?
 
+# Project-local Playwright browser binaries
+.playwright
+
 # Worktree-local dependency metadata cache
 .npm-cache

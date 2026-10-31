@@ -30,6 +30,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
 	"github.com/trolleyman/ottoman/internal/store"
+	"github.com/trolleyman/ottoman/internal/textcontext"
 	"github.com/trolleyman/ottoman/internal/tv"
 )
 
@@ -925,6 +926,15 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		updateModifiers(nil) // release any held modifier keys
 	}()
 
+	conn.SetReadLimit(64 * 1024)
+	textSession := textcontext.New(ctx, textcontext.Native, func(v api.TrackpadMessageTextContext) error {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		return conn.Write(ctx, websocket.MessageText, data)
+	})
+
 	// Read loop
 	for {
 		_, data, err := conn.Read(ctx)
@@ -943,6 +953,11 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch v := castMsg.(type) {
+		case api.TrackpadMessageTextWatch:
+			textSession.Watch(ctx, v)
+		case api.TrackpadMessageTextEdit:
+			textSession.Edit(ctx, v)
+
 		case api.TrackpadMessageMouseMoveRelative:
 			a.mouse.MoveRelative(v.Dx, v.Dy)
 		case api.TrackpadMessageMouseClick:

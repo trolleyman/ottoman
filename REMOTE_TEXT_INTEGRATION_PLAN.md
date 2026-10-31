@@ -10,7 +10,7 @@ This needs native accessibility APIs. Reconstructing the field from injected key
 
 - Keep the preview passive: it is not selectable and does not become a second editor.
 - Show only the focused editable field, with its actual caret or selection.
-- Clear the preview immediately when focus leaves an editable field, the connection closes, or the field is protected.
+- Clear the preview immediately when focus leaves an editable field or the connection closes. Show password fields only as dots; locked or inaccessible sessions remain blank.
 - Fade the preview after inactivity, then reveal it again on a text, caret, or selection change.
 - Add a `Mirror focused text` keyboard setting. Explain and request the operating-system accessibility permission only when it is enabled.
 - Fall back to the current keystroke-based indicator when an application does not expose an accessible text model.
@@ -105,7 +105,7 @@ References: [Apple accessibility trust API](https://developer.apple.com/document
 
 ## Safety and privacy
 
-- Treat password/protected fields as `focused but unavailable`; send no value, selection, placeholder, app title, or field name.
+- Treat password/protected fields as `focused but unavailable`; send no value, selection, placeholder, app title, or field name. Explicit password fields may send an opaque focus token and optional bounded character-count metadata, obtained without reading protected text. The browser generates dots; an unknown count uses a fixed eight-dot mask. Lock/permission failures carry no password metadata.
 - Keep mirrored values in memory only. Do not log messages or include text context in diagnostics, analytics, screenshots, or persisted settings.
 - Disable mirroring on the lock screen, greeter, and before authentication.
 - Stop every native observer and zero the last context on disconnect.
@@ -125,6 +125,38 @@ References: [Apple accessibility trust API](https://developer.apple.com/document
 - Focusing a normal text field shows its text and caret on the phone within 100 ms on a local network.
 - Mouse/keyboard caret moves and selections on the controlled computer appear without typing from the phone.
 - Phone edits replace the current native selection and converge after concurrent local edits without affecting a newly focused field.
-- Password content is never transmitted or logged.
+- Password content is never mirrored back from the desktop or logged. Ordinary keyboard input still sends typed characters to the controlled computer.
 - Unsupported controls retain today's keyboard behavior and do not leave a stale preview behind.
 - Disconnect, focus loss, permission revocation, and agent shutdown all clear the mirrored value immediately.
+
+## Implementation status
+
+The protocol, simulator, browser synchronization, Linux AT-SPI adapter, and
+Windows UI Automation helper are implemented. `textwatch` opts each authenticated
+socket into mirroring; `textcontext` also carries `available`, `protected`,
+`windowStart`, and edit acknowledgement fields. `textedit` supports selection-only
+updates. One browser edit is sent at a time; a rejection or external revision
+resets pending edits to the authoritative snapshot.
+
+Native calls run on one worker per socket. Focus notifications invalidate focus
+tokens; snapshots are sampled every 40 ms to include text/caret changes even in
+applications with incomplete event notifications. Linux uses EditableText range
+operations. Windows uses ValuePattern only when its text matches TextPattern,
+then restores the caret through TextPattern. Other rich editors retain injected
+input and read-only mirroring. Unobservable lock state fails closed on Linux.
+The Windows helper uses only system assemblies and exchanges text over private
+stdio, with no temporary scripts, clipboard writes, or text in command arguments.
+
+Automated coverage includes private-bus AT-SPI reads/writes and password read
+suppression, session focus/revision guards, opt-in and disable behavior, browser
+edit queuing, Unicode range conversion, and selection replacement. Live Windows
+and Linux application/permission testing is still required to validate the
+100 ms target across toolkits. macOS and broader application/RTL/grapheme testing
+remain deferred as described above.
+
+Password previews now distinguish an actual password field (`password: true`)
+from other protected states. Linux reads only `Text.CharacterCount` for that
+field; Windows returns before attempting any text/value/selection pattern and
+uses the unknown-length mask. The optional `maskedLength` is capped at 4,096.
+Raw values and caret/selection metadata remain redacted, native range writes
+remain disabled for passwords, and lock/disconnect/disable clears mask metadata.

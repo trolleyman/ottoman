@@ -7,7 +7,8 @@ import {
 import { ScrollRail } from "./ScrollRail";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
-import { Modifier, MouseButton, type TrackpadMessage } from "./api";
+import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
+import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
@@ -33,12 +34,14 @@ function combineModifiers(...groups: Modifier[][]): Modifier[] {
 
 function TouchArea({
   docked = false,
+  textContext,
   connected,
   connecting,
   send,
   settings,
   onSettingsChange,
 }: {
+  textContext: TrackpadMessageTextContext | null;
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
@@ -46,6 +49,44 @@ function TouchArea({
   settings: TrackpadSettings;
   onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
+  const [typingContext, setTypingContext] = useState(0);
+  const [remote, setRemote] = useState<TrackpadMessageTextContext | null>(null);
+  const remoteModel = useRef<RemoteText | null>(null);
+  if (remoteModel.current == null) { remoteModel.current = new RemoteText(send); }
+  const composing = useRef(false);
+  const compositionContext = useRef<{fieldId: string; revision: number} | null>(null);
+  const [compositionValue, setCompositionValue] = useState<string | null>(null);
+  useEffect(() => {
+    remoteModel.current!.clear();
+    // Reset the preview when the external WebSocket subscription changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRemote(null);
+    if (connected) send({ type: "textwatch", enabled: settings.mirrorFocusedText });
+    return () => { remoteModel.current!.clear(); };
+  }, [connected, settings.mirrorFocusedText, send]);
+  useEffect(() => {
+    if (!settings.mirrorFocusedText || !connected || !textContext) return;
+    const previous = remoteModel.current!.view;
+    remoteModel.current!.receive(textContext);
+    const next = remoteModel.current!.view;
+    // Own acknowledged edits preserve the optimistic value/caret. External
+    // changes invalidate swipe alternatives and deferred word separators.
+    if (previous && next && (previous.fieldId !== next.fieldId || previous.value !== next.value ||
+      previous.selectionStart !== next.selectionStart || previous.selectionEnd !== next.selectionEnd ||
+      previous.windowStart !== next.windowStart || previous.password !== next.password || previous.protected !== next.protected)) {
+      setTypingContext((value) => value + 1);
+    }
+    setRemote(next);
+  }, [textContext, settings.mirrorFocusedText, connected]);
+  const replaceRemote = useCallback((start: number, end: number, text: string, selectionOnly = false) => {
+    const applied = remoteModel.current!.replace(start, end, text, selectionOnly);
+    if (applied) setRemote(remoteModel.current!.view);
+    return applied;
+  }, []);
+  const insertRemote = useCallback((text: string) => {
+    const view = remoteModel.current!.view;
+    return !!view && replaceRemote(view.selectionStart, view.selectionEnd, text);
+  }, [replaceRemote]);
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
   const lastMoveTime = useRef(0);
@@ -63,7 +104,6 @@ function TouchArea({
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftVisible, setDraftVisible] = useState(false);
-  const [textContext, setTextContext] = useState(0);
   const draftRef = useRef("");
   const remoteCursor = useRef(0);
   // Fallback mouse position tracking when pointer lock is unavailable (e.g. after Escape cooldown)
@@ -136,7 +176,7 @@ function TouchArea({
 
   const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
   const dismissDraft = useCallback(() => {
-    setTextContext((value) => value + 1);
+    setTypingContext((value) => value + 1);
     setDraftVisible(false);
     draftRef.current = "";
     remoteCursor.current = 0;
@@ -173,8 +213,37 @@ function TouchArea({
     [sendKeyPress],
   );
 
+  useEffect(() => {
+    draftRef.current = "";
+    remoteCursor.current = 0;
+    // Native focus changes invalidate the fallback input history.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft("");
+    setDraftCursor(0);
+    setCompositionValue(null);
+    setTypingContext((value) => value + 1);
+  }, [connected, settings.mirrorFocusedText, textContext?.fieldId, textContext?.protected, textContext?.password]);
+  useEffect(() => {
+    // A native text/caret notification is activity even without phone input.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (remote?.available || remote?.password) showDraftIndicator();
+  }, [remote, showDraftIndicator]);
+  useEffect(() => {
+    if (!remote?.available || composing.current || !inputRef.current) return;
+    const input = inputRef.current;
+    const start = utf16Offset(remote.value, remote.selectionStart - remote.windowStart);
+    const end = utf16Offset(remote.value, remote.selectionEnd - remote.windowStart);
+    // Reapplying an unchanged range resets the browser's selection anchor;
+    // repeated Shift+Left would alternate between extending and collapsing it.
+    if (input.selectionStart !== start || input.selectionEnd !== end) {
+      input.setSelectionRange(start, end, input.selectionDirection);
+    }
+  }, [remote]);
+
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing || composing.current) return;
+      if (remoteModel.current!.view?.editable && ((e.key === "Enter" && remoteModel.current!.view?.multiline) || e.key.startsWith("Arrow"))) return;
       if (
         e.key === "Unidentified" ||
         e.key === "Process" ||
@@ -192,6 +261,16 @@ function TouchArea({
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const next = e.currentTarget.value;
+      if (composing.current) { setCompositionValue(next); return; }
+      const view = remoteModel.current!.view;
+      if (view?.available && view.editable) {
+        const edit = diffText(view.value, next);
+        if (edit) replaceRemote(
+          view.windowStart + codePointOffset(view.value, edit.start),
+          view.windowStart + codePointOffset(view.value, edit.start + edit.removed.length), edit.inserted,
+        );
+        return;
+      }
       const edit = diffText(draftRef.current, next);
       if (edit) {
         const editStart = characterCount(draftRef.current.slice(0, edit.start));
@@ -211,19 +290,27 @@ function TouchArea({
       showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, send, sendKeyPress, showDraftIndicator],
+    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator],
   );
 
   const handleSelection = useCallback(
     (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
       const input = e.currentTarget;
+      if (composing.current) return;
+      const view = remoteModel.current!.view;
+      if (view?.available && view.editable) {
+        const start = view.windowStart + codePointOffset(input.value, input.selectionStart);
+        const end = view.windowStart + codePointOffset(input.value, input.selectionEnd);
+        if (start !== view.selectionStart || end !== view.selectionEnd) replaceRemote(start, end, "", true);
+        return;
+      }
       if (input.selectionStart === input.selectionEnd) {
         setDraftCursor(input.selectionEnd);
         showDraftIndicator();
         moveRemoteCursor(characterCount(input.value.slice(0, input.selectionEnd)));
       }
     },
-    [moveRemoteCursor, showDraftIndicator],
+    [moveRemoteCursor, replaceRemote, showDraftIndicator],
   );
 
   const appendText = useCallback(
@@ -240,6 +327,12 @@ function TouchArea({
         sendKeyPress(value.toLocaleLowerCase(), shortcutModifiers);
         return;
       }
+      const view = remoteModel.current!.view;
+      if (view?.editable && settings.doubleSpacePeriod && value === " " && view.selectionStart === view.selectionEnd) {
+        const beforeCaret = Array.from(view.value).slice(0, view.selectionStart - view.windowStart).join("");
+        if (/\S $/.test(beforeCaret) && replaceRemote(view.selectionStart - 1, view.selectionEnd, ". ")) return;
+      }
+      if (insertRemote(value)) return;
       if (
         settings.doubleSpacePeriod &&
         value === " " &&
@@ -264,10 +357,15 @@ function TouchArea({
       setDraftCursor(next.length);
       showDraftIndicator();
     },
-    [activeModifiers, send, sendKeyPress, settings.doubleSpacePeriod, showDraftIndicator],
+    [activeModifiers, insertRemote, replaceRemote, send, sendKeyPress, settings.doubleSpacePeriod, showDraftIndicator],
   );
 
   const backspace = useCallback(() => {
+    const view = remoteModel.current!.view;
+    if (view?.available && view.editable && activeModifiers.length === 0) {
+      replaceRemote(view.selectionStart === view.selectionEnd ? view.windowStart + previousCharacterOffset(view.value, view.selectionStart - view.windowStart) : view.selectionStart, view.selectionEnd, "");
+      return;
+    }
     sendKeyPress("Backspace", activeModifiers);
     if (activeModifiers.some((modifier) => modifier !== Modifier.SHIFT)) return;
     const characters = Array.from(draftRef.current);
@@ -278,7 +376,7 @@ function TouchArea({
     setDraft(next);
     setDraftCursor(next.length);
     showDraftIndicator();
-  }, [activeModifiers, sendKeyPress, showDraftIndicator]);
+  }, [activeModifiers, replaceRemote, sendKeyPress, showDraftIndicator]);
 
   const activateKeyboard = () => {
     if (settings.customKeyboard) setKeyboardOpen(true);
@@ -710,6 +808,10 @@ function TouchArea({
   }, [connected, dismissDraft, send, settings.scrollSensitivity]);
 
 
+  const preview = textPreview(remote, draft);
+  const previewCursor = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftCursor;
+  const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftCursor;
+
   return (
     <div className={docked ? "remote-input flex min-h-0 flex-1 flex-col gap-2" : "w-full md:max-w-sm md:shrink-0 flex flex-col gap-2"}>
       <div className={docked ? "relative min-h-28 flex-1" : "relative"}>
@@ -761,15 +863,19 @@ function TouchArea({
             </div>
           )}
         </div>
-        {connected && draft && draftVisible && (
+        {connected && (preview || remote?.available || remote?.password) && draftVisible && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
             <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
               className="pointer-events-auto flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             <div className="flex min-h-0 flex-col justify-end overflow-hidden rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
-              <div aria-live="polite" aria-atomic="true" className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]">
-                {draft.slice(0, draftCursor)}
-                <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
-                {draft.slice(draftCursor)}
+              <div aria-live="polite" aria-atomic="true"
+                aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
+                data-password-preview={remote?.password || undefined}
+                className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]">
+                {preview.slice(0, previewCursor)}
+                <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
+                {!remote?.password && <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />}
+                {preview.slice(previewSelectionEnd)}
               </div>
             </div>
           </div>
@@ -796,19 +902,33 @@ function TouchArea({
           <textarea
             ref={inputRef}
             rows={1}
-            value={draft}
+            value={compositionValue ?? (remote?.available && remote.editable ? remote.value : draft)}
             disabled={!connected}
             aria-label="Type on the remote computer with the device keyboard"
             className="pointer-events-none absolute bottom-2 left-2 h-px w-px resize-none opacity-0"
-            autoComplete="on"
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            spellCheck={true}
+            autoComplete={remote?.password ? "off" : "on"}
+            autoCapitalize={remote?.password ? "none" : "sentences"}
+            autoCorrect={remote?.password ? "off" : "on"}
+            spellCheck={!remote?.password}
             enterKeyHint="enter"
             inputMode="text"
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={handleInputKeyDown}
+            onCompositionStart={(e) => {
+              composing.current = true;
+              const current = remoteModel.current!.context;
+              compositionContext.current = current ? {fieldId: current.fieldId, revision: current.revision} : null;
+              setCompositionValue(e.currentTarget.value);
+            }}
+            onCompositionEnd={(e) => {
+              composing.current = false;
+              setCompositionValue(null);
+              const initial = compositionContext.current;
+              const current = remoteModel.current!.context;
+              if (initial?.fieldId !== current?.fieldId || initial?.revision !== current?.revision) return;
+              handleTextChange(e as unknown as React.ChangeEvent<HTMLTextAreaElement>);
+            }}
             onChange={handleTextChange}
             onSelect={handleSelection}
           />
@@ -821,11 +941,21 @@ function TouchArea({
           open={keyboardOpen}
           connected={connected}
           remoteOS={remoteOS}
-          textContext={textContext}
-          textBeforeCursor={draft.slice(0, draftCursor)}
+          textContext={typingContext}
+          textBeforeCursor={draftVisible && !remote?.protected && !remote?.password && previewCursor === previewSelectionEnd ? preview.slice(0, previewCursor) : ""}
+          sensitiveInput={!!(remote?.protected || remote?.password)}
           settings={settings}
           onText={appendText}
           onReplaceText={(previous, next) => {
+            const view = remoteModel.current!.view;
+            if (view?.available) {
+              const beforeCaret = Array.from(view.value).slice(0, view.selectionStart - view.windowStart).join("");
+              if (view.selectionStart !== view.selectionEnd || !beforeCaret.endsWith(previous)) return;
+              if (view.editable) {
+                replaceRemote(view.selectionStart - characterCount(previous), view.selectionEnd, next);
+                return;
+              }
+            }
             for (let index = 0; index < characterCount(previous); index++) sendKeyPress("Backspace");
             draftRef.current = draftRef.current.slice(0, -previous.length);
             remoteCursor.current = Math.max(0, remoteCursor.current - characterCount(previous));
@@ -833,6 +963,7 @@ function TouchArea({
           }}
           onBackspace={backspace}
           onEnter={(shifted) => {
+            if (activeModifiers.length === 0 && remoteModel.current!.view?.multiline && insertRemote("\n")) return;
             const modifiers = combineModifiers(
               activeModifiers,
               shifted ? [Modifier.SHIFT] : [],
@@ -875,12 +1006,14 @@ function TouchArea({
 
 export function Trackpad({
   mode = "dashboard",
+  textContext,
   connected,
   connecting,
   cursorPos,
   cursorSupported,
   send,
 }: {
+  textContext: TrackpadMessageTextContext | null;
   connected: boolean;
   connecting: boolean;
   cursorPos: { x: number; y: number } | null;
@@ -986,6 +1119,7 @@ export function Trackpad({
         <TouchArea
           key={connected ? "connected" : "disconnected"}
           docked={mode === "remote"}
+          textContext={textContext}
           connected={connected}
           connecting={connecting}
           send={send}

@@ -1,8 +1,8 @@
 # Remaining remote-control work
 
 The implemented keyboard and `/remote` page are no longer listed here. This plan
-contains only unfinished work. Native focused-field synchronization remains in
-`REMOTE_TEXT_INTEGRATION_PLAN.md`.
+contains only unfinished work. Native focused-field synchronization has been merged from `main`; its remaining
+platform validation is tracked in `REMOTE_TEXT_INTEGRATION_PLAN.md`.
 
 ## 1. Prediction and input follow-ups
 

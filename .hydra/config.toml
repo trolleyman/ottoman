@@ -406,8 +406,8 @@ type = "stdout"
 #   scripts/hydra/eslint-markers.ts runs `eslint .` and turns every finding into
 #     a ::warn:: marker (amber ⚠, non-gating) so lint problems stay visible
 #     without turning merges red. It runs first and always exits 0, so lint shows
-#     even when the typecheck fails; tsc-markers runs last so its exit code (and
-#     fail markers) drive the verdict. eslint.config.js ignores dist / the
+#     even when the typecheck fails; tsc-markers and the frontend regression
+#     tests gate the verdict. eslint.config.js ignores dist / the
 #     worktree-local bun cache / node_modules / the generated src/api client.
 # Same read-only-~/.bun workaround as the screenshots artifact.
 [tests.web]
@@ -418,6 +418,12 @@ mkdir -p "$BUN_TMPDIR"
 bun install
 bun scripts/hydra/eslint-markers.ts
 bun scripts/hydra/tsc-markers.ts
+if bun test; then
+  echo '::hydra:test:pass:: web › frontend regression tests'
+else
+  echo '::hydra:test:fail:: web › frontend regression tests'
+  exit 1
+fi
 '''
 timeout_sec = 300
 type = "stdout"

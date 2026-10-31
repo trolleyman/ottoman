@@ -30,6 +30,13 @@ describe("trackpad preferences", () => {
     });
   });
 
+  test("keeps native mirroring opt-in and restores only a boolean preference", () => {
+    expect(loadSettings().mirrorFocusedText).toBe(false);
+    savePreference("ottoman-trackpad-settings", { mirrorFocusedText: true });
+    expect(loadSettings().mirrorFocusedText).toBe(true);
+    expect(parseSettings({ mirrorFocusedText: "true" }).mirrorFocusedText).toBe(false);
+  });
+
   test("rejects invalid types and non-finite values", () => {
     for (const value of [null, [], "settings", 5]) expect(parseSettings(value)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings({ cursorSensitivity: "fast", cursorFriction: Infinity, longPressDelayMs: NaN, haptics: "false" })).toEqual(DEFAULT_SETTINGS);

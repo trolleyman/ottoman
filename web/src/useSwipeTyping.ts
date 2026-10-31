@@ -3,7 +3,7 @@ import type { KeyPositions, Point } from "./swipeTyping";
 
 export function useSwipeTyping(enabled: boolean, holdDelay: number, context: number, onWord: (word: string, previous?: string) => void) {
   const decoder = useRef<typeof import("./swipeDictionary").decodeSwipe | null>(null);
-  const gesture = useRef<{ pointer: number; start: number; points: Point[]; keys: KeyPositions; active: boolean } | null>(null);
+  const gesture = useRef<{ pointer: number; context: number; start: number; points: Point[]; keys: KeyPositions; active: boolean } | null>(null);
   const previousWord = useRef({ word: "", context });
   const consumed = useRef(new Set<number>());
   const displayTrail = useRef<(Point & { time: number })[]>([]);
@@ -66,12 +66,17 @@ export function useSwipeTyping(enabled: boolean, holdDelay: number, context: num
           const rect = key.getBoundingClientRect();
           keys[key.dataset.letter!] = { x: rect.x + rect.width / 2 - box.x, y: rect.y + rect.height / 2 - box.y };
         });
-        gesture.current = { pointer: event.pointerId, start: performance.now(), points: [point(event)], keys, active: false };
+        gesture.current = { pointer: event.pointerId, context, start: performance.now(), points: [point(event)], keys, active: false };
         event.preventDefault();
       },
       onPointerMoveCapture(event: React.PointerEvent<HTMLDivElement>) {
         const current = gesture.current;
         if (!current || current.pointer !== event.pointerId) return;
+        if (!enabled || current.context !== context) {
+          consumed.current.add(event.pointerId);
+          stop();
+          return;
+        }
         const next = point(event);
         const first = current.points[0];
         const width = Math.abs(current.keys.q.x - current.keys.w.x);
@@ -96,6 +101,11 @@ export function useSwipeTyping(enabled: boolean, holdDelay: number, context: num
       onPointerUpCapture(event: React.PointerEvent<HTMLDivElement>) {
         const current = gesture.current;
         if (!current || current.pointer !== event.pointerId) return;
+        if (!enabled || current.context !== context) {
+          consumed.current.add(event.pointerId);
+          stop();
+          return;
+        }
         if (current.active) {
           current.points.push(point(event));
           const words = decoder.current?.(current.points, current.keys) ?? [];

@@ -106,6 +106,48 @@ This will:
 
 Settings are saved to `magefiles/deploy.toml` for future deployments.
 
+## PC remote
+
+Open **PC remote** from the dashboard, or bookmark `/remote`. It keeps the trackpad,
+scroll control and docked keyboard together with separate PC/TV volume controls,
+audio-output selection and display layouts. Use the fullscreen icon where your
+browser supports it. This page controls the computer; it does not stream its screen.
+
+Focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
+shows local word completions and swipe alternatives, or searches emoji and symbols.
+Swipes leave no trailing space; the next word gets a leading separator. The small
+erase icon above the preview clears its local display without deleting remote text.
+Print Screen and other extra keys are in the keyboard's **…** menu.
+
+## Focused text on the trackpad
+
+Open the trackpad keyboard settings and enable **Mirror focused text** to show
+an accessible desktop field's text, caret, and selection on the phone. The
+preview stays passive. Both Ottoman and Device keyboards can replace the
+native selection; local desktop edits and caret moves update the preview.
+Mirroring is off by default and uses the existing authenticated WebSocket.
+
+Linux uses AT-SPI2 on the graphical user's accessibility bus. The current lock
+screen check supports GNOME; sessions without a readable lock state fall back
+to ordinary keyboard input. EditableText controls support native range edits.
+Windows uses UI Automation through a helper running under the agent's user
+account (Windows PowerShell and the system UI Automation assemblies). Writable
+ValuePattern controls with a matching TextPattern support native edits; rich
+editors without that model retain keystroke input and a read-only native preview.
+If the OS requests accessibility access, grant it to the desktop agent. Elevated
+or inaccessible applications may not expose a usable text model.
+
+With **Mirror focused text** enabled, password fields show dots without reading
+or mirroring their text or selection. Linux uses a character-count property when
+available (capped at 4,096); when the count is unavailable, including on Windows,
+the preview shows a fixed eight-dot mask that does not indicate actual length.
+Password fields use opaque focus tokens so typing history clears between fields.
+Locked or inaccessible sessions remain blank. Context stays in memory, is limited to 4,096 Unicode code points around the caret, and clears on
+focus loss, disabling mirroring, or disconnection. Unsupported applications use
+the existing typing indicator. Focus tokens and revisions reject stale edits
+and replace the phone's pending state with the latest desktop context. macOS
+is deferred until Ottoman has a supported macOS agent/input backend.
+
 ## Configuration
 
 Configuration is stored in `config.toml`:

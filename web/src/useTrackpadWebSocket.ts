@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { TrackpadMessage } from "./api";
+import type { TrackpadMessage, TrackpadMessageTextContext } from "./api";
 import { createTrackpadConnection, type ConnectionState } from "./trackpadConnection";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
+  const [textContext, setTextContext] = useState<TrackpadMessageTextContext | null>(null);
   const [state, setState] = useState<ConnectionState>({ connected: false, connecting: false });
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   // Wayland's uinput backend injects input but cannot query cursor position.
@@ -16,10 +17,12 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       `${protocol}//${window.location.host}/api/trackpad`,
       (next) => {
         setState(next);
-        if (!next.connected) setCursorPos(null);
+        if (!next.connected) { setCursorPos(null); setTextContext(null); }
       },
       (message) => {
-        if (message.type === "mousepositionupdate") {
+        if (message.type === "textcontext") {
+          setTextContext(message);
+        } else if (message.type === "mousepositionupdate") {
           setCursorSupported(true);
           setCursorPos({ x: message.x ?? 0, y: message.y ?? 0 });
         } else if (message.type === "connected") {
@@ -31,6 +34,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     connectionRef.current = connection;
     return () => {
       connection.dispose();
+      setTextContext(null);
       connectionRef.current = null;
     };
   }, [authed]);
@@ -40,10 +44,12 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   }, [refreshKey]);
 
   const send = useCallback((message: TrackpadMessage) => {
+    if (message.type === "textwatch") setTextContext(null);
     connectionRef.current?.send(message);
   }, []);
 
   return {
+    textContext: authed ? textContext : null,
     connected: authed && state.connected,
     connecting: authed && state.connecting,
     cursorPos: authed ? cursorPos : null,

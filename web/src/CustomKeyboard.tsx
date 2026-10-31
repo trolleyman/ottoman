@@ -37,6 +37,7 @@ function KeyboardSession({
   connected,
   docked = false,
   textBeforeCursor = "",
+  sensitiveInput = false,
   remoteOS,
   textContext,
   settings,
@@ -58,6 +59,7 @@ function KeyboardSession({
   connected: boolean;
   docked?: boolean;
   textBeforeCursor?: string;
+  sensitiveInput?: boolean;
   remoteOS: string;
   textContext: number;
   settings: KeyboardSettings;
@@ -126,7 +128,7 @@ function KeyboardSession({
   };
   const swipeShift = useRef<ShiftState>("off");
   const swipe = useSwipeTyping(
-    settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
+    !sensitiveInput && settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
     settings.longPressDelayMs,
     textContext,
     (word, previous) => {
@@ -305,6 +307,9 @@ function KeyboardSession({
     savePreference("ottoman-recent-emoji", next);
   };
 
+  const wordChoices = sensitiveInput || modifiers.some((modifier) => modifier !== Modifier.SHIFT) ? []
+    : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : [];
+
   return (
     <div data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
       <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
@@ -409,7 +414,7 @@ function KeyboardSession({
           <>
         <div className="flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
           {mode === "letters" ? (
-            (swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : []).map((word) => (
+            wordChoices.map((word) => (
               <ActionKey type="button" key={word} onPress={() => {
                 if (swipe.candidates.length) swipe.select(word);
                 else {

@@ -125,6 +125,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
             </div>
             <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
               {([
+                ["Mirror focused text", "mirrorFocusedText"],
                 ["Number row", "numberRow"],
                 ["Long-press symbols", "symbolHints"],
                 ["Double-space period", "doubleSpacePeriod"],
@@ -162,6 +163,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
               className="custom-keyboard-utility mt-3 min-h-9 shrink-0 rounded-md border border-zinc-600 bg-zinc-800 px-3 text-xs text-zinc-200">Toggle fullscreen</ActionKey>}
             <p className="mt-3 text-[11px] leading-4 text-zinc-400">On iPhone, use Share → Add to Home Screen, then open Ottoman from that icon to type without Safari’s address bar.</p>
             <p className="mt-3 text-[11px] leading-4 text-zinc-500">
+              Mirror focused text lets the desktop agent read the focused editable field through operating-system accessibility APIs. Passwords appear only as dots; their contents are never mirrored. Enable accessibility access on the desktop if requested.
               Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
             </p>
           </div>

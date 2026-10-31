@@ -20,7 +20,7 @@ export default function App() {
   const logout = useStore((s) => s.logout);
   const refreshKey = useStore((s) => s.refreshKey);
 
-  const { connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
+  const { textContext, connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
 
   // Check auth on mount
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function App() {
     return <LoginForm />;
   }
 
-  if (window.location.pathname === "/remote") return <RemotePage connected={connected} connecting={connecting} cursorPos={cursorPos} cursorSupported={cursorSupported} send={send} />;
+  if (window.location.pathname === "/remote") return <RemotePage textContext={textContext} connected={connected} connecting={connecting} cursorPos={cursorPos} cursorSupported={cursorSupported} send={send} />;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
@@ -86,6 +86,7 @@ export default function App() {
         <Audio />
 
         <Trackpad
+          textContext={textContext}
           connected={connected}
           connecting={connecting}
           cursorPos={cursorPos}

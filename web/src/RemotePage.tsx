@@ -3,7 +3,7 @@ import { ArrowLeft, Maximize, Minimize, Monitor, Volume2, VolumeX } from "lucide
 import { Trackpad } from "./Trackpad";
 import { useStore } from "./store";
 import { useCoalescedSlider } from "./useCoalescedSlider";
-import type { TrackpadMessage } from "./api";
+import type { TrackpadMessage, TrackpadMessageTextContext } from "./api";
 
 function RemoteVolume({ label, value, muted, onVolume, onMute }: {
   label: string; value: number; muted: boolean; onVolume: (value: number) => Promise<void>; onMute: () => void;
@@ -19,6 +19,7 @@ function RemoteVolume({ label, value, muted, onVolume, onMute }: {
 }
 
 export function RemotePage(props: {
+  textContext: TrackpadMessageTextContext | null;
   connected: boolean; connecting: boolean; cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean; send: (message: TrackpadMessage) => void;
 }) {
