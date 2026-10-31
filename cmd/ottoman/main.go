@@ -987,14 +987,14 @@ func init() {
 	controllerCmd.AddCommand(controllerUninstallCmd)
 
 	// Agent commands
-	agentRunCmd.Flags().BoolVar(&agentRunGreeter, "greeter", false, "run in GDM greeter mode: display/layouts only, preserves the current layout on start")
+	agentRunCmd.Flags().BoolVar(&agentRunGreeter, "greeter", false, "run in GDM greeter mode: displays and uinput control, without audio or text mirroring")
 	agentCmd.AddCommand(agentRunCmd)
 	agentCmd.AddCommand(layoutCmd)
 	agentCmd.AddCommand(monitorCmd)
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
 	agentHostSetupCmd.Flags().StringVar(&hostSetupUser, "user", "", "user to grant access to (default: invoking user)")
-	agentHostSetupCmd.Flags().BoolVar(&hostSetupGreeter, "greeter", false, "also install the GDM login-screen layout agent")
+	agentHostSetupCmd.Flags().BoolVar(&hostSetupGreeter, "greeter", false, "also install the GDM login-screen agent with keyboard/trackpad control")
 	agentCmd.AddCommand(agentHostSetupCmd)
 
 	// Monitor commands
