@@ -71,7 +71,7 @@
 }
 
 .custom-keyboard-shell[data-keyboard-theme="light"] .custom-keyboard-emoji-grid {
-  background: rgb(244 244 245 / 0.75);
+  background: rgb(24 24 27 / .02);
 }
 
 .custom-keyboard-shell[data-keyboard-theme="light"] .key-press-preview[data-key-preview="letter"] {
@@ -154,3 +154,11 @@ html { touch-action: pan-x pan-y; }
 @media (max-height: 540px) {
   .remote-input:has([data-taller-keys="true"]) { min-height: 500px; }
 }
+
+/* Match the 2px inset of letter faces: every adjacent key face has a 4px gap. */
+.custom-keyboard-shell .keyboard-cell { margin: 2px; }
+.keyboard-extra-key { display: flex; min-height: 36px; align-items: center; justify-content: center; border-radius: 6px; background: #27272a; padding: 8px 4px; color: #e4e4e7; font-size: 12px; }
+.keyboard-extra-key:hover { background: #3f3f46; }
+.custom-keyboard-shell[data-keyboard-theme="light"] .keyboard-extra-key { background: #e4e4e7; color: #27272a; }
+.custom-keyboard-shell[data-keyboard-theme="light"] .keyboard-suggestion { border-color: rgb(24 24 27 / .04); background: rgb(24 24 27 / .02); color: #52525b; }
+.custom-keyboard-shell[data-keyboard-theme="light"] .keyboard-suggestion[aria-pressed="true"] { border-color: #60a5fa; background: rgb(59 130 246 / .12); color: #1d4ed8; }

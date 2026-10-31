@@ -15,13 +15,12 @@ export function keyboardRows(layout: KeyboardLayout) {
   const numberRow: KeyDefinition[] = Array.from("1234567890", (key, index) => ({
     key, alt: Array.from(shiftedNumbers)[index],
   }));
-  // British number shifts live on the number row, freeing Q–P for other
-  // symbols. Keep backtick/pipe/backslash left and hash/tilde on the right.
+  // British number holds stay fixed; letter holds follow the chosen symbol grid.
   // Empty hints deliberately leave an unused cell in the matching symbol grid.
   const hints: (string | undefined)[][] = layout === "en-GB" ? [
-    ["`", "€", undefined, "<", ">", "-", "=", "_", "#", "~"],
-    [":", ";", "[", "]", "{", "}", "@", "+", undefined],
-    ["|", "\\", ",", ".", "?", "'", "/"],
+    Array.from("`¬€•<>+=#~"),
+    Array.from("-_:;[]{}@"),
+    Array.from("|\\.,?'/"),
   ] : [
     Array.from(shiftedNumbers),
     Array.from("-/:;[]=+#"),

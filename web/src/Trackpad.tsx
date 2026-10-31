@@ -1011,6 +1011,7 @@ function TouchArea({
           settingsPageOpen={keyboardSettingsOpen}
           modifiers={activeModifiers}
           onToggleModifier={toggleModifier}
+          onSuperPress={() => { dismissDraft(); sendKeyPress("Meta"); }}
         />
       </div>
       {keyboardOpen && !docked && (

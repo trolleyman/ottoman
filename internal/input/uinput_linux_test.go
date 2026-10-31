@@ -43,7 +43,14 @@ func TestResolveKeyCode(t *testing.T) {
 		{"Enter", keyEnter, true},
 		{"ArrowUp", keyUp, true},
 		{"F5", keyF1 + 4, true},
+		{"MediaTrackPrevious", 165, true},
+		{"MediaPlayPause", 164, true},
+		{"MediaTrackNext", 163, true},
+		{"AudioVolumeDown", 114, true},
+		{"AudioVolumeUp", 115, true},
+		{"AudioVolumeMute", 113, true},
 		{"Shift", keyLeftShift, true},
+		{"Meta", keyLeftMeta, true},
 		{"Unknown", 0, false},
 		{"", 0, false},
 	}
@@ -65,5 +72,12 @@ func TestInputEventSize(t *testing.T) {
 func TestUinputSetupSize(t *testing.T) {
 	if sz := sizeofUinputSetup(); sz != 92 {
 		t.Fatalf("sizeof(uinputSetup) = %d, want 92", sz)
+	}
+}
+
+func TestStandaloneSuperX11(t *testing.T) {
+	key, ok := getXdoKey("Meta")
+	if !ok || key != "Super_L" {
+		t.Fatalf("standalone Super must resolve on the X11 fallback: %q, %v", key, ok)
 	}
 }

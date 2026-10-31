@@ -54,7 +54,7 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
-  keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav' | 'key-preview' | 'key-hold' | 'text-preview'
+  keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav' | 'key-preview' | 'key-hold' | 'super-hold' | 'more' | 'text-preview'
   remote?: boolean
   taller?: boolean
   settings?: boolean
@@ -72,6 +72,8 @@ const SHOTS: Shot[] = [
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
   { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
   { name: 'trackpad-keyboard-light-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::light', 'platform::apple'], keyboard: 'letters', scheme: 'light', platform: 'apple' },
+  { name: 'trackpad-extra-keys@2x', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::extra-keys'], keyboard: 'more', platform: 'pc' },
+  { name: 'trackpad-super-hold@2x', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::super-hold'], keyboard: 'super-hold', platform: 'pc' },
   { name: 'trackpad-key-preview-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::key-preview'], keyboard: 'key-preview', platform: 'pc' },
   { name: 'trackpad-key-hold-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::key-hold'], keyboard: 'key-hold', platform: 'pc' },
   { name: 'trackpad-text-preview-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::text-preview'], keyboard: 'text-preview', platform: 'pc' },
@@ -176,7 +178,17 @@ async function main() {
         const openKeyboard = page.getByLabel(/Trackpad\. Tap to click/)
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.focus()
-        if (shot.keyboard === 'key-preview' || shot.keyboard === 'key-hold') {
+        if (shot.keyboard === 'more') {
+          await page.getByRole('button', { name: 'More keyboard actions', exact: true }).click()
+        } else if (shot.keyboard === 'super-hold') {
+          const key = page.getByRole('button', { name: 'Windows', exact: true })
+          const box = await key.boundingBox()
+          if (!box) throw new Error('Missing Super key')
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+          await page.mouse.down()
+          await page.waitForTimeout(480)
+          heldKey = true
+        } else if (shot.keyboard === 'key-preview' || shot.keyboard === 'key-hold') {
           const key = page.locator('[data-letter="w"]')
           const box = await key.boundingBox()
           if (!box) throw new Error('Missing E key')
@@ -195,7 +207,7 @@ async function main() {
         } else if (shot.keyboard === 'letters' || shot.keyboard === 'space-nav') {
           await page.getByRole('button', { name: 'Control' }).click()
           await page.getByRole('button', { name: 'Shift' }).click()
-          await page.getByRole('button', { name: 'c, hold for ,' }).click()
+          await page.getByRole('button', { name: 'c, hold for .' }).click()
           await page.getByRole('button', { name: 'Control' }).click()
           for (const key of ['h', 'e', 'l', 'l', 'o'])
             await page.locator(`[data-letter="${key}"]`).click()
