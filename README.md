@@ -109,12 +109,15 @@ Settings are saved to `magefiles/deploy.toml` for future deployments.
 ## PC remote
 
 Open **PC remote** from the dashboard, or bookmark `/remote`. It keeps the trackpad,
-scroll control and docked keyboard together with separate PC/TV volume controls,
-audio-output selection and display layouts. Use the fullscreen icon where your
-browser supports it. This page controls the computer; it does not stream its screen.
+scroll control and docked keyboard together with separate PC/TV volume controls
+and display layouts. Audio-output selection stays on the dashboard. Use the
+fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
 
 Focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
 shows local word completions and swipe alternatives, or searches emoji and symbols.
+Search results replace the number row; emoji
+categories share one continuous list with icon shortcuts. Contractions such as
+“don’t” and “isn’t” are supported in completions and swipe alternatives.
 Swipes leave no trailing space; the next word gets a leading separator. The small
 erase icon above the preview clears its local display without deleting remote text.
 Print Screen and other extra keys are in the keyboard's **…** menu.

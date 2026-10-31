@@ -6,11 +6,14 @@ platform validation is tracked in `REMOTE_TEXT_INTEGRATION_PLAN.md`.
 
 ## 1. Prediction and input follow-ups
 
+- Add trustworthy remote scroll-bound reporting before showing enabled/disabled
+  up/down arrow states. The current input protocol sends wheel motion but does not
+  expose the remote content's scroll position or limits; arrows stay neutral.
 - Add contextual next-word predictions after a word boundary. Current predictions
   are local, frequency-ranked word completions, plus swipe alternatives; the word
   list alone is not a contextual language model. Evaluate a compact offline model.
 - Add an optional prediction preference and assess completion quality with a
-  broader British-English vocabulary, contractions, punctuation, and names.
+  broader British-English vocabulary, punctuation, and names.
 - Extend Linux text injection beyond the supported standard British/US keymaps.
   GNOME's most recently selected source is detected remotely; per-window layout
   switching, other keymaps, arbitrary Unicode under uinput, and IME composition

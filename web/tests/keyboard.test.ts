@@ -13,6 +13,8 @@ const pathFor = (word: string) => Array.from(word).filter((letter, index) => let
 describe("keyboard layout", () => {
   test("uses UK shifts and promotes the exact letter hints to symbol keys", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
+    expect(letterRows[0][0]).toEqual({ key: "q", alt: "`" });
+    expect(letterRows[2][1]).toEqual({ key: "x", alt: "|" });
     expect(numberRow[1].alt).toBe('"');
     expect(numberRow[2].alt).toBe("£");
     expect(letterRows[0][2]).toEqual({ key: "e", alt: "£" });
@@ -33,6 +35,11 @@ describe("local swipe typing", () => {
   test("recognises common word paths using the full ranked dictionary", () => {
     for (const word of ["hello", "world", "keyboard", "swipe", "british", "thanks", "good", "morning"])
       expect(decodeSwipe(resample(pathFor(word), 40), positions)).toContain(word);
+  });
+
+  test("recognises contractions along their letter-only swipe paths", () => {
+    for (const [path, word] of [["dont", "don't"], ["isnt", "isn't"], ["cant", "can't"]])
+      expect(decodeSwipe(resample(pathFor(path), 40), positions)).toContain(word);
   });
 
   test("preserves turns and repeated letters in candidates", () => {

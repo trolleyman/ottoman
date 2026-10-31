@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowBigUp,
   ArrowDown,
@@ -8,6 +8,7 @@ import {
   ArrowUp,
   ChevronUp,
   Command,
+  Check,
   CornerDownLeft,
   Delete,
   Move,
@@ -21,8 +22,9 @@ import {
 } from "lucide-react";
 import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
-import { keyboardRows, resolveKeyboardLayout, SYMBOLS } from "./keyboardData";
+import { keyboardRows, resolveKeyboardLayout } from "./keyboardData";
 import { currentWord as getCurrentWord, matchWordCase } from "./wordPrediction";
+import { searchSymbols } from "./symbolData";
 import { useSwipeTyping } from "./useSwipeTyping";
 const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ default: module.EmojiPicker })));
 import { loadRecentEmoji, savePreference } from "./preferences";
@@ -92,6 +94,16 @@ function KeyboardSession({
   const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Safari's selection loupe can ignore pointerdown prevention and CSS.
+  // https://bugs.webkit.org/show_bug.cgi?id=231161
+  // A native, non-passive touchstart listener blocks its long-press default.
+  // Keep deletion on pointer events so touch and pointer input never double-fire.
+  const backspaceTouchRef = useCallback((button: HTMLButtonElement | null) => {
+    if (!button) return;
+    const preventNativeHold = (event: TouchEvent) => event.preventDefault();
+    button.addEventListener("touchstart", preventNativeHold, { passive: false });
+    return () => button.removeEventListener("touchstart", preventNativeHold);
+  }, []);
   const [backspaceHeld, setBackspaceHeld] = useState(false);
   const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spaceHeld = useRef(false);
@@ -120,6 +132,7 @@ function KeyboardSession({
     }).catch(() => {});
     return () => { disposed = true; };
   }, []);
+  const [selectedWord, setSelectedWord] = useState({ word: "", context: textContext });
   const pendingSwipeSpace = useRef({ context: textContext, pending: false });
   const takeWordPrefix = () => {
     const prefix = pendingSwipeSpace.current.context === textContext && pendingSwipeSpace.current.pending ? " " : "";
@@ -133,7 +146,7 @@ function KeyboardSession({
     textContext,
     (word, previous) => {
       if (!previous) swipeShift.current = shift;
-      const format = (value: string) => swipeShift.current === "locked" ? value.toUpperCase() : swipeShift.current === "once" ? value[0].toUpperCase() + value.slice(1) : value;
+      const format = (value: string) => swipeShift.current === "locked" ? value.toUpperCase() : swipeShift.current === "once" ? value[0].toUpperCase() + value.slice(1) : matchWordCase(value, "");
       if (previous) onReplaceText(format(previous), format(word));
       else {
         onText(takeWordPrefix() + format(word));
@@ -142,6 +155,7 @@ function KeyboardSession({
           if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
         }
       }
+      setSelectedWord({ word: format(word), context: textContext });
       pendingSwipeSpace.current = { context: textContext, pending: true };
       haptic(settings.haptics);
     },
@@ -290,16 +304,19 @@ function KeyboardSession({
   const matchingEmoji = (emojiData?.EMOJIS ?? []).filter(([, keywords]) =>
     !emojiQuery.trim() || keywords.includes(emojiQuery.trim().toLocaleLowerCase()),
   );
-  const matchingSymbols = SYMBOLS.filter(([, keywords]) =>
-    !symbolQuery.trim() || keywords.includes(symbolQuery.trim().toLocaleLowerCase()),
-  );
+  const matchingSymbols = searchSymbols(symbolQuery);
+  const searching = mode === "symbols" && symbolSearching || mode === "emoji" && emojiSearching;
+  const searchQuery = mode === "emoji" ? emojiQuery : symbolQuery;
+  const searchResults = mode === "emoji" ? matchingEmoji : matchingSymbols;
 
   const selectSymbol = (symbol: string) => {
+    swipe.clear();
     haptic(settings.haptics);
     onText(symbol);
   };
 
   const selectEmoji = (emoji: string) => {
+    swipe.clear();
     haptic(settings.haptics);
     onText(emoji);
     const next = [emoji, ...recentEmoji.filter((item) => item !== emoji)].slice(0, 12);
@@ -415,7 +432,10 @@ function KeyboardSession({
         <div className="flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
           {mode === "letters" ? (
             wordChoices.map((word) => (
-              <ActionKey type="button" key={word} onPress={() => {
+              <ActionKey type="button" key={word}
+                aria-pressed={selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase()}
+                onPress={() => {
+                setSelectedWord({ word: matchWordCase(word, currentWord), context: textContext });
                 if (swipe.candidates.length) swipe.select(word);
                 else {
                   if (word !== currentWord) onReplaceText(currentWord, matchWordCase(word, currentWord));
@@ -423,16 +443,22 @@ function KeyboardSession({
                   pendingSwipeSpace.current = { context: textContext, pending: true };
                 }
                 haptic(settings.haptics);
-              }} className="custom-keyboard-utility h-8 min-w-0 flex-1 truncate rounded-md px-2 text-sm text-zinc-200 hover:bg-zinc-700">{swipe.candidates.length ? word : matchWordCase(word, currentWord)}</ActionKey>
+              }} className="keyboard-suggestion custom-keyboard-utility flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-200 hover:bg-zinc-700 aria-pressed:border-blue-400/60 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-200">
+                {selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase() && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                <span className="truncate">{matchWordCase(word, currentWord)}</span>
+              </ActionKey>
             ))
           ) : <>
             <ActionKey type="button" aria-label={mode === "emoji" ? "Search Emoji" : "Search Symbols"}
               onPress={() => mode === "emoji" ? setEmojiSearching(true) : setSymbolSearching(true)}
               className="custom-keyboard-utility flex h-8 min-w-20 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs text-zinc-400">
-              <Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{(mode === "emoji" ? emojiQuery : symbolQuery) || `Search ${mode === "emoji" ? "emoji" : "symbols"}`}</span>
+              <Search className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex min-w-0 flex-1 items-center overflow-hidden text-left">
+                <span className="truncate">{searchQuery || (!searching && `Search ${mode === "emoji" ? "emoji" : "symbols"}`)}</span>
+                {searching && <span key={searchQuery} data-search-caret aria-hidden="true" className="keyboard-caret ml-0.5 inline-block h-4 w-px shrink-0 bg-blue-300" />}
+                {searching && !searchQuery && <span className="ml-1 text-zinc-500">Search {mode === "emoji" ? "emoji" : "symbols"}</span>}
+              </span>
             </ActionKey>
-            {mode === "emoji" && emojiSearching && matchingEmoji.slice(0, 4).map(([emoji]) => <ActionKey type="button" key={emoji} onPress={() => selectEmoji(emoji)} className="h-8 w-8 shrink-0 rounded text-lg">{emoji}</ActionKey>)}
-            {mode === "symbols" && symbolSearching && matchingSymbols.slice(0, 4).map(([symbol]) => <ActionKey type="button" key={symbol} aria-label={`Type ${symbol}`} onPress={() => selectSymbol(symbol)} className="h-8 w-8 shrink-0 rounded text-lg text-zinc-200">{symbol}</ActionKey>)}
           </>}
         </div>
         {mode === "emoji" && !emojiSearching ? (
@@ -440,8 +466,13 @@ function KeyboardSession({
         ) : (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col" data-swipe-ready={swipe.ready} {...swipe.handlers}>
-            {settings.numberRow && (
-              <div className="flex min-h-0 flex-1">
+            {(settings.numberRow || searching) && (
+              searching ? <div className="keyboard-scroll flex min-h-0 flex-1 gap-1 overflow-x-auto py-0.5" role="region" aria-label={mode === "emoji" ? "Emoji search results" : "Symbol search results"}>
+                {searchResults.map(([symbol, keywords]) => <ActionKey type="button" key={symbol} aria-label={`Type ${symbol}`} title={keywords}
+                  onPress={() => mode === "emoji" ? selectEmoji(symbol) : selectSymbol(symbol)}
+                  className="custom-keyboard-utility flex w-9 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800 text-lg text-zinc-100 hover:bg-zinc-700">{symbol}</ActionKey>)}
+                {searchResults.length === 0 && <span role="status" className="flex flex-1 items-center justify-center text-xs text-zinc-500">No matches</span>}
+              </div> : <div className="flex min-h-0 flex-1">
                 {numberRow.map((definition) => (
                   <Key key={definition.key} definition={{ key: mode === "letters" && shift !== "off" ? definition.alt! : definition.key }} settings={settings} onType={type} />
                 ))}
@@ -478,6 +509,8 @@ function KeyboardSession({
                   <button
                     type="button"
                     aria-label="Backspace"
+                    ref={backspaceTouchRef}
+                    onContextMenu={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
                       event.preventDefault();
                       event.currentTarget.setPointerCapture(event.pointerId);

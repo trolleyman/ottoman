@@ -109,6 +109,16 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await bar.getByRole("button").nth(1).click();
   await page.waitForTimeout(60);
   assert(sent.slice(beforeCompletion).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 3, "Completion must replace only the typed prefix");
+  assert(await bar.getByRole("button", { name: completions[1], exact: true }).getAttribute("aria-pressed") === "true", "The inserted suggestion must stay visibly selected");
+  assert(await bar.getByRole("button").first().evaluate((element) => getComputedStyle(element).borderStyle) === "solid", "Individual suggestions must have visible boundaries");
+  await page.getByRole("button", { name: "Clear preview", exact: true }).click();
+
+  for (const letter of "don") await key(letter).click();
+  const beforeContraction = textMessages().length;
+  await bar.getByRole("button", { name: "don't", exact: true }).click();
+  await page.waitForTimeout(60);
+  assert(textMessages().slice(beforeContraction).some(({ message }) => message.type === "text" && message.text === "don't"), "A contraction suggestion must insert its apostrophe");
+  assert(await bar.getByRole("button", { name: "don't", exact: true }).getAttribute("aria-pressed") === "true", "Chosen contraction must remain highlighted");
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
 
   const home = page.getByRole("button", { name: "Home", exact: true });
@@ -135,6 +145,34 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     return { x, y, width, height, symbol: element.getAttribute('aria-label') };
   }));
   assert(JSON.stringify(rectangles) === JSON.stringify(symbolRectangles), `Symbol positions and sizes must match the letter hints: ${JSON.stringify({ rectangles, symbolRectangles })}`);
+  await page.getByRole("button", { name: "Letters", exact: true }).click();
+
+  await page.getByRole("button", { name: "Symbols", exact: true }).click();
+  await page.getByRole("button", { name: "Search Symbols", exact: true }).click();
+  for (const letter of "theta") await key(letter).click();
+  const results = page.getByRole("region", { name: "Symbol search results" });
+  assert(await results.getByRole("button", { name: "Type θ", exact: true }).isVisible(), "Theta must be available in the search result row");
+  assert(await page.locator('[data-search-caret]').isVisible(), "Symbol search must show a caret");
+  assert(await page.locator('[data-search-caret]').evaluate((element) => getComputedStyle(element).opacity) === "1", "Search caret must remain solid while typing");
+  assert(await page.getByRole("button", { name: "1", exact: true }).count() === 0, "Search results must replace the number keys");
+  const beforeTheta = textMessages().length;
+  await results.getByRole("button", { name: "Type θ", exact: true }).click();
+  await page.waitForTimeout(60);
+  assert(textMessages().slice(beforeTheta).some(({ message }) => message.type === "text" && message.text === "θ"), "Choosing a symbol must type that result");
+  await page.getByRole("button", { name: "Back to symbols", exact: true }).click();
+  await page.getByRole("button", { name: "Letters", exact: true }).click();
+
+  await page.getByRole("button", { name: "Emoji", exact: true }).click();
+  const emojiList = page.getByRole("region", { name: "All emoji" });
+  await emojiList.waitFor();
+  const emojiSize = await emojiList.evaluate((element) => ({ height: element.scrollHeight, count: element.querySelectorAll('button').length }));
+  assert(emojiSize.count > 1900, "Every emoji section must be in one continuous list");
+  const categories = page.getByRole("navigation", { name: "Emoji categories" });
+  assert(await categories.locator('button svg').count() === 10, "Emoji category headers must use icons");
+  await categories.getByRole("button", { name: "Flags", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Emoji categories"] [aria-label="Flags"]')?.getAttribute('aria-current') === 'location');
+  assert(await emojiList.evaluate((element) => element.scrollHeight) === emojiSize.height, "Jumping categories must preserve scroll content size");
+  await emojiList.evaluate((element) => { element.scrollTop = 0; });
   await page.getByRole("button", { name: "Letters", exact: true }).click();
 
   await page.locator('[data-swipe-ready="true"]').waitFor();
@@ -196,14 +234,27 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const backspace = page.getByRole("button", { name: "Backspace", exact: true });
   const box = await backspace.boundingBox();
   assert(box, "Missing backspace");
+  const nativeDefaults = await backspace.evaluate((element) => {
+    const touch = new TouchEvent("touchstart", { bubbles: true, cancelable: true });
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    element.dispatchEvent(touch);
+    element.dispatchEvent(menu);
+    const icon = element.querySelector("svg")!;
+    return { touch: touch.defaultPrevented, menu: menu.defaultPrevented, selection: getComputedStyle(icon).webkitUserSelect };
+  });
+  assert(nativeDefaults.touch && nativeDefaults.menu && nativeDefaults.selection === "none", "Backspace and its icon must suppress native selection/callout defaults");
   const beforeErase = sent.length;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(2100);
-  await page.mouse.up();
+  const heldTouch = await page.context().newCDPSession(page);
+  try {
+    await heldTouch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
+    await page.waitForTimeout(2100);
+    await heldTouch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally { await heldTouch.detach(); }
   await page.waitForTimeout(60);
   const erases = sent.slice(beforeErase).filter(({ message }) => message.type === "keydown" && message.key === "Backspace");
-  assert(erases.length > 35, "Backspace hold must repeat");
+  assert(erases.length > 35, "Touch backspace hold must repeat despite native-default prevention");
+  await page.waitForTimeout(100);
+  assert(sent.slice(beforeErase).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === erases.length, "Backspace must stop repeating after touch release");
   const average = (values: SentMessage[]) => (values[values.length - 1].time - values[0].time) / (values.length - 1);
   assert(average(erases.slice(-8)) < average(erases.slice(2, 10)) * 0.8, "Backspace repeat must accelerate");
 
