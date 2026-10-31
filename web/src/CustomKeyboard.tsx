@@ -19,399 +19,17 @@ import {
   X,
 } from "lucide-react";
 import { Modifier } from "./api";
-
-export interface KeyboardSettings {
-  numberRow: boolean;
-  symbolHints: boolean;
-  doubleSpacePeriod: boolean;
-  haptics: boolean;
-  longPressDelayMs: number;
-  spaceHoldDelayMs: number;
-  backspaceRepeatDelayMs: number;
-  backspaceRepeatIntervalMs: number;
-  shiftDoubleTapMs: number;
-  previewFadeMs: number;
-}
-
-interface KeyDefinition {
-  key: string;
-  alt?: string;
-  grow?: number;
-}
-
-const NUMBER_ROW: KeyDefinition[] = [
-  { key: "1", alt: "!" },
-  { key: "2", alt: "@" },
-  { key: "3", alt: "#" },
-  { key: "4", alt: "$" },
-  { key: "5", alt: "%" },
-  { key: "6", alt: "^" },
-  { key: "7", alt: "&" },
-  { key: "8", alt: "*" },
-  { key: "9", alt: "(" },
-  { key: "0", alt: ")" },
-];
-
-const LETTER_ROWS: KeyDefinition[][] = [
-  [
-    { key: "q", alt: "\\" },
-    { key: "w", alt: "|" },
-    { key: "e", alt: "€" },
-    { key: "r", alt: "®" },
-    { key: "t", alt: "™" },
-    { key: "y", alt: "¥" },
-    { key: "u", alt: "_" },
-    { key: "i", alt: "[" },
-    { key: "o", alt: "]" },
-    { key: "p", alt: "=" },
-  ],
-  [
-    { key: "a", alt: "~" },
-    { key: "s", alt: "<" },
-    { key: "d", alt: ">" },
-    { key: "f", alt: "{" },
-    { key: "g", alt: "}" },
-    { key: "h", alt: "-" },
-    { key: "j", alt: "+" },
-    { key: "k", alt: ":" },
-    { key: "l", alt: ";" },
-  ],
-  [
-    { key: "z", alt: "`" },
-    { key: "x", alt: "×" },
-    { key: "c", alt: "¢" },
-    { key: "v", alt: "/" },
-    { key: "b", alt: '"' },
-    { key: "n", alt: "'" },
-    { key: "m", alt: "?" },
-  ],
-];
-
-const SYMBOL_ROWS: KeyDefinition[][] = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((key) => ({ key })),
-  ["@", "#", "£", "$", "%", "&", "-", "+", "(", ")"].map((key) => ({ key })),
-  ['"', "'", ":", ";", "!", "?", "/"].map((key) => ({ key })),
-];
-
-const SYMBOLS = [
-  ["£", "pound sterling currency british gbp"], ["€", "euro currency"],
-  ["$", "dollar currency usd"], ["¥", "yen yuan currency"], ["¢", "cent currency"],
-  ["©", "copyright"], ["®", "registered trademark"], ["™", "trademark"],
-  ["°", "degree temperature angle"], ["±", "plus minus"], ["×", "multiply times"],
-  ["÷", "divide division"], ["≈", "approximately equal"], ["≠", "not equal"],
-  ["≤", "less than or equal"], ["≥", "greater than or equal"], ["∞", "infinity"],
-  ["√", "square root"], ["π", "pi"], ["µ", "micro micron"], ["Ω", "omega ohm"],
-  ["→", "right arrow"], ["←", "left arrow"], ["↑", "up arrow"], ["↓", "down arrow"],
-  ["•", "bullet dot"], ["…", "ellipsis dots"], ["§", "section"], ["¶", "paragraph"],
-  ["†", "dagger"], ["‡", "double dagger"], ["✓", "check tick"], ["—", "em dash"],
-  ["–", "en dash"], ["№", "number numero"], ["@", "at sign"], ["#", "hash pound number"],
-] as const;
-
-const EMOJIS = [
-  ["😀", "grinning happy smile"], ["😂", "laugh tears funny"],
-  ["🥰", "love hearts smiling"], ["😍", "heart eyes love"],
-  ["😊", "smile blush happy"], ["😉", "wink playful"],
-  ["😎", "cool sunglasses"], ["🤔", "thinking wonder"],
-  ["😅", "sweat smile nervous"], ["😭", "cry sob sad"],
-  ["😤", "angry steam"], ["🥳", "party celebrate"],
-  ["👍", "thumbs up yes good"], ["👎", "thumbs down no bad"],
-  ["👏", "clap applause"], ["🙏", "pray thanks please"],
-  ["💪", "strong muscle"], ["👀", "eyes look"],
-  ["❤️", "red heart love"], ["🔥", "fire hot"],
-  ["✨", "sparkles magic"], ["🎉", "party popper celebrate"],
-  ["✅", "check done yes"], ["❌", "cross no wrong"],
-  ["💯", "hundred perfect"], ["🚀", "rocket launch"],
-  ["👋", "wave hello goodbye"], ["🤝", "handshake deal"],
-  ["💡", "idea light bulb"], ["📌", "pin location"],
-] as const;
-
-const STARTER_RECENTS = ["😂", "❤️", "👍", "🙏", "🔥", "🎉"];
-
-function loadRecentEmoji(): string[] {
-  try {
-    const saved = localStorage.getItem("ottoman-recent-emoji");
-    return saved ? JSON.parse(saved) as string[] : STARTER_RECENTS;
-  } catch {
-    return STARTER_RECENTS;
-  }
-}
+import { type KeyboardSettings } from "./trackpadSettings";
+import { NUMBER_ROW, LETTER_ROWS, SYMBOL_ROWS, SYMBOLS, EMOJIS } from "./keyboardData";
+import { loadRecentEmoji, savePreference } from "./preferences";
+import { WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
+import { haptic } from "./keyboardHaptics";
+import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
 
 type ShiftState = "off" | "once" | "locked";
 type KeyboardMode = "letters" | "symbols" | "emoji";
 
-function WindowsIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
-      <path d="M3 5.4 11 4.3v7.2H3V5.4Zm9.2-1.3L21 2.9v8.6h-8.8V4.1ZM3 12.7h8v7.2l-8-1.1v-6.1Zm9.2 0H21v8.6l-8.8-1.2v-7.4Z" />
-    </svg>
-  );
-}
-
-function ModifierButton({
-  modifier,
-  label,
-  text,
-  selected,
-  onToggle,
-  children,
-}: {
-  modifier: Modifier;
-  label: string;
-  text: string;
-  selected: Modifier[];
-  onToggle: (modifier: Modifier) => void;
-  children: React.ReactNode;
-}) {
-  const active = selected.includes(modifier);
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={() => onToggle(modifier)}
-      className={`flex h-9 min-w-10 flex-1 items-center justify-center gap-2 rounded-md border px-1 transition-colors ${
-        active
-          ? "border-blue-400/60 bg-blue-500 text-white shadow-[0_0_0_2px_rgba(59,130,246,.16)]"
-          : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-      }`}
-    >
-      {children}
-      <span className="text-[10px] font-semibold tracking-wide">{text}</span>
-    </button>
-  );
-}
-
-function haptic(enabled: boolean, pattern: number | number[] = 8) {
-  if (!enabled) return;
-  if ("vibrate" in navigator && navigator.vibrate(pattern)) return;
-
-  // Safari 18+ gives `<input type="checkbox" switch>` a native Taptic tap.
-  // Trigger one from the same user gesture as the key press. Older iOS builds
-  // ignore the non-standard switch attribute, which is a safe silent fallback.
-  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-    const id = "ottoman-haptic-switch";
-    let pulse = document.getElementById(id) as HTMLInputElement | null;
-    if (!pulse) {
-      pulse = document.createElement("input");
-      pulse.id = id;
-      pulse.type = "checkbox";
-      pulse.setAttribute("switch", "");
-      pulse.setAttribute("aria-hidden", "true");
-      pulse.tabIndex = -1;
-      Object.assign(pulse.style, {
-        position: "fixed",
-        width: "1px",
-        height: "1px",
-        opacity: "0",
-        pointerEvents: "none",
-      });
-      document.body.appendChild(pulse);
-    }
-    pulse.click();
-  }
-}
-
-function Key({
-  definition,
-  label,
-  settings,
-  onType,
-}: {
-  definition: KeyDefinition;
-  label?: string;
-  settings: KeyboardSettings;
-  onType: (value: string, wasLongPress: boolean) => void;
-}) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const held = useRef(false);
-  const [preview, setPreview] = useState(false);
-
-  const clearTimer = () => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  };
-
-  const start = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    held.current = false;
-    if (!definition.alt) return;
-    timer.current = setTimeout(() => {
-      held.current = true;
-      setPreview(true);
-      haptic(settings.haptics, 16);
-      onType(definition.alt!, true);
-    }, settings.longPressDelayMs);
-  };
-
-  const finish = () => {
-    clearTimer();
-    setPreview(false);
-    if (held.current) {
-      held.current = false;
-      return;
-    }
-    haptic(settings.haptics);
-    onType(definition.key, false);
-  };
-
-  return (
-    <button
-      type="button"
-      className="custom-keyboard-key relative flex min-w-0 flex-1 touch-none select-none items-center justify-center overflow-visible rounded-md border border-white/10 bg-zinc-600/95 text-[clamp(15px,4.5vw,20px)] font-medium text-white shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px active:bg-zinc-500"
-      style={definition.grow ? { flexGrow: definition.grow } : undefined}
-      aria-label={definition.alt ? `${definition.key}, hold for ${definition.alt}` : definition.key}
-      onPointerDown={start}
-      onPointerUp={finish}
-      onPointerCancel={() => {
-        clearTimer();
-        setPreview(false);
-        held.current = false;
-      }}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <span>{label ?? definition.key}</span>
-      {settings.symbolHints && definition.alt && (
-        <span className="custom-keyboard-hint absolute right-1 top-0.5 text-[9px] font-semibold text-zinc-300/55">
-          {definition.alt}
-        </span>
-      )}
-      {preview && (
-        <span className="absolute -top-12 left-1/2 z-10 flex h-12 w-10 -translate-x-1/2 items-center justify-center rounded-lg border border-white/20 bg-zinc-500 text-xl shadow-xl">
-          {definition.alt}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function UtilityKey({
-  children,
-  label,
-  active = false,
-  wide = false,
-  onPress,
-}: {
-  children: React.ReactNode;
-  label: string;
-  active?: boolean;
-  wide?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={onPress}
-      className={`flex touch-none select-none items-center justify-center rounded-md border text-sm font-semibold shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px ${
-        wide ? "min-w-[52px] flex-[1.4]" : "min-w-0 flex-1"
-      } ${
-        active
-          ? "border-blue-400/50 bg-blue-500 text-white"
-          : "custom-keyboard-utility border-white/5 bg-zinc-800 text-zinc-100 active:bg-zinc-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function NavigationKey({
-  label,
-  children,
-  onPress,
-}: {
-  label: string;
-  children: React.ReactNode;
-  onPress: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={onPress}
-      className="custom-keyboard-utility flex h-8 min-w-0 flex-1 touch-none select-none items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] font-semibold text-zinc-400 shadow-sm hover:bg-zinc-800 hover:text-zinc-100 active:translate-y-px"
-    >
-      {children}
-    </button>
-  );
-}
-
-function SettingSwitch({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-label={label}
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
-        checked
-          ? "border-blue-400/60 bg-blue-500"
-          : "border-zinc-600 bg-zinc-700"
-      }`}
-    >
-      <span
-        className={`absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-          checked ? "translate-x-[18px]" : "translate-x-0.5"
-        }`}
-      />
-    </button>
-  );
-}
-
-function TimingField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-2 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300">
-      <span>{label}</span>
-      <span className="flex items-center gap-1 text-zinc-500">
-        <input
-          type="number"
-          inputMode="numeric"
-          aria-label={`${label} milliseconds`}
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(event) => {
-            const next = Number(event.target.value);
-            if (Number.isFinite(next)) onChange(Math.min(max, Math.max(min, next)));
-          }}
-          className="h-7 w-16 appearance-none rounded border border-zinc-600 bg-zinc-950 px-1.5 text-right text-xs text-zinc-200 outline-none focus:border-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        ms
-      </span>
-    </label>
-  );
-}
-
-export function CustomKeyboard({
-  open,
+function KeyboardSession({
   connected,
   settings,
   onText,
@@ -428,7 +46,6 @@ export function CustomKeyboard({
   modifiers,
   onToggleModifier,
 }: {
-  open: boolean;
   connected: boolean;
   settings: KeyboardSettings;
   onText: (text: string, shifted?: boolean) => void;
@@ -446,14 +63,16 @@ export function CustomKeyboard({
   onToggleModifier: (modifier: Modifier) => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
-  const [shift, setShift] = useState<ShiftState>("off");
+  const [shift, setShift] = useState<ShiftState>(() =>
+    modifiers.includes(Modifier.SHIFT) ? "once" : "off",
+  );
   const [emojiSearching, setEmojiSearching] = useState(false);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [symbolQuery, setSymbolQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
-  const lastShiftTap = useRef(0);
+  const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setInterval> | null>(null);
   const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -468,8 +87,6 @@ export function CustomKeyboard({
     if (backspaceRepeat.current) clearInterval(backspaceRepeat.current);
     if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
   }, []);
-
-  if (!open) return null;
 
   const type = (value: string) => {
     if (mode === "emoji" && emojiSearching) {
@@ -504,6 +121,7 @@ export function CustomKeyboard({
   };
 
   const beginBackspace = () => {
+    endBackspace();
     haptic(settings.haptics);
     const erase = () => {
       if (mode === "emoji" && emojiSearching)
@@ -527,6 +145,7 @@ export function CustomKeyboard({
   const beginSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
     spaceHeld.current = false;
     spaceLast.current = { x: event.clientX, y: event.clientY };
     spaceHoldTimer.current = setTimeout(() => {
@@ -597,7 +216,7 @@ export function CustomKeyboard({
     onText(emoji);
     const next = [emoji, ...recentEmoji.filter((item) => item !== emoji)].slice(0, 12);
     setRecentEmoji(next);
-    localStorage.setItem("ottoman-recent-emoji", JSON.stringify(next));
+    savePreference("ottoman-recent-emoji", next);
   };
 
   return (
@@ -681,63 +300,9 @@ export function CustomKeyboard({
 
       <div className="mx-auto flex h-[252px] max-w-3xl flex-col gap-1.5 px-1.5 sm:h-[274px] sm:gap-2 sm:px-2">
         {settingsOpen ? (
-          <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-zinc-900/70 p-3">
-            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Keyboard settings
-            </div>
-            <div className="mb-3 grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
-              <button
-                type="button"
-                onClick={onUseCustomKeyboard}
-                className={`rounded-md px-2 py-2 ${usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800"}`}
-                aria-pressed={usingCustomKeyboard}
-              >
-                Ottoman
-              </button>
-              <button
-                type="button"
-                onClick={onUseDeviceKeyboard}
-                className={`rounded-md px-2 py-2 ${!usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"}`}
-                aria-pressed={!usingCustomKeyboard}
-              >
-                Device
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
-              {([
-                ["Number row", "numberRow"],
-                ["Long-press symbols", "symbolHints"],
-                ["Double-space period", "doubleSpacePeriod"],
-                ["Key haptics", "haptics"],
-              ] as const).map(([label, key]) => (
-                <div
-                  key={key}
-                  className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300"
-                >
-                  {label}
-                  <SettingSwitch
-                    label={label}
-                    checked={settings[key]}
-                    onChange={(checked) => onSettingsChange({ [key]: checked })}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Timing
-            </div>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
-              <TimingField label="Symbol hold" value={settings.longPressDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ longPressDelayMs: value })} />
-              <TimingField label="Space cursor hold" value={settings.spaceHoldDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ spaceHoldDelayMs: value })} />
-              <TimingField label="Backspace repeat" value={settings.backspaceRepeatDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ backspaceRepeatDelayMs: value })} />
-              <TimingField label="Repeat interval" value={settings.backspaceRepeatIntervalMs} min={25} max={250} step={5} onChange={(value) => onSettingsChange({ backspaceRepeatIntervalMs: value })} />
-              <TimingField label="Shift double-tap" value={settings.shiftDoubleTapMs} min={200} max={800} step={25} onChange={(value) => onSettingsChange({ shiftDoubleTapMs: value })} />
-              <TimingField label="Preview fade" value={settings.previewFadeMs} min={1000} max={10000} step={250} onChange={(value) => onSettingsChange({ previewFadeMs: value })} />
-            </div>
-            <p className="mt-3 text-[11px] leading-4 text-zinc-500">
-              Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
-            </p>
-          </div>
+          <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
+            onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
+            usingCustomKeyboard={usingCustomKeyboard} />
         ) : (
           <>
         {mode === "emoji" && !emojiSearching ? (
@@ -950,4 +515,9 @@ export function CustomKeyboard({
       </div>
     </div>
   );
+}
+
+// Each visible session owns its gesture timers; hiding it disposes them.
+export function CustomKeyboard({ open, ...props }: React.ComponentProps<typeof KeyboardSession> & { open: boolean }) {
+  return open ? <KeyboardSession {...props} /> : null;
 }

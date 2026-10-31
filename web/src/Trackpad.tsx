@@ -10,10 +10,9 @@ import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage } from "./api";
 import { characterCount, diffText } from "./trackpadText";
-import {
-  CustomKeyboard,
-  type KeyboardSettings,
-} from "./CustomKeyboard";
+import { CustomKeyboard } from "./CustomKeyboard";
+import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
+import { loadSettings, savePreference } from "./preferences";
 
 function getModifiers(e: {
   shiftKey: boolean;
@@ -31,44 +30,6 @@ function getModifiers(e: {
 
 function combineModifiers(...groups: Modifier[][]): Modifier[] {
   return [...new Set(groups.flat())];
-}
-
-interface TrackpadSettings extends KeyboardSettings {
-  cursorSensitivity: number;
-  cursorFriction: number;
-  scrollSensitivity: number;
-  scrollFriction: number;
-  clickAndDrag: boolean;
-  customKeyboard: boolean;
-}
-
-const DEFAULT_SETTINGS: TrackpadSettings = {
-  cursorSensitivity: 1.5,
-  cursorFriction: 0.92,
-  scrollSensitivity: 1.5,
-  scrollFriction: 0.92,
-  clickAndDrag: false,
-  customKeyboard: true,
-  numberRow: true,
-  symbolHints: true,
-  doubleSpacePeriod: true,
-  haptics: true,
-  longPressDelayMs: 430,
-  spaceHoldDelayMs: 320,
-  backspaceRepeatDelayMs: 430,
-  backspaceRepeatIntervalMs: 65,
-  shiftDoubleTapMs: 350,
-  previewFadeMs: 4500,
-};
-
-function loadSettings(): TrackpadSettings {
-  try {
-    const saved = localStorage.getItem("ottoman-trackpad-settings");
-    const parsed = saved ? JSON.parse(saved) as Partial<TrackpadSettings> : null;
-    return parsed ? { ...DEFAULT_SETTINGS, ...parsed } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
 }
 
 function TouchArea({
@@ -966,7 +927,7 @@ export function Trackpad({
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem("ottoman-trackpad-settings", JSON.stringify(settings));
+    savePreference("ottoman-trackpad-settings", settings);
   }, [settings]);
 
   useEffect(() => {
@@ -1017,83 +978,26 @@ export function Trackpad({
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                 Trackpad
               </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="5"
-                  step="0.1"
-                  value={settings.cursorSensitivity}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cursorSensitivity: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Cursor Friction ({settings.cursorFriction.toFixed(2)})
-                </label>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="0.99"
-                  step="0.01"
-                  value={settings.cursorFriction}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cursorFriction: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div className="h-px bg-zinc-800" />
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Scroll Sensitivity ({settings.scrollSensitivity.toFixed(1)})
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="5"
-                  step="0.1"
-                  value={settings.scrollSensitivity}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      scrollSensitivity: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Scroll Friction ({settings.scrollFriction.toFixed(2)})
-                </label>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="0.99"
-                  step="0.01"
-                  value={settings.scrollFriction}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      scrollFriction: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
+              {TRACKPAD_RANGES.map(({ key, label, min, max, step, decimals }, index) => (
+                <div key={key}>
+                  {index === 2 && <div className="mb-4 h-px bg-zinc-800" />}
+                  <label className="block text-xs text-zinc-400 mb-1">
+                    {label} ({settings[key].toFixed(decimals)})
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={settings[key]}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setSettings((current) => ({ ...current, [key]: value }));
+                      }}
+                      className="w-full accent-blue-500"
+                    />
+                  </label>
+                </div>
+              ))}
               <div className="h-px bg-zinc-800" />
               <div className="flex items-center justify-between">
                 <label className="text-xs text-zinc-400">Click and Drag</label>
