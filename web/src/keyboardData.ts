@@ -20,7 +20,7 @@ export function keyboardRows(layout: KeyboardLayout) {
   const letterRows: KeyDefinition[][] = [
     Array.from("qwertyuiop", (key, index) => ({ key, alt: Array.from(shiftedNumbers)[index] })),
     Array.from("asdfghjkl", (key, index) => ({ key, alt: Array.from("-/:;[]=+#")[index] })),
-    Array.from("zxcvbnm", (key, index) => ({ key, alt: Array.from("\\|,.@?'")[index] })),
+    Array.from("zxcvbnm", (key, index) => ({ key, alt: Array.from("\\|,`@?'")[index] })),
   ];
   return {
     numberRow,

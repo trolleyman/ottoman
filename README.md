@@ -120,6 +120,7 @@ categories share one continuous list with icon shortcuts. Contractions such as
 “don’t” and “isn’t” are supported in completions and swipe alternatives.
 Swipes leave no trailing space; the next word gets a leading separator. The small
 erase icon above the preview clears its local display without deleting remote text.
+Hold **V** for backtick; its symbol-mode key is in the same position.
 Print Screen, backtick and other extra keys are in the keyboard's **…** menu.
 Enable **Taller keys** in keyboard settings for larger vertical touch targets.
 
