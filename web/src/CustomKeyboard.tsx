@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowBigUp,
   ArrowLeft,
+  ArrowRightToLine,
   ChevronUp,
   Clock3,
   Command,
   CornerDownLeft,
   Delete,
   Option,
-  PanelsTopLeft,
   Search,
   Settings,
   Smile,
@@ -293,8 +293,13 @@ export function CustomKeyboard({
   onText,
   onBackspace,
   onEnter,
+  onTab,
   onClose,
-  onOpenSettings,
+  onSettingsChange,
+  onUseCustomKeyboard,
+  onUseDeviceKeyboard,
+  usingCustomKeyboard,
+  settingsPageOpen = false,
   modifiers,
   onToggleModifier,
 }: {
@@ -304,14 +309,20 @@ export function CustomKeyboard({
   onText: (text: string, shifted?: boolean) => void;
   onBackspace: () => void;
   onEnter: (shifted: boolean) => void;
+  onTab: () => void;
   onClose: () => void;
-  onOpenSettings: () => void;
+  onSettingsChange: (patch: Partial<KeyboardSettings>) => void;
+  onUseCustomKeyboard: () => void;
+  onUseDeviceKeyboard: () => void;
+  usingCustomKeyboard: boolean;
+  settingsPageOpen?: boolean;
   modifiers: Modifier[];
   onToggleModifier: (modifier: Modifier) => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const [shift, setShift] = useState<ShiftState>("off");
   const [emojiSearching, setEmojiSearching] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
   const lastShiftTap = useRef(0);
@@ -410,7 +421,12 @@ export function CustomKeyboard({
         ) : (
           <>
             <ModifierButton modifier={Modifier.META} label="Windows" text="Win" selected={modifiers} onToggle={onToggleModifier}>
-              <PanelsTopLeft className="h-4 w-4" />
+              <span className="grid h-4 w-4 grid-cols-2 grid-rows-2 gap-[1.5px]" aria-hidden="true">
+                <span className="bg-current" />
+                <span className="bg-current" />
+                <span className="bg-current" />
+                <span className="bg-current" />
+              </span>
             </ModifierButton>
             <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
@@ -421,8 +437,13 @@ export function CustomKeyboard({
           type="button"
           aria-label="Keyboard settings"
           title="Keyboard settings"
-          onClick={onOpenSettings}
-          className="custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          aria-pressed={settingsOpen}
+          onClick={() => setSettingsOpen((current) => !current)}
+          className={`custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border ${
+            settingsOpen
+              ? "border-blue-400/60 bg-blue-500 text-white"
+              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          }`}
         >
           <Settings className="h-4 w-4" />
         </button>
@@ -430,7 +451,10 @@ export function CustomKeyboard({
           type="button"
           aria-label="Close keyboard"
           title="Close keyboard"
-          onClick={onClose}
+          onClick={() => {
+            setSettingsOpen(false);
+            onClose();
+          }}
           className="custom-keyboard-utility flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
         >
           <X className="h-4 w-4" />
@@ -438,6 +462,56 @@ export function CustomKeyboard({
       </div>
 
       <div className="mx-auto flex h-[252px] max-w-3xl flex-col gap-1.5 px-1.5 sm:h-[274px] sm:gap-2 sm:px-2">
+        {settingsOpen ? (
+          <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-zinc-900/70 p-3">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Keyboard settings
+            </div>
+            <div className="mb-3 grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
+              <button
+                type="button"
+                onClick={onUseCustomKeyboard}
+                className={`rounded-md px-2 py-2 ${usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800"}`}
+                aria-pressed={usingCustomKeyboard}
+              >
+                Ottoman
+              </button>
+              <button
+                type="button"
+                onClick={onUseDeviceKeyboard}
+                className={`rounded-md px-2 py-2 ${!usingCustomKeyboard ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"}`}
+                aria-pressed={!usingCustomKeyboard}
+              >
+                Device
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
+              {([
+                ["Number row", "numberRow"],
+                ["Long-press symbols", "symbolHints"],
+                ["Double-space period", "doubleSpacePeriod"],
+                ["Key haptics", "haptics"],
+              ] as const).map(([label, key]) => (
+                <label
+                  key={key}
+                  className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300"
+                >
+                  {label}
+                  <input
+                    type="checkbox"
+                    checked={settings[key]}
+                    onChange={(event) => onSettingsChange({ [key]: event.target.checked })}
+                    className="h-4 w-4 accent-blue-500"
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] leading-4 text-zinc-500">
+              Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
+            </p>
+          </div>
+        ) : (
+          <>
         {mode === "emoji" && !emojiSearching ? (
           <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-zinc-900/70 p-1.5">
             <button
@@ -570,6 +644,12 @@ export function CustomKeyboard({
           >
             {mode === "emoji" ? "ABC" : <Smile className="h-5 w-5" />}
           </UtilityKey>
+          <UtilityKey label="Tab" onPress={onTab}>
+            <span className="flex items-center gap-0.5 text-[11px] font-semibold">
+              <ArrowRightToLine className="h-4 w-4" />
+              Tab
+            </span>
+          </UtilityKey>
           <button
             type="button"
             aria-label="Space"
@@ -594,6 +674,8 @@ export function CustomKeyboard({
             <CornerDownLeft className="h-5 w-5" />
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -70,13 +70,13 @@ function TouchArea({
   connecting,
   send,
   settings,
-  onOpenSettings,
+  onSettingsChange,
 }: {
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
   settings: TrackpadSettings;
-  onOpenSettings: () => void;
+  onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
@@ -90,6 +90,7 @@ function TouchArea({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardSettingsOpen, setKeyboardSettingsOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
@@ -734,7 +735,7 @@ function TouchArea({
           aria-label="Trackpad. Tap to click, move one finger to point, tap two fingers to right click, or move two fingers to scroll."
           className={`relative w-full aspect-square max-h-[60vh] overflow-hidden rounded-xl border-2 transition-colors select-none touch-none outline-none ${
             connected
-              ? focused
+              ? focused || keyboardOpen
                 ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
                 : "border-zinc-700 bg-zinc-900/80 cursor-crosshair"
               : "border-red-500/50 bg-zinc-900/40 pointer-events-none opacity-50"
@@ -799,13 +800,31 @@ function TouchArea({
             : "Open device keyboard to type on the remote computer"}
           title={settings.customKeyboard ? "Open Ottoman keyboard" : "Open device keyboard"}
           onClick={() => {
-            if (settings.customKeyboard) setKeyboardOpen(true);
+            if (settings.customKeyboard) {
+              setKeyboardSettingsOpen(false);
+              setKeyboardOpen(true);
+            }
             else inputRef.current?.focus();
           }}
           className="absolute bottom-3 left-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-950/75 text-zinc-300 shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-40"
         >
           <Keyboard className="h-[18px] w-[18px]" aria-hidden="true" />
         </button>
+        {!settings.customKeyboard && (
+          <button
+            type="button"
+            disabled={!connected}
+            aria-label="Open keyboard settings"
+            title="Keyboard settings"
+            onClick={() => {
+              setKeyboardSettingsOpen(true);
+              setKeyboardOpen(true);
+            }}
+            className="absolute bottom-4 left-16 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-zinc-950/65 text-zinc-400 shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-40"
+          >
+            <Settings className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        )}
         {!settings.customKeyboard && (
           <textarea
             ref={inputRef}
@@ -828,7 +847,8 @@ function TouchArea({
           />
         )}
         <CustomKeyboard
-          open={keyboardOpen && settings.customKeyboard}
+          key={keyboardSettingsOpen ? "settings" : "keyboard"}
+          open={keyboardOpen}
           connected={connected}
           settings={settings}
           onText={appendText}
@@ -847,16 +867,26 @@ function TouchArea({
             setDraftCursor(next.length);
             showDraftIndicator();
           }}
-          onClose={() => setKeyboardOpen(false)}
-          onOpenSettings={() => {
+          onTab={() => sendKeyPress("Tab", activeModifiers)}
+          onClose={() => {
             setKeyboardOpen(false);
-            onOpenSettings();
+            setKeyboardSettingsOpen(false);
           }}
+          onSettingsChange={onSettingsChange}
+          onUseCustomKeyboard={() => onSettingsChange({ customKeyboard: true })}
+          onUseDeviceKeyboard={() => {
+            onSettingsChange({ customKeyboard: false });
+            setKeyboardOpen(false);
+            setKeyboardSettingsOpen(false);
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }}
+          usingCustomKeyboard={settings.customKeyboard}
+          settingsPageOpen={keyboardSettingsOpen}
           modifiers={activeModifiers}
           onToggleModifier={toggleModifier}
         />
       </div>
-      {keyboardOpen && settings.customKeyboard && (
+      {keyboardOpen && (
         <div className="h-[360px] md:hidden" aria-hidden="true" />
       )}
     </div>
@@ -974,44 +1004,6 @@ export function Trackpad({
           </button>
           {showSettings && (
             <div className="absolute right-0 top-full z-[60] mt-2 flex max-h-[70vh] w-72 flex-col gap-4 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
-              <div>
-                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                  Keyboard
-                </div>
-                <div className="grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, customKeyboard: true })}
-                    className={`rounded-md px-2 py-1.5 ${settings.customKeyboard ? "bg-zinc-700 text-white" : "text-zinc-500"}`}
-                  >
-                    Ottoman
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSettings({ ...settings, customKeyboard: false })}
-                    className={`rounded-md px-2 py-1.5 ${!settings.customKeyboard ? "bg-zinc-700 text-white" : "text-zinc-500"}`}
-                  >
-                    Device
-                  </button>
-                </div>
-              </div>
-              {([
-                ["Number row", "numberRow"],
-                ["Long-press hints", "symbolHints"],
-                ["Double-space period", "doubleSpacePeriod"],
-                ["Key haptics", "haptics"],
-              ] as const).map(([label, key]) => (
-                <label key={key} className="flex items-center justify-between gap-3 text-xs text-zinc-400">
-                  {label}
-                  <input
-                    type="checkbox"
-                    checked={settings[key]}
-                    onChange={(event) => setSettings({ ...settings, [key]: event.target.checked })}
-                    className="accent-blue-500"
-                  />
-                </label>
-              ))}
-              <div className="h-px bg-zinc-800" />
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                 Trackpad
               </div>
@@ -1113,7 +1105,7 @@ export function Trackpad({
           connecting={connecting}
           send={send}
           settings={settings}
-          onOpenSettings={() => setShowSettings(true)}
+          onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
         />
         <MonitorDisplay
           layouts={layouts}

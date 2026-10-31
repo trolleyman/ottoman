@@ -141,6 +141,7 @@ async function main() {
           await page.getByRole('button', { name: 'Control' }).click()
           for (const key of ['h', 'e', 'l', 'l', 'o'])
             await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+          await page.getByRole('button', { name: 'Tab' }).click()
         } else {
           await page.getByRole('button', { name: 'Emoji' }).click()
           if (shot.keyboard === 'emoji-search') {
@@ -154,22 +155,24 @@ async function main() {
         )
         await page.waitForTimeout(150)
       } else if (shot.settings) {
-        const settings = page.getByRole('button', { name: 'Trackpad settings' })
-        await settings.scrollIntoViewIfNeeded()
-        await settings.click()
+        const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
+        await openKeyboard.scrollIntoViewIfNeeded()
+        await openKeyboard.click()
+        await page.getByRole('button', { name: 'Keyboard settings' }).click()
         await page.waitForTimeout(150)
       }
       const file = join(OUT, `${shot.name}.png`)
       await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings })
       if (shot.keyboard) {
-        await page.getByRole('button', { name: 'Close keyboard' }).click()
-        await page.getByRole('button', { name: 'Trackpad settings' }).click()
+        await page.getByRole('button', { name: 'Keyboard settings' }).click()
         await page.getByRole('button', { name: 'Device', exact: true }).click()
-        await page.getByRole('button', { name: 'Close settings' }).click()
         await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
         const nativeInput = page.getByLabel('Type on the remote computer with the device keyboard')
         if (!await nativeInput.evaluate((element) => document.activeElement === element))
           throw new Error('Device keyboard input did not receive focus')
+        await page.getByRole('button', { name: 'Open keyboard settings' }).click()
+        await page.getByRole('button', { name: 'Ottoman', exact: true }).click()
+        await page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' }).waitFor()
       }
       writeFileSync(`${file}.meta`, JSON.stringify({ tags: shot.tags, dpi: shot.dpi }))
       await ctx.close()
