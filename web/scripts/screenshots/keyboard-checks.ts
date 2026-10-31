@@ -74,19 +74,19 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
 
   await page.getByRole("button", { name: "Windows", exact: true }).waitFor();
   assert(await page.evaluate(() => /Macintosh/.test(navigator.userAgent)), "Remote-OS test must use an Apple browser with a Windows agent");
-  await key("w").scrollIntoViewIfNeeded();
-  const start = await centre("w");
+  await key("q").scrollIntoViewIfNeeded();
+  const start = await centre("q");
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.waitForTimeout(60);
-  assert(await page.locator('[data-key-preview="letter"]').textContent() === "w", "Press popup must show the letter immediately");
+  assert(await page.locator('[data-key-preview="letter"]').textContent() === "q", "Press popup must show the letter immediately");
   await page.waitForTimeout(450);
-  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "¬", "Held W must preview not sign");
+  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "`", "Held Q must preview backtick");
   const beforeHold = textMessages().length;
   await page.mouse.up();
   await page.waitForTimeout(60);
   const holdMessages = textMessages().slice(beforeHold);
-  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "¬", "Held key must emit only not sign on release");
+  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "`", "Held key must emit only backtick on release");
 
   const sterling = page.getByRole("button", { name: '3, hold for £', exact: true });
   const sterlingBox = await sterling.boundingBox();

@@ -11,28 +11,10 @@ const positions: KeyPositions = {};
 const pathFor = (word: string) => Array.from(word).filter((letter, index) => letter !== word[index - 1]).map((letter) => positions[letter]);
 
 describe("keyboard layout", () => {
-  test("keeps British number shifts and familiar symbol sides without duplicate hints", () => {
+  test("keeps British number holds fixed with only backtick assigned to a letter", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
     expect(numberRow.map(({ alt }) => alt).join("")).toBe('!"£$%^&*()');
-    const holds = Object.fromEntries(letterRows.flat().map(({ key, alt }) => [key, alt]));
-    expect(holds.q).toBe("`");
-    expect(holds.w).toBe("¬");
-    expect(holds.e).toBe("€");
-    expect(holds.y).toBe("@");
-    expect(holds.u).toBeUndefined();
-    expect(holds.o).toBe("#");
-    expect(holds.p).toBe("~");
-    expect(holds.z).toBe("|");
-    expect(holds.x).toBe("\\");
-    expect(holds.j).toBe("-");
-    expect(holds.l).toBe("=");
-    expect(holds.k).toBe("+");
-    expect(holds.v).toBe(".");
-    expect(holds.m).toBe("/");
-    const allHints = [...numberRow, ...letterRows.flat()].flatMap(({ alt }) => alt ? [alt] : []);
-    expect(new Set(allHints).size).toBe(allHints.length);
-    for (const symbol of Array.from("!\"£$%^&*()-=_+[]{};:'@#~,.<>/?\\|`€¬"))
-      expect(allHints).toContain(symbol);
+    expect(letterRows.flat().filter(({ alt }) => alt !== undefined)).toEqual([{ key: "q", alt: "`" }]);
     expect(symbolRows.map((row) => row.map(({ key }) => key))).toEqual(letterRows.map((row) => row.map(({ alt }) => alt ?? "")));
     expect(symbolRows.map((row) => row.length)).toEqual([10, 9, 7]);
   });
