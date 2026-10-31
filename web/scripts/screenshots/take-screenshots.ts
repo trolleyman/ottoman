@@ -148,7 +148,7 @@ async function main() {
           for (const key of ['h', 'e', 'l', 'l', 'o'])
             await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
           await page.getByRole('button', { name: 'Tab' }).click()
-          for (const key of ['Escape', 'Home', 'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right', 'End'])
+          for (const key of ['Escape', 'Home', 'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right', 'End', 'Delete'])
             await page.getByRole('button', { name: key, exact: true }).click()
           if (shot.platform === 'pc') {
             if (shot.keyboard === 'space-nav') {
