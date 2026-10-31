@@ -5,7 +5,7 @@
 ## configures those agents and the daemon: the default pre-prompt, the sandbox
 ## policy (what agents may read, write and reach over the network), the decision
 ## gate, per-agent ([claude], [gemini], ...) overrides, and the [artifacts.<name>],
-## [services.<name>] and [tests.<name>] commands run per project.
+## [previews.<name>], [services.<name>] and [tests.<name>] scripts run per project.
 ##
 ## Reading this file:
 ##   ##  lines are Hydra's own docs and defaults - rewritten on every save, so edit
@@ -27,16 +27,16 @@ icon = "web/public/ottoman_logo.png"
 ## max visual-artifact generations run at once, across foreground (viewing a diff) and background (proactive) work; lower it for RAM-hungry generators, or 0 for unlimited (default 2).
 # artifact_concurrency = 2
 
-## pre-generate a head's artifacts in the background once it settles, so a diff is ready before you open it; set false to generate only when viewing - foreground generation and the concurrency cap still apply (default true).
+## pre-generate a head's artifacts in the background once it settles, so a diff is ready before you open it; set false to disable proactive work ("always" may still start on view, while other modes require an explicit retry). The concurrency cap still applies (default true).
 # artifact_prefetch = true
 
 ## max test-runner generations run at once; lower it for heavy suites, or 0 for unlimited (default 1).
 # test_concurrency = 1
 
-## re-run a head's test suites in the background when its branch-tip verdict is missing or stale, so it's ready before you open the panel; set false to run only on open / at merge - foreground runs and the concurrency cap still apply (default true).
+## re-run a head's test suites in the background when its branch-tip verdict is missing or stale, so it's ready before you open the panel; set false to disable proactive work ("always" may still start on view, and merge/publish workflows may require any mode). The concurrency cap still applies (default true).
 # test_prefetch = true
 
-## inclusive "min-max" TCP port range that live server previews ([[artifacts]] type = "server") allocate their listeners from; a fixed range keeps firewall rules simple, and busy ports are skipped (default 26601-26699).
+## inclusive "min-max" TCP port range that the live server previews ([previews.<name>]) allocate their listeners from; a fixed range keeps firewall rules simple, and busy ports are skipped (default 26601-26699).
 # preview_ports = "26601-26699"
 
 [sandbox]
@@ -44,10 +44,10 @@ icon = "web/public/ottoman_logo.png"
 ## defaults below AND across config layers (this list in ~/.config/hydra/
 ## config.toml applies to every project; a project's own list adds to it).
 ## A path can be ~ (HOME), absolute, or a $VAR. Secrets are hidden separately
-## via masked_paths, so nothing here holds credentials.
-## Built-in defaults, always writable (broad caches + toolchain + agent state):
-##     ~/.cache, ~/.local/share/mise, ~/.local/share/hydra/logs, ~/.claude,
-##     ~/.claude.json, ~/.gemini, ~/.copilot, ~/.codex
+## via masked_paths, so nothing here holds credentials. Prefer sandbox.cache for a
+## disposable cache instead of making the user's host cache writable.
+## Built-in defaults, always writable (agent state only; shared caches and toolchains are read-only):
+##     ~/.local/share/hydra/logs
 ## Common per-project additions (NOT writable by default - add the ones you use
 ## here, or to cow_paths for per-head copy-on-write isolation):
 ##     ~/.cargo - Rust registry + toolchain cache
@@ -56,26 +56,48 @@ icon = "web/public/ottoman_logo.png"
 ##     ~/.local/share/kotlin - Kotlin compiler cache
 ##     ~/.local/share/JetBrains - JetBrains toolbox
 ##     ~/.local/state - XDG state (some tools persist logs/history here)
-# writable_paths = ["~/.cache", "~/.local/share/mise", "~/.local/share/hydra/logs", "~/.claude", "~/.claude.json", "~/.gemini", "~/.copilot", "~/.codex"]
+# writable_paths = ["~/.local/share/hydra/logs"]
 
-## extra paths hidden in the sandbox (added to the built-in defaults).
-# masked_paths = ["~/.ssh", "~/.aws", "~/.azure", "~/.gnupg", "~/.docker", "~/.kube", "~/.password-store", "~/.config", "~/.netrc", "~/.git-credentials", "~/.npmrc", "~/.pypirc", "~/.zsh_history", "~/.bash_history", "~/.sh_history", "~/.config/mise/config.local.toml", "~/.dotfiles/mise/config.local.toml"]
+## extra host paths exposed read-only in the sandbox, unioned on top of the built-in developer/tool allow-list and across config layers. A path can be ~ (HOME), absolute, or a $VAR. Known credential paths remain masked even when they sit below an allowed parent.
+## Built-in readable paths (writable paths are also readable):
+##     ~/.cache, ~/.gitconfig, ~/.gitignore_global, ~/.cargo, ~/.rustup
+##     ~/.gradle, ~/.m2/repository, ~/.nuget/packages, ~/.npm, ~/.nvm
+##     ~/.bun, ~/.deno, ~/.pyenv, ~/.rbenv, ~/.sdkman
+##     ~/.jdks, ~/.local/bin, ~/.local/share/aube, ~/.local/share/claude, ~/.local/share/codex
+##     ~/.local/share/kotlin, ~/.local/share/mise, ~/.local/share/pnpm, ~/.local/share/JetBrains, ~/Android/Sdk
+##     ~/Library/Android/sdk, ~/Library/pnpm, ~/.config/git, ~/.config/mise/config.toml
+# readable_paths = ["~/.cache", "~/.gitconfig", "~/.gitignore_global", "~/.cargo", "~/.rustup", "~/.gradle", "~/.m2/repository", "~/.nuget/packages", "~/.npm", "~/.nvm", "~/.bun", "~/.deno", "~/.pyenv", "~/.rbenv", "~/.sdkman", "~/.jdks", "~/.local/bin", "~/.local/share/aube", "~/.local/share/claude", "~/.local/share/codex", "~/.local/share/kotlin", "~/.local/share/mise", "~/.local/share/pnpm", "~/.local/share/JetBrains", "~/Android/Sdk", "~/Library/Android/sdk", "~/Library/pnpm", "~/.config/git", "~/.config/mise/config.toml"]
 
-## paths re-exposed read-only after a masked parent (added to the built-in defaults).
+## extra paths hidden in the sandbox (added to the built-in defense-in-depth defaults and applied after every read/write allowance).
+# masked_paths = ["~/.ssh", "~/.aws", "~/.azure", "~/.gnupg", "~/.docker", "~/.kube", "~/.password-store", "~/.config/gh", "~/.config/glab-cli", "~/.cargo/credentials", "~/.cargo/credentials.toml", "~/.netrc", "~/.git-credentials", "~/.npmrc", "~/.pypirc", "~/.zsh_history", "~/.bash_history", "~/.sh_history", "~/.config/mise/config.local.toml", "~/.dotfiles/mise/config.local.toml", "~/Library/Keychains", "~/Library/Mail", "~/Library/Messages", "/Volumes"]
+
 # restore_ro = ["~/.config/git", "~/.config/mise/config.toml"]
-
-## paths mounted copy-on-write (read source, writes kept per-head): worktree-relative (mirrored from project root) or home/absolute like ~/.gradle (overlaid in place, supersedes its writable bind).
 # ~/.magefile is mage's compiled-binary cache (mage EXECUTES cached binaries by
 # hash, so it must never be host-writable from a sandbox — cache poisoning would
 # run head-written code on the host). CoW shares the host cache read-only and
 # keeps each head's writes private, so `mage` works inside sandboxes.
+## paths exposed copy-on-write (read source, writes kept per-head): worktree-relative paths are cloned/mirrored into the worktree. Linux can also overlay home/absolute paths like ~/.gradle in place; macOS cannot mount over those paths and rejects writable requests for them.
 cow_paths = ["~/.magefile"]
+
+## additional daemon environment variable names passed into heads (added across config layers). Heads otherwise receive only a fixed baseline plus authentication variables for their selected provider. Values are resolved at launch and never written to config or logs. Hydra-owned names, including every HYDRA_* variable, cannot be inherited.
+# inherit_env = []
 
 ## shell script run in the sandbox before every agent launch - spawn and resume, so it must be idempotent (e.g. mise trust). To set environment variables for the agent, append `KEY=value` lines to the file at $HYDRA_ENV (e.g. `echo "GRADLE_USER_HOME=/tmp/gradle-iso" >> "$HYDRA_ENV"`); each is exported into the agent and every command it runs, overriding any inherited value (the GitHub Actions $GITHUB_ENV model). Those same vars are also injected into the head's sandboxed bash shells (the terminal '+' tabs) so a shell shares the agent's environment - the script is not re-run there; the non-sandboxed 'Regular shell' is left out. It also gets the HYDRA_* head-context vars (HYDRA_HEAD_ID, HYDRA_WORKTREE, ...).
 # pre_spawn_script = ""
 
 ## shell script run in a sandbox when a head ends, before its worktree is removed - gets HYDRA_* + HYDRA_END_STATE; e.g. release a claimed resource.
 # pre_exit_script = ""
+
+## project-scoped writable caches shared by every matching head and sandboxed runner.
+## Each key owns <project-state>/cache/sandbox/<key>. Set exactly one of:
+##   env  - redirect that tool's cache variable to the shared directory.
+##   path - link a worktree-relative, gitignored path to the shared directory.
+## Environment targets must be unique; path targets must not overlap or nest.
+## Cache contents are mutable shared state: use them only for disposable/rebuildable data,
+## never credentials, source-of-truth state, GOPATH/GOBIN, or per-head package installs.
+# [sandbox.cache]
+# go_build = { env = "GOCACHE" }
+# example_path = { path = "build/cache" }
 
 [sandbox.network]
 ## egress posture: "off" (no network), "unrestricted" (network, no host filtering), "advisory" (proxy-only host filtering - every honest client is filtered, but escapable), or "hard" (inescapable pasta+nft netns, failing closed - no network - when the boundary can't be built; "on" is a synonym for "hard"). Default "hard". Supersedes the legacy enabled/filter_enabled booleans.
@@ -103,10 +125,11 @@ cow_paths = ["~/.magefile"]
 ## gets the union of every provider's hosts):
 ##     claude: *.anthropic.com, claude.ai, *.claude.ai, *.claudeusercontent.com,
 ##       platform.claude.com, http-intake.logs.us5.datadoghq.com
-##     codex: api.openai.com, *.openai.com, chatgpt.com
+##     codex: api.openai.com, *.openai.com, chatgpt.com, *.chatgpt.com,
+##       *.oaiusercontent.com
 ##     gemini: *.googleapis.com
 ##     copilot: *.githubcopilot.com
-allowed_hosts = ["mise-versions.jdx.dev"]
+allowed_hosts = ["mise-versions.jdx.dev", "vuln.go.dev"]
 
 ## outbound hosts (exact host or *.suffix) to deny even when otherwise allowed - overrides both allowed_hosts and the built-in defaults, so you can subtract a default host without redefining the list.
 # blocked_hosts = []
@@ -117,6 +140,9 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 [policy]
 ## enable the decision-capable gate that can deny tool calls (non-allow-listed MCP, credential reads, policy-file writes, global installs) even under skip-permissions (default true).
 # gate_enabled = true
+
+## how much of the repo's shared .git the head may write: "readonly" (default) locks the whole .git read-only so commits go through the mcp__hydra__git_commit tool (anti-rogue); "off" leaves it writable. See docs/git-isolation.md.
+# git_isolation = "readonly"
 
 ## MCP server names the agent may use (whole-server grant covers all its tools); any other server is stripped before launch and denied at runtime (default none).
 # mcp_allowed = []
@@ -133,8 +159,14 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 ## auto-allow MCP tools the read/write classifier deems read-only (parking only writes/unknown). Best-effort heuristic - off by default.
 # mcp_auto_allow_read = false
 
+## make the allow-list the ONLY source of MCP servers: Hydra renders the allow-listed servers (plus its own control server) into a per-head config and launches Claude with --strict-mcp-config, so the host's ~/.claude.json and a branch's .mcp.json are ignored outright rather than filtered (filtering rides a bind mount the host can silently detach). Costs the claude.ai account connectors - Gmail/Calendar/Drive - which cannot be re-declared; turn it off for an agent that needs them. On by default.
+# strict_mcp = true
+
+## allow this head to send attributed messages to other live heads in the same project. Discovery stays available when this is off. Off by default.
+# agent_messaging = false
+
 ## extra tool names to treat as safe (allowed without approval), extending the gate's built-in set. The gate fails closed on any tool it doesn't recognize (not a known built-in and no mcp__ prefix), parking it for approval; register a legitimate tool here to stop that. The default value below is the built-in set the gate already recognizes - add names to it, don't remove.
-# known_tools = ["Agent", "Artifact", "AskUserQuestion", "Bash", "BashOutput", "CronCreate", "CronDelete", "CronList", "DesignSync", "Edit", "EnterPlanMode", "EnterWorktree", "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "KillBash", "KillShell", "LS", "LSP", "Monitor", "MultiEdit", "NotebookEdit", "NotebookRead", "PushNotification", "Read", "RemoteTrigger", "ReportFindings", "ScheduleWakeup", "SendMessage", "Skill", "SlashCommand", "Task", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite", "ToolSearch", "WebFetch", "WebSearch", "Workflow", "Write"]
+# known_tools = ["Agent", "Artifact", "AskUserQuestion", "Bash", "BashOutput", "CronCreate", "CronDelete", "CronList", "DesignSync", "Edit", "EnterPlanMode", "EnterWorktree", "ExitPlanMode", "ExitWorktree", "Glob", "Grep", "KillBash", "KillShell", "LS", "LSP", "Monitor", "MultiEdit", "NotebookEdit", "NotebookRead", "PushNotification", "Read", "RemoteTrigger", "ReportFindings", "ScheduleWakeup", "SendMessage", "Skill", "SlashCommand", "Task", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "TodoWrite", "ToolSearch", "WebFetch", "WebSearch", "Workflow", "Write", "apply_patch", "create_goal", "exec", "exec_command", "followup_task", "get_goal", "interrupt_agent", "list_agents", "list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource", "request_plugin_install", "request_user_input", "send_message", "spawn_agent", "tool_search", "update_goal", "update_plan", "view_image", "wait", "wait_agent", "write_stdin"]
 
 ## Claude-specific overrides: any of the settings above, applied only to claude agents.
 # [claude]
@@ -150,11 +182,13 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 ## Codex-specific overrides: any of the settings above, applied only to codex agents.
 # [codex]
 
-## [artifacts.<name>]: per-project commands that render visual artifacts (e.g.
+## [artifacts.<name>]: per-project scripts that render visual artifacts (e.g.
 ## screenshots) of a checkout. The diff viewer runs each against both sides of a
 ## comparison and shows the outputs that differ. The <name> table key is the unique
 ## label, also used as the cache directory. Fields:
-##   command      shell command run via `bash -c` in the checkout directory (required).
+##   script       shell script run via `bash -c` in the checkout directory (required).
+##                Write it as a multi-line ''' block - it is a script, not a one-liner:
+##                each step on its own line, comments where a step needs explaining.
 ##   timeout_sec  max seconds the command may run (0 = built-in default).
 ##   unsafe_host  run on the host with NO sandbox - full access to your machine and
 ##                credentials; only for audited, self-contained commands (default false).
@@ -162,25 +196,16 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 ##                a pristine checkout (git clean -fdx) instead of the default that keeps
 ##                dependency/build caches warm (-fd). Slower; set true only if stale
 ##                ignored output can leak between commits (default false).
+##   auto_run     "always" (default; may start on view), "settled" (starts when the
+##                agent rests, never on view), or "never" (no automatic start). Refresh
+##                and explicit retries still run any mode; cached artifacts still display.
 ##   strict       run the command under `set -eo pipefail` so a failing step aborts
 ##                and propagates instead of being swallowed (default true; set false
 ##                to run the command exactly as written).
 ##   enabled      set false to skip this script in the diff viewer (default true).
-##   type         "server" makes this a live preview instead of diffed media: the
-##                command must start an HTTP server on the port Hydra hands it.
-##                Hydra proxies a per-instance port to it, spinning it up when the
-##                preview link is opened and tearing it down when idle. Server scripts
-##                get HYDRA_PREVIEW_PORT, HYDRA_PREVIEW_ADDR (the host:port to bind -
-##                0.0.0.0:PORT under network mode hard, else 127.0.0.1:PORT; bind this,
-##                not 127.0.0.1, or hard mode 502s) and HYDRA_PREVIEW_SOURCE (the
-##                checkout dir). They may print ::hydra:server:ready:: on stdout to
-##                declare readiness early (otherwise the first HTTP response counts).
-##                They never appear in the diff grid. Default "" = diffed media.
-##   idle_timeout_sec   (server) teardown after this long with zero in-flight
-##                requests; open WebSocket/long-poll connections count as in-flight
-##                (0 = default 300). The link respawns it on the next visit.
-##   ready_timeout_sec  (server) max seconds from spawn to ready - builds included
-##                (0 = default 900).
+## A live, clickable preview of the app is a [previews.<name>] entry, not an
+## artifact - see that section below. (The old spelling for one, an artifact with
+## type = "server", still parses and is moved to [previews.<name>] on the next save.)
 ## Formats: .png, .jpg and .gif are diffed pixel-by-pixel; .webm video is diffed
 ## frame-by-frame when ffmpeg is installed (otherwise by byte hash). Other types
 ## (.webp .avif .svg .bmp .pdf) are compared by byte hash. Video is .webm ONLY, and
@@ -189,6 +214,14 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 ## "modified".
 ## The command is given: HYDRA_ARTIFACT_OUTPUT (directory to write images into),
 ## HYDRA_ARTIFACT_SOURCE (the checkout dir), HYDRA_ARTIFACT_REF (the resolved ref).
+## Streaming: after writing a file (and its .meta sidecar) the command may print
+## ::hydra:artifact:: <path> on stdout (path relative to HYDRA_ARTIFACT_OUTPUT, e.g.
+## echo "::hydra:artifact:: home-dark.png"). Hydra then scans and diffs just that file
+## and streams the tile to the diff viewer immediately, so images trickle in as they
+## render instead of all appearing when the command exits. It is optional - emit no
+## markers and every output is still collected by the final scan on exit. Emit the
+## marker only once the file is fully written. (Print ::hydra:progress:: <text> to set
+## the live progress header shown while the command runs.)
 ## Tags: alongside an image foo.png the command may write a JSON sidecar foo.png.meta
 ## like {"tags": ["theme::dark", "viewport::phone"]}. The diff viewer shows these as
 ## labels and offers a filter. A "category::value" tag is a scoped label: only one
@@ -215,7 +248,7 @@ allowed_hosts = ["mise-versions.jdx.dev"]
 #   runner). Playwright's Chromium is pre-cached under ~/.cache/ms-playwright, so
 #   `bun install` pulls only JS — no browser download.
 [artifacts.screenshots]
-command = '''
+script = '''
 cd web
 export BUN_INSTALL_CACHE_DIR="$PWD/.bun-cache" BUN_TMPDIR="$PWD/.bun-tmp"
 mkdir -p "$BUN_TMPDIR"
@@ -224,12 +257,52 @@ bun scripts/screenshots/take-screenshots.ts
 '''
 timeout_sec = 900
 
-## [services.<name>]: per-project long-running commands the daemon supervises while
+## [previews.<name>]: per-project scripts that boot a live, clickable preview of
+## the app at a checkout. Each appears in the Previews row on the agent page; Hydra
+## proxies a dedicated port to it, spawning the server when its link is first
+## opened, keeping it warm while requests flow, and tearing it down once idle (the
+## next visit respawns it). The <name> table key is the unique label. Fields:
+##   script       shell script run via `bash -c` in the checkout directory (required).
+##                It must build/boot a server that listens on $HYDRA_PREVIEW_ADDR and
+##                stay in the foreground. Write it as a multi-line ''' block - it is a
+##                script, not a one-liner: each step on its own line.
+##   unsafe_host  run on the host with NO sandbox - full access to your machine and
+##                credentials. Worse here than for an artifact: a preview runs the
+##                previewed ref's code as a long-lived resident process (default false).
+##   strict       run the command under `set -eo pipefail` so a failing build step
+##                aborts the spawn instead of serving a half-built tree (default true).
+##   enabled      set false to hide this preview from the agent page (default true).
+##   idle_timeout_sec   teardown after this long with zero in-flight requests; open
+##                WebSocket/long-poll connections count as in-flight, so a live app tab
+##                keeps its preview running (0 = default 300).
+##   ready_timeout_sec  max seconds from spawn to ready - builds included (0 = default
+##                900). Ready = the first successful dial of the port, or an explicit
+##                ::hydra:server:ready:: line on stdout, whichever comes first.
+## The command is given: HYDRA_PREVIEW_PORT (the port to listen on), HYDRA_PREVIEW_ADDR
+## (the full host:port to bind - 0.0.0.0:PORT under network mode hard, else
+## 127.0.0.1:PORT; bind THIS, not a hardcoded 127.0.0.1, or hard mode 502s) and
+## HYDRA_PREVIEW_SOURCE (the checkout dir). Print ::hydra:progress:: <text> to set the
+## headline shown while it boots.
+## Which ports the proxy allocates from is preview_ports, above.
+## Layering: [previews.<name>] entries merge by name across config layers (user ->
+## project -> config.local.toml) - set fields patch the same-named inherited entry,
+## new names append.
+## Previews used to be written as [artifacts.<name>] with type = "server". That still
+## parses - such an entry is read as a preview and rewritten here on the next save.
+# [previews.app]
+# script = '''
+# npm install
+# npm run build
+# npm run serve -- --host "$HYDRA_PREVIEW_ADDR"
+# '''
+# ready_timeout_sec = 900
+
+## [services.<name>]: per-project long-running scripts the daemon supervises while
 ## the project is registered. Each is started on daemon boot (and when the project
 ## is added), restarted with capped backoff if it exits unexpectedly, and
 ## process-group-killed on daemon shutdown, project removal, or a config save.
 ## The <name> table key is the unique label shown in the UI and logs. Fields:
-##   command       shell command run via `bash -c` from the project root (required).
+##   script        shell script run via `bash -c` from the project root (required).
 ##   host          run on the host with NO sandbox - full machine/credential access;
 ##                 needed for host devices the sandbox hides, e.g. /dev/kvm (default false).
 ##   max_restarts  relaunch cap after an unexpected exit (default 3; 0 = never).
@@ -241,19 +314,24 @@ timeout_sec = 900
 ## new names append. (The legacy [[services]] array syntax still parses, but a file
 ## using it replaces the inherited list wholesale.)
 # [services.emu-pool]
-# command = "scripts/emu-pool.sh up 3 --foreground"
+# script = '''
+# scripts/emu-pool.sh up 3 --foreground
+# '''
 # host = true
 # max_restarts = 3
 
-## [tests.<name>]: per-project test-runner commands. Hydra runs each against a
+## [tests.<name>]: per-project test-runner scripts. Hydra runs each against a
 ## head's branch and parses the report into a pass/fail verdict that gates the
 ## merge button (failing/errored soft-block merge; force always available). The
 ## <name> table key is the unique label, also used as the cache directory. Fields:
-##   command      shell command run via `bash -c` in the checkout directory (required).
+##   script       shell script run via `bash -c` in the checkout directory (required).
 ##   timeout_sec  max seconds the command may run (0 = built-in default).
 ##   unsafe_host  run on the host with NO sandbox - runs the diffed ref's test code;
 ##                only for trusted refs (default false).
 ##   clean_ignored  also delete git-ignored files before each run (default false).
+##   auto_run     "always" (default; may start on view), "settled" (starts when the
+##                agent rests, never on view), or "never" (no automatic start). Refresh
+##                and merge/publish workflows still run any mode; cached verdicts display.
 ##   strict       run the command under `set -eo pipefail` (default true). Note: a
 ##                runner exiting non-zero because tests FAILED is a valid verdict,
 ##                not a strict abort - strict only governs the shell pipeline.
@@ -281,9 +359,15 @@ timeout_sec = 900
 ##   ::hydra:test:fail:: auth/rotation.test.ts:48:24 › grace window | expected 3 got 2
 ##   ::hydra:test:warn:: web/src/x.ts:12:5 › no-console | Unexpected console statement
 ##   ::hydra:test:skip:: heads/resume_test.go › TestResumeOnBoot | needs daemon
+##   ::hydra:test:pass:38:: internal/artifacts › TestFast       (38 = duration in ms)
+## Print ::hydra:progress:: <text> for an explicit phase headline; ordinary stdout
+## stays in the live log but is not used as compact status for streaming runners.
 ## The token before the first › is the location (path[:line[:col]] or dotted class),
 ## middle › tokens are scope levels, the last is the test name, text after | is the
-## message. A marker is one line; in the message an escape sequence expands -
+## message. A verb takes an optional :<ms> duration suffix, giving a streamed case
+## the timing a JUnit report carries in its `time` attribute; it rides on the verb
+## (a closed set) so a test name can never be mistaken for it, and omitting it stays
+## valid. A marker is one line; in the message an escape sequence expands -
 ## backslash-n to a newline, backslash-t to a tab, backslash-r to a carriage return
 ## (so a multi-line stack trace fits on the one line) - and a doubled backslash
 ## becomes one literal backslash. Any other escape is left as-is.
@@ -306,7 +390,7 @@ timeout_sec = 900
 #   all:dist` needs it present to compile the whole module; a stub index.html is
 #   enough for the tests (they don't assert on the bundled frontend).
 [tests.go]
-command = '''
+script = '''
 mkdir -p web/dist
 [ -e web/dist/index.html ] || printf '<!doctype html>\n' > web/dist/index.html
 go test -json ./... 2>&1 | go run ./scripts/hydra/gotest-markers
@@ -327,7 +411,7 @@ type = "stdout"
 #     worktree-local bun cache / node_modules / the generated src/api client.
 # Same read-only-~/.bun workaround as the screenshots artifact.
 [tests.web]
-command = '''
+script = '''
 cd web
 export BUN_INSTALL_CACHE_DIR="$PWD/.bun-cache" BUN_TMPDIR="$PWD/.bun-tmp"
 mkdir -p "$BUN_TMPDIR"
@@ -344,18 +428,44 @@ type = "stdout"
 ## never put a token here (host-side gh/glab creds or the 0600 secrets file).
 # [review]
 # provider = "auto"            # auto | github | gitlab (auto detects from the remote URL)
+# publisher = "forge"          # forge | graphite (Graphite uses GitHub underneath)
 # remote = "origin"
 # auth = "cli"                 # cli (shell out to gh/glab) | token (REST)
 # default_action = "merge"     # merge (local, as today) | create_mr
-# push_branch_template = "{id}" # e.g. "feat/{ticket}-{id}"; {id} {ticket} {base}
+# push_branch_template = "{id}" # e.g. "feat/{issue}-{id}"; {id} {issue} {base}
+# issue_pattern = "[A-Z]+-[0-9]+" # extracts a Linear/Jira key from the head
 # draft = true                 # open MRs as draft
 # squash = true                # request squash-on-merge
 # delete_remote_branch = true  # tell the forge to delete on merge
 # require_local_tests = true   # gate Publish on local [[tests]] like merge is
-# publish_when_green = false   # arm new heads to auto-open a draft MR when green
+# auto_push = true             # automatically push after an MR is linked
 # protected_branches = ["main"] # warn before a direct LOCAL merge into these
 
-## [jira] powers {ticket} templating and (later) spawn-from-ticket.
-# [jira]
-# url = "https://mycorp.atlassian.net"
-# ticket_pattern = "[A-Z]+-[0-9]+"
+## [resources] caps the cgroup limits applied to every scoped workload of this
+## project (agent, preview, service, artifact) via its transient systemd scope, so
+## one runaway workload yields to the daemon and interactive work instead of
+## starving the box. Weights are soft (they only bite under contention). CPU and
+## IO ceilings have safe defaults; set a ceiling to 0 to opt out.
+## A hard cap is silently skipped where its cgroup controller is not delegated to
+## the user systemd manager (cpu/io often are not).
+##
+## If a single head can still stall the whole machine, io_weight is probably
+## doing nothing: weights need the bfq scheduler or blk-iocost, and a typical
+## NVMe has neither, so the property is accepted and ignored. The bandwidth
+## caps below are blk-throttle instead, which always bites. The daemon logs a
+## warning at startup when it detects io_weight is inert.
+# [resources]
+# cpu_weight = 50   # 1-10000, soft CPU share under contention (default 50; below the daemon's 100)
+# io_weight  = 50   # 1-10000, soft block-IO share under contention (default 50)
+# cpu_quota  = 400  # hard CPU cap, percent of one core; default scales with this machine
+# memory_max = 2048 # hard memory ceiling in MB (OOM-killed past it); omit = no cap
+# tasks_max  = 512  # hard cap on processes/threads; omit = no cap
+# io_read_bandwidth_max  = 80 # hard read ceiling in MB/s for this project's device
+# io_write_bandwidth_max = 40 # hard write ceiling in MB/s; set 0 for no cap
+## The machine_* and background_* fields are honored only in the user config.
+# machine_cpu_quota = 1600
+# machine_io_read_bandwidth_max = 160
+# machine_io_write_bandwidth_max = 80
+# background_cpu_quota = 400
+# background_io_read_bandwidth_max = 80
+# background_io_write_bandwidth_max = 40
