@@ -11,10 +11,14 @@ const positions: KeyPositions = {};
 const pathFor = (word: string) => Array.from(word).filter((letter, index) => letter !== word[index - 1]).map((letter) => positions[letter]);
 
 describe("keyboard layout", () => {
-  test("keeps British number holds fixed with only backtick assigned to a letter", () => {
+  test("keeps the chosen British hold layout aligned with the symbol grid", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
     expect(numberRow.map(({ alt }) => alt).join("")).toBe('!"£$%^&*()');
-    expect(letterRows.flat().filter(({ alt }) => alt !== undefined)).toEqual([{ key: "q", alt: "`" }]);
+    expect(letterRows.map(row => row.map(({ alt }) => alt).join(""))).toEqual([
+      "`¬€•<>+=#~", "-_:;[]{}@", "|\\.,?'/",
+    ]);
+    const hints = [...numberRow, ...letterRows.flat()].map(({ alt }) => alt);
+    expect(new Set(hints).size).toBe(hints.length);
     expect(symbolRows.map((row) => row.map(({ key }) => key))).toEqual(letterRows.map((row) => row.map(({ alt }) => alt ?? "")));
     expect(symbolRows.map((row) => row.length)).toEqual([10, 9, 7]);
   });

@@ -35,6 +35,19 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const fastReceived = textMessages().slice(beforeFast).map(({ message }) => message.type === "text" ? message.text : "").join("");
   assert(fastReceived === fastText, `Rapid taps lost text: expected ${fastText}, received ${fastReceived}`);
 
+  const keyGaps = await page.locator(".keyboard-key-rows").evaluate(element => {
+    const faces = (row: Element) => Array.from(row.children).filter(child => child instanceof HTMLButtonElement)
+      .map(child => (child.querySelector(".key-face") ?? child).getBoundingClientRect());
+    const rows = Array.from(element.children).filter(child => child instanceof HTMLDivElement);
+    const horizontal = rows.flatMap(row => {
+      const boxes = faces(row);
+      return boxes.slice(1).map((box, index) => box.left - boxes[index].right);
+    });
+    const number = faces(rows[0])[0], letter = faces(rows[1])[0];
+    return [...horizontal, letter.top - number.bottom];
+  });
+  assert(keyGaps.every(gap => Math.abs(gap - 4) < 0.2), `Key face gaps must all be 4px: ${JSON.stringify(keyGaps)}`);
+
   const navBox = await page.getByLabel("Navigation keys", { exact: true }).boundingBox();
   const suggestionBox = await page.getByLabel("Word suggestions", { exact: true }).boundingBox();
   assert(navBox && suggestionBox && suggestionBox.y - navBox.y - navBox.height >= 5.9, "Suggestions must have a visible gap above the navigation row");
@@ -74,6 +87,32 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
 
   await page.getByRole("button", { name: "Windows", exact: true }).waitFor();
   assert(await page.evaluate(() => /Macintosh/.test(navigator.userAgent)), "Remote-OS test must use an Apple browser with a Windows agent");
+  const superKey = page.getByRole("button", { name: "Windows", exact: true });
+  const beforeSuperTap = sent.length;
+  await superKey.click();
+  assert(await superKey.getAttribute("aria-pressed") === "true", "Tapping Super must select the modifier");
+  await superKey.click();
+  assert(await superKey.getAttribute("aria-pressed") === "false", "Tapping Super again must clear the modifier");
+  assert(sent.length === beforeSuperTap, "Super taps must not send a standalone key press");
+  const superBox = await superKey.boundingBox();
+  assert(superBox, "Missing Super key");
+  const beforeSuperHold = sent.length;
+  await page.mouse.move(superBox.x + superBox.width / 2, superBox.y + superBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(60);
+  assert(await page.locator('[data-key-preview="action"]').count() === 0 && sent.length === beforeSuperHold, "Super hold must wait before its popup and key press");
+  await page.waitForTimeout(450);
+  assert(await page.locator('[data-key-preview="action"]').textContent() === "Win", "Held Super must show its popup");
+  await page.mouse.up();
+  const superEvents = sent.slice(beforeSuperHold).map(({ message }) => message).filter(message => message.type === "keydown" || message.type === "keyup");
+  assert(superEvents.length === 2 && superEvents[0].key === "Meta" && superEvents[0].type === "keydown" && superEvents[1].key === "Meta" && superEvents[1].type === "keyup" && superEvents.every(event => event.modifiers.length === 0), "Super hold must send exactly one standalone key press");
+  assert(await superKey.getAttribute("aria-pressed") === "false", "Releasing a Super hold must not toggle the modifier");
+  const beforeSuperCancel = sent.length;
+  await page.mouse.down();
+  await superKey.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse", isPrimary: true });
+  await page.mouse.up();
+  await page.waitForTimeout(450);
+  assert(sent.length === beforeSuperCancel, "Cancelling a Super hold must stop its timer");
   await key("q").scrollIntoViewIfNeeded();
   const start = await centre("q");
   await page.mouse.move(start.x, start.y);
@@ -102,7 +141,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   assert(numberHoldMessages.length === 1 && numberHoldMessages[0].message.type === "text" && numberHoldMessages[0].message.text === "£", "Held 3 must send only sterling");
   for (const [letter, symbol] of [["q", "`"], ["o", "#"], ["p", "~"], ["z", "|"], ["x", "\\"], ["m", "/"]])
     assert(await key(letter).getAttribute("aria-label") === `${letter}, hold for ${symbol}`, `British ${letter} must expose ${symbol}`);
-  assert(await key("e").getAttribute("aria-label") === "e", "E must have no ellipsis hold");
+  assert(await key("e").getAttribute("aria-label") === "e, hold for €", "E must expose euro");
 
   // A tap and a cancelled hold should never become a swipe or a late symbol.
   await key("h").dblclick();
@@ -130,7 +169,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.waitForTimeout(60);
   assert(sent.slice(beforeCompletion).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 3, "Completion must replace only the typed prefix");
   assert(await bar.getByRole("button", { name: completions[1], exact: true }).getAttribute("aria-pressed") === "true", "The inserted suggestion must stay visibly selected");
-  assert(await bar.getByRole("button").first().evaluate((element) => getComputedStyle(element).borderStyle) === "solid", "Individual suggestions must have visible boundaries");
+  assert(await bar.getByRole("button").first().evaluate((element) => getComputedStyle(element).borderStyle) === "solid", "Suggestions must retain a subtle boundary");
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
 
   for (const letter of "don") await key(letter).click();
@@ -153,6 +192,23 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.getByRole("button", { name: "Type backtick", exact: true }).click();
   await page.waitForTimeout(60);
   assert(textMessages().slice(beforeBacktick).some(({ message }) => message.type === "text" && message.text === "`"), "The extra-key menu must type backtick");
+  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
+  for (const [label, keyName] of [
+    ["Previous track", "MediaTrackPrevious"], ["Play/pause", "MediaPlayPause"], ["Next track", "MediaTrackNext"],
+    ["Volume down", "AudioVolumeDown"], ["Mute", "AudioVolumeMute"], ["Volume up", "AudioVolumeUp"],
+  ]) {
+    const before = sent.length;
+    await page.getByRole("group", { name: "Additional keyboard keys" }).getByRole("button", { name: label, exact: true }).click();
+    await page.waitForTimeout(30);
+    const events = sent.slice(before).map(({ message }) => message);
+    assert(events.some(message => message.type === "keydown" && message.key === keyName) &&
+      events.some(message => message.type === "keyup" && message.key === keyName), `${label} must send a complete key press`);
+    assert(await page.getByLabel("Additional keyboard keys", { exact: true }).isVisible(), "Media controls must stay available for repeated presses");
+  }
+  const beforeInsert = sent.length;
+  await page.getByRole("button", { name: "Insert", exact: true }).click();
+  await page.waitForTimeout(30);
+  assert(sent.slice(beforeInsert).some(({ message }) => message.type === "keydown" && message.key === "Insert"), "More keys must send Insert");
   await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
   const beforePrint = sent.length;
   await page.getByRole("button", { name: /Print screen/i }).click();

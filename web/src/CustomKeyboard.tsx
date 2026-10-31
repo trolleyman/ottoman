@@ -13,7 +13,13 @@ import {
   Delete,
   Move,
   MoreHorizontal,
-  Camera,
+  SkipBack,
+  Play,
+  Pause,
+  SkipForward,
+  Volume1,
+  Volume2,
+  VolumeX,
   Option,
   Search,
   Settings,
@@ -58,6 +64,7 @@ function KeyboardSession({
   settingsPageOpen = false,
   modifiers,
   onToggleModifier,
+  onSuperPress,
 }: {
   connected: boolean;
   docked?: boolean;
@@ -80,6 +87,7 @@ function KeyboardSession({
   settingsPageOpen?: boolean;
   modifiers: Modifier[];
   onToggleModifier: (modifier: Modifier) => void;
+  onSuperPress: () => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const [shift, setShift] = useState<ShiftState>(() =>
@@ -330,7 +338,7 @@ function KeyboardSession({
 
   return (
     <div data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
-      <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
+      <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
           label="Control"
@@ -345,13 +353,13 @@ function KeyboardSession({
             <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
             </ModifierButton>
-            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
               <Command className="h-4 w-4" />
             </ModifierButton>
           </>
         ) : (
           <>
-            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
               {remoteOS === "windows" && <WindowsIcon className="h-[17px] w-[17px]" />}
             </ModifierButton>
             <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
@@ -365,17 +373,35 @@ function KeyboardSession({
             className="custom-keyboard-utility flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400">
             <MoreHorizontal className="h-4 w-4" />
           </ActionKey>
-          {moreOpen && <div id="keyboard-extra-actions" role="group" aria-label="Additional keyboard keys" className="absolute bottom-full right-0 z-[80] mb-2 w-60 rounded-xl border border-zinc-700 bg-zinc-900 p-2 shadow-2xl">
+          {moreOpen && <div id="keyboard-extra-actions" role="group" aria-label="Additional keyboard keys" className="absolute bottom-full right-0 z-[80] mb-2 flex w-64 flex-col gap-1 rounded-xl border border-zinc-700 bg-zinc-900 p-2 shadow-2xl">
+            <div className="grid grid-cols-3 gap-1">
+              {[{ key: "PrintScreen", label: "Print Screen" }, { key: "Insert", label: "Insert" }].map(({ key, label }) => (
+                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{label}</ActionKey>
+              ))}
+              <ActionKey type="button" aria-label="Type backtick" onPress={() => { type("`", true); haptic(settings.haptics); setMoreOpen(false); }} className="keyboard-extra-key">Backtick</ActionKey>
+              {[
+                { key: "MediaTrackPrevious", label: "Previous track", Icon: SkipBack },
+                { key: "MediaPlayPause", label: "Play/pause", Icon: Play },
+                { key: "MediaTrackNext", label: "Next track", Icon: SkipForward },
+                { key: "AudioVolumeDown", label: "Volume down", Icon: Volume1 },
+                { key: "AudioVolumeMute", label: "Mute", Icon: VolumeX },
+                { key: "AudioVolumeUp", label: "Volume up", Icon: Volume2 },
+              ].map(({ key, label, Icon }) => (
+                <ActionKey key={key} type="button" aria-label={label} title={label} onPress={() => navigate(key)} className="keyboard-extra-key"><Icon aria-hidden="true" className="h-4 w-4" />{key === "MediaPlayPause" && <Pause aria-hidden="true" className="h-4 w-4" />}</ActionKey>
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-1">
-              <ActionKey type="button" onPress={() => { navigate("PrintScreen"); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-xs text-zinc-100 hover:bg-zinc-800"><Camera className="h-4 w-4" />Print Screen</ActionKey>
-              <ActionKey type="button" aria-label="Type backtick" onPress={() => { type("`", true); haptic(settings.haptics); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-xs text-zinc-100 hover:bg-zinc-800"><span className="w-4 text-center font-mono text-lg">`</span>Backtick</ActionKey>
+              {[{ key: "PageUp", label: "Page up" }, { key: "PageDown", label: "Page down" }].map(({ key, label }) => (
+                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{label}</ActionKey>
+              ))}
             </div>
             <div className="grid grid-cols-3 gap-1">
-              {["PageUp", "PageDown", "Insert", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map((key) => (
-                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="rounded-lg bg-zinc-800 px-1 py-2 text-xs text-zinc-200 hover:bg-zinc-700">{key === "PageUp" ? "Page up" : key === "PageDown" ? "Page down" : key}</ActionKey>
+              {Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
+                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{key}</ActionKey>
               ))}
             </div>
           </div>}
+
         </div>
         <ActionKey
           type="button"
@@ -426,14 +452,14 @@ function KeyboardSession({
         </NavigationKey>
       </div>
 
-      <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-1.5 px-1.5 sm:gap-2 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
+      <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-0 px-1.5 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
         {settingsOpen ? (
           <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
             onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
             usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
         ) : (
           <>
-        <div className="flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
+        <div className="mb-1 flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
           {mode === "letters" ? (
             wordChoices.map((word) => (
               <ActionKey type="button" key={word}
@@ -447,7 +473,7 @@ function KeyboardSession({
                   pendingSwipeSpace.current = { context: textContext, pending: true };
                 }
                 haptic(settings.haptics);
-              }} className="keyboard-suggestion custom-keyboard-utility flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-200 hover:bg-zinc-700 aria-pressed:border-blue-400/60 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-200">
+              }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/5 bg-white/[0.02] px-2 text-sm text-zinc-300 hover:bg-white/5 aria-pressed:border-blue-400/60 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-200">
                 {selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase() && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
                 <span className="truncate">{matchWordCase(word, currentWord)}</span>
               </ActionKey>
@@ -468,12 +494,12 @@ function KeyboardSession({
           <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSelect={selectEmoji} /></Suspense>
         ) : (
           <>
-            <div className="relative flex min-h-0 flex-1 flex-col" data-swipe-ready={swipe.ready} {...swipe.handlers}>
+            <div className="keyboard-key-rows relative flex min-h-0 flex-1 flex-col" data-swipe-ready={swipe.ready} {...swipe.handlers}>
             {(settings.numberRow || searching || mode === "symbols") && (
               searching ? <div className="keyboard-scroll flex min-h-0 flex-1 gap-1 overflow-x-auto py-0.5" role="region" aria-label={mode === "emoji" ? "Emoji search results" : "Symbol search results"}>
                 {searchResults.map(([symbol, keywords]) => <ActionKey type="button" key={symbol} aria-label={`Type ${symbol}`} title={keywords}
                   onPress={() => mode === "emoji" ? selectEmoji(symbol) : selectSymbol(symbol)}
-                  className="custom-keyboard-utility flex w-9 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800 text-lg text-zinc-100 hover:bg-zinc-700">{symbol}</ActionKey>)}
+                  className="keyboard-suggestion flex w-9 shrink-0 items-center justify-center rounded-md border border-white/5 bg-white/[0.02] text-lg text-zinc-200 hover:bg-white/5">{symbol}</ActionKey>)}
                 {searchResults.length === 0 && <span role="status" className="flex flex-1 items-center justify-center text-xs text-zinc-500">No matches</span>}
               </div> : <div className="flex min-h-0 flex-1">
                 {numberRow.map((definition) => (
@@ -486,14 +512,14 @@ function KeyboardSession({
                 key={index}
                 className={`flex min-h-0 flex-1 ${index === 1 ? "px-[4.5%]" : ""}`}
               >
-                {index === 2 && mode === "symbols" && !symbolSearching && <div className="min-w-[52px] flex-[1.4] border border-transparent" />}
+                {index === 2 && mode === "symbols" && !symbolSearching && <div className="keyboard-cell min-w-[52px] flex-[1.4] border border-transparent" />}
                 {index === 2 && (mode === "letters" || symbolSearching) && (
                   <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
                   </UtilityKey>
                 )}
                 {index === 2 && mode === "emoji" && emojiSearching && (
-                  <div className="custom-keyboard-utility flex min-w-[52px] flex-[1.4] items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-500">
+                  <div className="keyboard-cell custom-keyboard-utility flex min-w-[52px] flex-[1.4] items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-500">
                     <Search className="h-4 w-4" />
                   </div>
                 )}
@@ -522,7 +548,7 @@ function KeyboardSession({
                     onPointerUp={endBackspace}
                     onPointerCancel={endBackspace}
                     onLostPointerCapture={endBackspace}
-                    className={`custom-keyboard-utility relative flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 ${backspaceHeld ? "ring-2 ring-blue-400/60 text-blue-200" : ""}`}
+                    className={`keyboard-cell custom-keyboard-utility relative flex min-w-[52px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 ${backspaceHeld ? "ring-2 ring-blue-400/60 text-blue-200" : ""}`}
                   >
                     <Delete className="h-5 w-5" />
                     {backspaceHeld && <KeyPreview><Delete className="h-5 w-5" /></KeyPreview>}
@@ -537,7 +563,7 @@ function KeyboardSession({
           </>
         )}
 
-        <div className={`flex shrink-0 gap-1.5 sm:gap-2 ${settings.tallerKeys ? "h-14" : "h-12"}`}>
+        <div className={`flex shrink-0 gap-0 ${settings.tallerKeys ? "h-14" : "h-12"}`}>
           <UtilityKey
             label={emojiSearching ? "Back to emoji" : symbolSearching ? "Back to symbols" : mode === "symbols" ? "Letters" : "Symbols"}
             wide
@@ -574,7 +600,7 @@ function KeyboardSession({
             onPointerUp={endSpace}
             onPointerCancel={cancelSpace}
             onContextMenu={(event) => event.preventDefault()}
-            className={`custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px ${
+            className={`keyboard-cell custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px ${
               spaceNavigating
                 ? "border-blue-400/60 bg-zinc-700/95 text-blue-100 ring-2 ring-inset ring-blue-400/15"
                 : "border-white/10 bg-zinc-600/95 text-zinc-200 active:bg-zinc-500"
@@ -601,7 +627,7 @@ function KeyboardSession({
               else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
             }}
-            className="custom-keyboard-utility flex min-w-[48px] flex-[1.3] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-zinc-700 disabled:opacity-40"
+            className="keyboard-cell custom-keyboard-utility flex min-w-[48px] flex-[1.3] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-zinc-700 disabled:opacity-40"
           >
             <CornerDownLeft className="h-5 w-5" />
           </ActionKey>
