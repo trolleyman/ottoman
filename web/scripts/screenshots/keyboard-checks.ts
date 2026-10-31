@@ -74,19 +74,35 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
 
   await page.getByRole("button", { name: "Windows", exact: true }).waitFor();
   assert(await page.evaluate(() => /Macintosh/.test(navigator.userAgent)), "Remote-OS test must use an Apple browser with a Windows agent");
-  await key("e").scrollIntoViewIfNeeded();
-  const start = await centre("e");
+  await key("w").scrollIntoViewIfNeeded();
+  const start = await centre("w");
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.waitForTimeout(60);
-  assert(await page.locator('[data-key-preview="letter"]').textContent() === "e", "Press popup must show the letter immediately");
+  assert(await page.locator('[data-key-preview="letter"]').textContent() === "w", "Press popup must show the letter immediately");
   await page.waitForTimeout(450);
-  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "£", "Held E must preview sterling");
+  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "€", "Held W must preview euro");
   const beforeHold = textMessages().length;
   await page.mouse.up();
   await page.waitForTimeout(60);
   const holdMessages = textMessages().slice(beforeHold);
-  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "£", "Held key must emit only sterling on release");
+  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "€", "Held key must emit only euro on release");
+
+  const sterling = page.getByRole("button", { name: '3, hold for £', exact: true });
+  const sterlingBox = await sterling.boundingBox();
+  assert(sterlingBox, "Number row must expose sterling on 3");
+  const beforeNumberHold = textMessages().length;
+  await page.mouse.move(sterlingBox.x + sterlingBox.width / 2, sterlingBox.y + sterlingBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(450);
+  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "£", "Held 3 must preview sterling");
+  await page.mouse.up();
+  await page.waitForTimeout(60);
+  const numberHoldMessages = textMessages().slice(beforeNumberHold);
+  assert(numberHoldMessages.length === 1 && numberHoldMessages[0].message.type === "text" && numberHoldMessages[0].message.text === "£", "Held 3 must send only sterling");
+  for (const [letter, symbol] of [["q", "`"], ["o", "#"], ["p", "~"], ["z", "|"], ["x", "\\"], ["m", "/"]])
+    assert(await key(letter).getAttribute("aria-label") === `${letter}, hold for ${symbol}`, `British ${letter} must expose ${symbol}`);
+  assert(await key("e").getAttribute("aria-label") === "e", "E must have no ellipsis hold");
 
   // A tap and a cancelled hold should never become a swipe or a late symbol.
   await key("h").dblclick();
@@ -146,12 +162,12 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   // Every symbol should occupy exactly its hinted letter's rectangle.
   const rectangles = await page.locator("[data-letter]").evaluateAll((elements) => elements.map((element) => {
     const { x, y, width, height } = element.getBoundingClientRect();
-    return { x, y, width, height, symbol: element.querySelector('.custom-keyboard-hint')?.textContent?.trim() };
+    return { x, y, width, height, symbol: element.querySelector('.custom-keyboard-hint')?.textContent?.trim() ?? "" };
   }));
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   const symbolRectangles = await page.locator(".custom-keyboard-key").evaluateAll((elements) => elements.slice(10, 36).map((element) => {
     const { x, y, width, height } = element.getBoundingClientRect();
-    return { x, y, width, height, symbol: element.getAttribute('aria-label') };
+    return { x, y, width, height, symbol: element.getAttribute('aria-label')?.split(', hold for ')[0] ?? "" };
   }));
   assert(JSON.stringify(rectangles) === JSON.stringify(symbolRectangles), `Symbol positions and sizes must match the letter hints: ${JSON.stringify({ rectangles, symbolRectangles })}`);
   await page.getByRole("button", { name: "Letters", exact: true }).click();
@@ -297,4 +313,17 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert(await key("e").isVisible(), "Back from settings must keep the keyboard open");
   assert(await page.getByRole("button", { name: "Period", exact: true }).count() === 0, "Period toggle must remove the bottom-row key");
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Number row", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  assert(await page.getByRole("button", { name: "3, hold for £", exact: true }).count() === 0, "Digit-row preference must hide digits in letter mode");
+  await page.getByRole("button", { name: "Symbols", exact: true }).click();
+  const beforeSymbol = textMessages().length;
+  await page.getByRole("button", { name: "£", exact: true }).click();
+  await page.waitForTimeout(60);
+  assert(textMessages().slice(beforeSymbol).some(({ message }) => message.type === "text" && message.text === "£"), "Symbol mode must still type sterling when the digit row is hidden");
+  await page.getByRole("button", { name: "Letters", exact: true }).click();
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Number row", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
 }

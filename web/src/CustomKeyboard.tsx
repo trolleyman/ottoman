@@ -469,7 +469,7 @@ function KeyboardSession({
         ) : (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col" data-swipe-ready={swipe.ready} {...swipe.handlers}>
-            {(settings.numberRow || searching) && (
+            {(settings.numberRow || searching || mode === "symbols") && (
               searching ? <div className="keyboard-scroll flex min-h-0 flex-1 gap-1 overflow-x-auto py-0.5" role="region" aria-label={mode === "emoji" ? "Emoji search results" : "Symbol search results"}>
                 {searchResults.map(([symbol, keywords]) => <ActionKey type="button" key={symbol} aria-label={`Type ${symbol}`} title={keywords}
                   onPress={() => mode === "emoji" ? selectEmoji(symbol) : selectSymbol(symbol)}
@@ -477,7 +477,7 @@ function KeyboardSession({
                 {searchResults.length === 0 && <span role="status" className="flex flex-1 items-center justify-center text-xs text-zinc-500">No matches</span>}
               </div> : <div className="flex min-h-0 flex-1">
                 {numberRow.map((definition) => (
-                  <Key key={definition.key} definition={{ key: mode === "letters" && shift !== "off" ? definition.alt! : definition.key }} settings={settings} onType={type} />
+                  <Key key={definition.key} definition={mode === "symbols" ? { key: definition.alt! } : shift !== "off" ? { key: definition.alt!, alt: definition.key } : definition} settings={settings} onType={type} />
                 ))}
               </div>
             )}
@@ -497,7 +497,7 @@ function KeyboardSession({
                     <Search className="h-4 w-4" />
                   </div>
                 )}
-                {row.map((definition) => (
+                {row.map((definition, column) => definition.key ? (
                   <Key
                     key={definition.key}
                     definition={definition}
@@ -507,7 +507,7 @@ function KeyboardSession({
                     swipeActive={swipe.active}
                     suppressTap={swipe.suppressTap}
                   />
-                ))}
+                ) : <div key={`empty-${column}`} aria-hidden="true" className="custom-keyboard-key min-w-0 flex-1" />)}
                 {index === 2 && (
                   <button
                     type="button"

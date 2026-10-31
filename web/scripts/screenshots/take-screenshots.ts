@@ -177,7 +177,7 @@ async function main() {
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.focus()
         if (shot.keyboard === 'key-preview' || shot.keyboard === 'key-hold') {
-          const key = page.locator('[data-letter="e"]')
+          const key = page.locator('[data-letter="w"]')
           const box = await key.boundingBox()
           if (!box) throw new Error('Missing E key')
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -198,7 +198,7 @@ async function main() {
           await page.getByRole('button', { name: 'c, hold for ,' }).click()
           await page.getByRole('button', { name: 'Control' }).click()
           for (const key of ['h', 'e', 'l', 'l', 'o'])
-            await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+            await page.locator(`[data-letter="${key}"]`).click()
           await page.getByRole('button', { name: 'Tab' }).click()
           for (const key of ['Escape', 'Home', 'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right', 'End', 'Delete'])
             await page.getByRole('button', { name: key, exact: true }).click()
@@ -227,14 +227,14 @@ async function main() {
           if (shot.keyboard === 'emoji-search') {
             await page.getByRole('button', { name: 'Search Emoji' }).click()
             for (const key of ['l', 'o', 'v', 'e'])
-              await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+              await page.locator(`[data-letter="${key}"]`).click()
           }
         } else {
           await page.getByRole('button', { name: 'Symbols' }).click()
           if (shot.keyboard === 'symbol-search') {
             await page.getByRole('button', { name: 'Search Symbols' }).click()
             for (const key of ['p', 'o', 'u', 'n', 'd'])
-              await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+              await page.locator(`[data-letter="${key}"]`).click()
             await page.getByRole('button', { name: 'Type £' }).waitFor()
           } else {
             await page.getByRole('button', { name: '£', exact: true }).waitFor()

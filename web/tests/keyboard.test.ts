@@ -11,16 +11,33 @@ const positions: KeyPositions = {};
 const pathFor = (word: string) => Array.from(word).filter((letter, index) => letter !== word[index - 1]).map((letter) => positions[letter]);
 
 describe("keyboard layout", () => {
-  test("uses UK shifts and promotes the exact letter hints to symbol keys", () => {
+  test("keeps British number shifts and familiar symbol sides without duplicate hints", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
-    expect(letterRows[0][0]).toEqual({ key: "q", alt: "!" });
-    expect(letterRows[2][1]).toEqual({ key: "x", alt: "|" });
-    expect(numberRow[1].alt).toBe('"');
-    expect(numberRow[2].alt).toBe("£");
-    expect(letterRows[0][2]).toEqual({ key: "e", alt: "£" });
-    expect(symbolRows.map((row) => row.map((key) => key.key))).toEqual(letterRows.map((row) => row.map((key) => key.alt!)));
-    expect(symbolRows[1][0].key).toBe("-");
-    expect(symbolRows[2].slice(-2).map((key) => key.key)).toEqual(["?", "'"]);
+    expect(numberRow.map(({ alt }) => alt).join("")).toBe('!"£$%^&*()');
+    const holds = Object.fromEntries(letterRows.flat().map(({ key, alt }) => [key, alt]));
+    expect(holds.q).toBe("`");
+    expect(holds.e).toBeUndefined();
+    expect(holds.o).toBe("#");
+    expect(holds.p).toBe("~");
+    expect(holds.z).toBe("|");
+    expect(holds.x).toBe("\\");
+    expect(holds.j).toBe("@");
+    expect(holds.k).toBe("+");
+    expect(holds.v).toBe(".");
+    expect(holds.m).toBe("/");
+    const allHints = [...numberRow, ...letterRows.flat()].flatMap(({ alt }) => alt ? [alt] : []);
+    expect(new Set(allHints).size).toBe(allHints.length);
+    for (const symbol of Array.from("!\"£$%^&*()-=_+[]{};:'@#~,.<>/?\\|`€"))
+      expect(allHints).toContain(symbol);
+    expect(symbolRows.map((row) => row.map(({ key }) => key))).toEqual(letterRows.map((row) => row.map(({ alt }) => alt ?? "")));
+    expect(symbolRows.map((row) => row.length)).toEqual([10, 9, 7]);
+  });
+
+  test("preserves the American letter mapping", () => {
+    const { numberRow, letterRows } = keyboardRows("en-US");
+    expect(numberRow.map(({ alt }) => alt).join("")).toBe("!@#$%^&*()");
+    expect(letterRows[0].map(({ alt }) => alt).join("")).toBe("!@#$%^&*()");
+    expect(letterRows[2].map(({ alt }) => alt).join("")).toBe("\\|,`@?'");
   });
 
   test("only infers locale when explicitly selected", () => {
