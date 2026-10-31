@@ -202,3 +202,70 @@ func TestPasswordFocusChangesWithoutExposingIdentity(t *testing.T) {
 		t.Fatal("lock screen retained password metadata")
 	}
 }
+
+// Model a renderer whose accessibility cache lags successful native writes.
+type delayedTextBackend struct {
+	Simulated
+	old        Snapshot
+	staleReads int
+}
+
+func (b *delayedTextBackend) Replace(ctx context.Context, before Snapshot, edit Edit) error {
+	b.old = before
+	if err := b.Simulated.Replace(ctx, before, edit); err != nil {
+		return err
+	}
+	b.staleReads = 3
+	return nil
+}
+func (b *delayedTextBackend) Snapshot(ctx context.Context, window int) (Snapshot, error) {
+	if b.staleReads > 0 {
+		b.staleReads--
+		if b.staleReads > 0 {
+			return b.old, nil
+		}
+		// Text arrives before its caret notification.
+		next, err := b.Simulated.Snapshot(ctx, window)
+		next.Start, next.End = b.old.Start, b.old.End
+		return next, err
+	}
+	return b.Simulated.Snapshot(ctx, window)
+}
+func TestSessionWaitsForRendererBeforeAcknowledgingBurst(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	backend := &delayedTextBackend{Simulated: Simulated{Current: Snapshot{Identity: "one", Value: "", Available: true, Editable: true}}}
+	out := make(chan api.TrackpadMessageTextContext, 32)
+	s := New(ctx, func(context.Context) (Backend, error) { return backend, nil }, func(v api.TrackpadMessageTextContext) error { out <- v; return nil })
+	s.Watch(ctx, api.TrackpadMessageTextWatch{Enabled: true})
+	current := receive(t, out, func(v api.TrackpadMessageTextContext) bool { return v.Available })
+	want := ""
+	for i, char := range []string{"h", "e", "l", "l", "o", "😀"} {
+		s.Edit(ctx, api.TrackpadMessageTextEdit{FieldId: current.FieldId, BaseRevision: current.Revision, Start: i, End: i, Text: char, RequestId: i + 1})
+		want += char
+		current = receive(t, out, func(v api.TrackpadMessageTextContext) bool { return v.RequestId != nil })
+		if current.Rejected != nil || current.Value != want || current.SelectionStart != i+1 || current.SelectionEnd != i+1 {
+			t.Fatal("acknowledged stale renderer text or caret")
+		}
+	}
+}
+func TestEditSettlementStopsAtPrivacyAndFocusBoundaries(t *testing.T) {
+	before := Snapshot{Identity: "one", Value: "abc", Start: 3, End: 3, Available: true, Editable: true}
+	for _, next := range []Snapshot{
+		{Identity: "two", Value: "other", Available: true, Editable: true},
+		{Identity: "one", Protected: true},
+		{Identity: "one", Password: true, Protected: true},
+	} {
+		_, rejected := settleEdit(context.Background(), before, Edit{Start: 3, End: 3, Text: "x"}, 4096, func() Snapshot { return next })
+		if !rejected {
+			t.Fatal("accepted an edit across a focus or privacy boundary")
+		}
+	}
+}
+func TestEditSettlementRejectsUnconfirmedWrites(t *testing.T) {
+	before := Snapshot{Identity: "one", Value: "abc", Start: 3, End: 3, Available: true, Editable: true}
+	_, rejected := settleEdit(context.Background(), before, Edit{Start: 3, End: 3, Text: "x"}, 4096, func() Snapshot { return before })
+	if !rejected {
+		t.Fatal("accepted a native write that never appeared")
+	}
+}

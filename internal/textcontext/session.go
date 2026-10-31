@@ -187,13 +187,23 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 				e := c.edit
 				publish(read(), false, nil, false)
 				rejected := !enabled || backend == nil || !previous.Available || !previous.Editable || e.FieldId != field || e.BaseRevision != revision || e.Start < previous.WindowStart || e.End < e.Start || e.End > previous.WindowStart+utf8.RuneCountInString(previous.Value) || utf8.RuneCountInString(e.Text) > 4096
+				var result Snapshot
 				if !rejected {
+					before := previous
+					edit := Edit{Start: e.Start, End: e.End, Text: e.Text, SelectionOnly: e.SelectionOnly != nil && *e.SelectionOnly}
 					callCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-					err := backend.Replace(callCtx, previous, Edit{Start: e.Start, End: e.End, Text: e.Text, SelectionOnly: e.SelectionOnly != nil && *e.SelectionOnly})
+					err := backend.Replace(callCtx, before, edit)
 					cancel()
 					rejected = err != nil
+					if !rejected {
+						result, rejected = settleEdit(ctx, before, edit, window, read)
+					} else {
+						result = read()
+					}
+				} else {
+					result = read()
 				}
-				publish(read(), true, &e.RequestId, rejected)
+				publish(result, true, &e.RequestId, rejected)
 			}
 		}
 		if sendFailed {
@@ -212,4 +222,52 @@ func sameSnapshot(a, b Snapshot) bool {
 	a.MaskedLength = nil
 	b.MaskedLength = nil
 	return a == b && ((al == nil && bl == nil) || (al != nil && bl != nil && *al == *bl))
+}
+
+// Native accessibility writes can return before the renderer publishes the new
+// text and caret. Acknowledge only after observing both, without reapplying the
+// mutation or publishing intermediate snapshots that could roll back phone input.
+func settleEdit(ctx context.Context, before Snapshot, edit Edit, window int, read func() Snapshot) (Snapshot, bool) {
+	want := before
+	if edit.SelectionOnly {
+		want.Start, want.End = edit.Start, edit.End
+	} else {
+		chars := []rune(before.Value)
+		want.Value = string(chars[:edit.Start-before.WindowStart]) + edit.Text + string(chars[edit.End-before.WindowStart:])
+		want.Start = edit.Start + utf8.RuneCountInString(edit.Text)
+		want.End = want.Start
+	}
+	deadline := time.NewTimer(400 * time.Millisecond)
+	defer deadline.Stop()
+	for {
+		next := read()
+		if next.Identity != before.Identity || !next.Available || !next.Editable || next.Protected || next.Password {
+			return next, true
+		}
+		// Compare the shared window: the provider may recenter or crop a full
+		// 4096-character preview after an insertion near its edge.
+		low := max(want.WindowStart, next.WindowStart)
+		high := min(want.WindowStart+utf8.RuneCountInString(want.Value), next.WindowStart+utf8.RuneCountInString(next.Value))
+		matches := low < high || (want.Value == "" && next.Value == "")
+		if matches && low <= high {
+			w, n := []rune(want.Value), []rune(next.Value)
+			matches = string(w[low-want.WindowStart:high-want.WindowStart]) == string(n[low-next.WindowStart:high-next.WindowStart])
+		}
+		if next.WindowStart == want.WindowStart && utf8.RuneCountInString(before.Value) < window {
+			matches = next.Value == want.Value
+		}
+		if matches && next.Start == want.Start && next.End == want.End {
+			return next, false
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return Snapshot{}, true
+		case <-deadline.C:
+			timer.Stop()
+			return next, true
+		case <-timer.C:
+		}
+	}
 }
