@@ -36,6 +36,64 @@ describe("native text synchronization",()=>{
   expect(sent.length).toBe(burst.length);
   expect(model.context?.value).toBe(optimistic);
  });
+ test("preserves every queued letter while Chrome keeps appending a selected suggestion",()=>{
+  const {model,sent}=setup();
+  model.receive({...context,value:"",selectionStart:0,selectionEnd:0});
+  for (const [i,char] of Array.from("going").entries()) model.replace(i,i,char);
+  let prefix="";
+  for (const [i,char] of Array.from("going").entries()) {
+   const edit=sent[i];
+   expect(edit.type).toBe("textedit");
+   if(edit.type!=="textedit") throw Error("Expected text edit");
+   expect(edit.start).toBe(i);
+   expect(edit.end).toBe(i===0?0:i+6);
+   prefix+=char;
+   const next={...context,value:prefix+"oogle!",selectionStart:i+1,selectionEnd:i+7,revision:i+2,requestId:edit.requestId};
+   // A poll can arrive before the matching acknowledgment.
+   model.receive({...next,requestId:undefined});
+   model.receive(next);
+   if(i<4) expect(model.view?.value).toBe("going");
+  }
+  expect(model.view?.value).toBe("goingoogle!");
+  expect(sent.length).toBe(5);
+ });
+ test("retries an unapplied letter when a late completion advances the revision",()=>{
+  const {model,sent}=setup();
+  model.receive({...context,value:"g",selectionStart:1,selectionEnd:1});
+  model.replace(1,1,"o"); model.replace(2,2,"i"); model.replace(3,3,"n"); model.replace(4,4,"g");
+  model.receive({...context,value:"google.com",selectionStart:1,selectionEnd:10,revision:2,requestId:1,rejected:true});
+  expect(sent[1]).toMatchObject({type:"textedit",start:1,end:10,text:"o",baseRevision:2,requestId:5});
+  expect(model.view?.value).toBe("going");
+  model.receive({...context,value:"go",selectionStart:2,selectionEnd:2,revision:3,requestId:5});
+  expect(sent[2]).toMatchObject({start:2,end:2,text:"i",baseRevision:3});
+ });
+ test("retries replacement of a selected suggestion when only its suffix changes",()=>{
+  const {model,sent}=setup();
+  model.receive({...context,value:"google.com",selectionStart:1,selectionEnd:10});
+  model.replace(1,10,"o"); model.replace(2,2,"i");
+  model.receive({...context,value:"github.com",selectionStart:1,selectionEnd:10,revision:2,requestId:1,rejected:true});
+  expect(sent[1]).toMatchObject({start:1,end:10,text:"o",baseRevision:2});
+  expect(model.view?.value).toBe("goi");
+  model.receive({...context,value:"go",selectionStart:2,selectionEnd:2,revision:3,requestId:3});
+  expect(sent[2]).toMatchObject({start:2,end:2,text:"i",baseRevision:3});
+ });
+ test("does not retry an unchanged failed write or a different typed prefix",()=>{
+  for (const [value,revision] of [["google.com",1],["other.com",2]] as const) {
+   const {model,sent}=setup();
+   model.receive({...context,value:"google.com",selectionStart:1,selectionEnd:10});
+   model.replace(1,10,"o"); model.replace(2,2,"i");
+   model.receive({...context,value,selectionStart:value==="other.com"?2:1,selectionEnd:value.length,revision,requestId:1,rejected:true});
+   expect(sent.length).toBe(1);
+   expect(model.view?.value).toBe(value);
+  }
+ });
+ test("does not treat an external replacement as inline autocomplete",()=>{
+  const {model,sent}=setup();
+  model.receive({...context,value:"g",selectionStart:1,selectionEnd:1});
+  model.replace(1,1,"o"); model.replace(2,2,"i");
+  model.receive({...context,value:"other",selectionStart:2,selectionEnd:5,revision:2,requestId:1});
+  expect(model.view?.value).toBe("other"); expect(sent.length).toBe(1);
+ });
  test("privacy changes immediately clear a pending typing burst",()=>{
   const {model}=setup();model.replace(2,2,"x");model.replace(3,3,"y");
   model.receive({...context,available:false,editable:false,protected:true,value:""});

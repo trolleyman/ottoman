@@ -1,7 +1,29 @@
 import type { TrackpadMessage, TrackpadMessageTextContext, TrackpadMessageTextEdit } from "./api";
 
 export type TextContext = TrackpadMessageTextContext;
-interface Pending { message: TrackpadMessageTextEdit; value: string }
+interface Pending { message: TrackpadMessageTextEdit; before: TextContext; after: TextContext }
+
+// A browser may append a selected inline suggestion to the typed prefix. Only
+// that exact suffix is safe to replace/rebase; arbitrary desktop changes are not.
+function inlineCompletion(expected: TextContext, next: TextContext): boolean {
+  if (!next.available || !next.editable || next.protected || next.password ||
+    next.fieldId !== expected.fieldId || next.windowStart !== expected.windowStart ||
+    next.selectionStart < next.windowStart || next.selectionStart !== expected.selectionStart || next.selectionEnd <= next.selectionStart) return false;
+  const prefix = (context: TextContext) => Array.from(context.value).slice(0, context.selectionStart - context.windowStart).join("");
+  return next.selectionEnd === next.windowStart + Array.from(next.value).length &&
+    expected.selectionEnd === expected.windowStart + Array.from(expected.value).length &&
+    prefix(next) === prefix(expected);
+}
+
+function replaceCompletion(pending: Pending, next: TextContext): boolean {
+  // The next edit must end at the typed prefix (insert, backspace, or prefix
+  // replacement). It will also consume the selected generated suffix.
+  if (pending.message.selectionOnly || pending.message.end !== pending.before.selectionEnd ||
+    pending.before.selectionStart !== next.selectionStart || pending.message.start > next.selectionStart) return false;
+  pending.message = { ...pending.message, end: next.selectionEnd };
+  pending.before = next;
+  return true;
+}
 
 // Only one revision-dependent edit may be in flight. Subsequent phone edits
 // remain ordered. Same-field notifications wait for the matching acknowledgment;
@@ -16,8 +38,24 @@ export class RemoteText {
   receive(next: TextContext) {
     const first = this.pending[0];
     if (first && next.requestId === first.message.requestId) {
+      const completed = inlineCompletion(first.after, next);
+      // A suggestion can arrive after the previous acknowledgment but before
+      // this edit is applied. Retry only an untouched typed prefix at a newer
+      // revision; a real external edit, focus change or privacy change stops it.
+      if (next.rejected && !completed && next.revision !== first.message.baseRevision &&
+        inlineCompletion(first.before, next) && replaceCompletion(first, next)) {
+        this.context = next;
+        first.message.baseRevision = next.revision;
+        first.message.requestId = ++this.nextId;
+        this.send(first.message);
+        return;
+      }
       this.pending.shift();
-      if (next.rejected || next.fieldId !== this.context?.fieldId || next.value !== first.value || next.windowStart !== this.context.windowStart) {
+      if ((!completed && (next.rejected || next.value !== first.after.value)) ||
+        next.fieldId !== this.context?.fieldId || next.windowStart !== this.context.windowStart ||
+        !next.available || !next.editable || next.protected || next.password) {
+        this.pending = [];
+      } else if (completed && this.pending.length && !replaceCompletion(this.pending[0], next)) {
         this.pending = [];
       }
       this.context = next;
@@ -49,7 +87,7 @@ export class RemoteText {
       type: "textedit", fieldId: view.fieldId, baseRevision: this.context!.revision,
       start, end, text, requestId: ++this.nextId, selectionOnly,
     };
-    this.pending.push({ message, value });
+    this.pending.push({ message, before: view, after: this.view });
     if (this.pending.length === 1) this.send(message);
     return true;
   }
