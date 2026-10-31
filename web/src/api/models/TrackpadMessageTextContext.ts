@@ -17,6 +17,14 @@ export type TrackpadMessageTextContext = {
     multiline: boolean;
     available: boolean;
     protected: boolean;
+    /**
+     * A focused password field, distinct from a locked or inaccessible session. Its value and selection are always omitted.
+     */
+    password: boolean;
+    /**
+     * Optional password character count obtained without reading text. Omitted when unavailable; clients show a fixed mask.
+     */
+    maskedLength?: number;
     requestId?: number;
     rejected?: boolean;
 };

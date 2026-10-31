@@ -33,7 +33,7 @@ export class RemoteText {
   }
   replace(start: number, end: number, text: string, selectionOnly = false) {
     const view = this.view;
-    if (!view?.available || !view.editable || view.protected) return false;
+    if (!view?.available || !view.editable || view.protected || view.password) return false;
     const chars = Array.from(view.value);
     const low = start - view.windowStart, high = end - view.windowStart;
     if (low < 0 || high < low || high > chars.length) return false;
@@ -64,4 +64,16 @@ export function previousCharacterOffset(value: string, caret: number): number {
   let boundary = 0;
   for (const part of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(prefix)) boundary = part.index;
   return codePointOffset(prefix, boundary);
+}
+
+// Never mask by reading the protected value. Only explicit count metadata may
+// control the mask; a fixed mask denotes password fields with unknown length.
+export function textPreview(context: TextContext | null, fallback: string): string {
+  if (context?.password) {
+    const count = context.maskedLength;
+    return "•".repeat(typeof count === "number" && Number.isFinite(count) && count >= 0
+      ? Math.min(4096, Math.floor(count)) : 8);
+  }
+  if (context?.protected) return "";
+  return context?.available ? context.value : fallback;
 }

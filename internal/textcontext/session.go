@@ -19,6 +19,9 @@ type Snapshot struct {
 	Value                                     string
 	Start, End, WindowStart                   int
 	Editable, Multiline, Available, Protected bool
+	Password                                  bool
+	// MaskedLength is metadata only; never derive it by reading protected text.
+	MaskedLength *int
 }
 
 type Edit struct {
@@ -79,9 +82,22 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 	sendFailed := false
 	nativeFailed := false
 	publish := func(next Snapshot, force bool, request *int, rejected bool) {
-		// A protected snapshot never carries even a name, identity, or selection.
-		if next.Protected {
-			next = Snapshot{Protected: true}
+		// Preserve only an explicit password marker and safe count metadata.
+		// Locked/inaccessible sessions must not be presented as password fields.
+		if next.Protected || next.Password {
+			password := next.Password
+			identity := next.Identity
+			length := next.MaskedLength
+			next = Snapshot{Protected: true, Password: password}
+			if password {
+				next.Identity = identity
+			}
+			if password && length != nil && *length >= 0 {
+				bounded := min(4096, *length)
+				next.MaskedLength = &bounded
+			}
+		} else {
+			next.MaskedLength = nil
 		}
 		if !next.Available {
 			next.Value = ""
@@ -90,11 +106,11 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 			next.WindowStart = 0
 			next.Editable = false
 		}
-		changed := next != previous
-		if next.Identity != previous.Identity || (next.Available && field == "") {
+		changed := !sameSnapshot(next, previous)
+		if next.Identity != previous.Identity || ((next.Available || next.Password) && field == "") {
 			field = token()
 		}
-		if !next.Available {
+		if !next.Available && !next.Password {
 			field = ""
 		}
 		if changed {
@@ -102,7 +118,7 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 		}
 		previous = next
 		if changed || force {
-			v := api.TrackpadMessageTextContext{Type: api.Textcontext, FieldId: field, Revision: revision, Value: next.Value, SelectionStart: next.Start, SelectionEnd: next.End, WindowStart: next.WindowStart, Editable: next.Editable, Multiline: next.Multiline, Available: next.Available, Protected: next.Protected, RequestId: request}
+			v := api.TrackpadMessageTextContext{Type: api.Textcontext, FieldId: field, Revision: revision, Value: next.Value, SelectionStart: next.Start, SelectionEnd: next.End, WindowStart: next.WindowStart, Editable: next.Editable, Multiline: next.Multiline, Available: next.Available, Protected: next.Protected, Password: next.Password, MaskedLength: next.MaskedLength, RequestId: request}
 			if rejected {
 				v.Rejected = &rejected
 			}
@@ -188,3 +204,12 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 }
 
 var ErrUnavailable = errors.New("accessible text unavailable")
+
+// Snapshot includes optional metadata pointers; compare their values so stable
+// password counts do not cause repeated updates or revive dismissed previews.
+func sameSnapshot(a, b Snapshot) bool {
+	al, bl := a.MaskedLength, b.MaskedLength
+	a.MaskedLength = nil
+	b.MaskedLength = nil
+	return a == b && ((al == nil && bl == nil) || (al != nil && bl != nil && *al == *bl))
+}

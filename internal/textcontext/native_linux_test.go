@@ -168,8 +168,17 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	reads := field.reads
 	field.mu.Unlock()
 	protected, err := backend.Snapshot(ctx, 128)
-	if err != nil || !protected.Protected || protected.Value != "" {
+	if err != nil || !protected.Protected || !protected.Password || protected.Value != "" || protected.MaskedLength == nil || *protected.MaskedLength != 4096 {
 		t.Fatal("protected field was mirrored")
+	}
+	field.mu.Lock()
+	field.value = "abc"
+	field.start = 0
+	field.end = 3
+	field.mu.Unlock()
+	changed, err := backend.Snapshot(ctx, 128)
+	if err != nil || changed.MaskedLength == nil || *changed.MaskedLength != 3 || changed.Start != 0 || changed.End != 0 {
+		t.Fatal("password count change or selection redaction failed")
 	}
 	field.mu.Lock()
 	defer field.mu.Unlock()

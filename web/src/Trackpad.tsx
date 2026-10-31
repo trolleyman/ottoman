@@ -8,7 +8,7 @@ import { ScrollRail } from "./ScrollRail";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
-import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset } from "./remoteText";
+import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
@@ -210,11 +210,11 @@ function TouchArea({
     setDraftCursor(0);
     setCompositionValue(null);
     setTypingContext((value) => value + 1);
-  }, [connected, settings.mirrorFocusedText, textContext?.fieldId, textContext?.protected]);
+  }, [connected, settings.mirrorFocusedText, textContext?.fieldId, textContext?.protected, textContext?.password]);
   useEffect(() => {
     // A native text/caret notification is activity even without phone input.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (remote?.available) showDraftIndicator();
+    if (remote?.available || remote?.password) showDraftIndicator();
   }, [remote, showDraftIndicator]);
   useEffect(() => {
     if (!remote?.available || composing.current || !inputRef.current) return;
@@ -786,9 +786,9 @@ function TouchArea({
   }, [connected, dismissDraft, send, settings.scrollSensitivity]);
 
 
-  const preview = remote?.available ? remote.value : remote?.protected ? "" : draft;
-  const previewCursor = remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftCursor;
-  const previewSelectionEnd = remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftCursor;
+  const preview = textPreview(remote, draft);
+  const previewCursor = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftCursor;
+  const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftCursor;
 
   return (
     <div className="w-full md:max-w-sm md:shrink-0 flex flex-col gap-2">
@@ -836,13 +836,15 @@ function TouchArea({
               )}
             </div>
           )}
-          {connected && (preview || remote?.available) && draftVisible && (
+          {connected && (preview || remote?.available || remote?.password) && draftVisible && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-end overflow-hidden pb-14 pl-3 pr-14" data-text-preview>
               <div aria-live="polite" aria-atomic="true"
+                aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
+                data-password-preview={remote?.password || undefined}
                 className="w-full shrink-0 whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/65 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md [overflow-wrap:anywhere]">
                 {preview.slice(0, previewCursor)}
                 <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
-                <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
+                {!remote?.password && <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />}
                 {preview.slice(previewSelectionEnd)}
               </div>
             </div>
@@ -892,10 +894,10 @@ function TouchArea({
             disabled={!connected}
             aria-label="Type on the remote computer with the device keyboard"
             className="pointer-events-none absolute bottom-2 left-2 h-px w-px resize-none opacity-0"
-            autoComplete="on"
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            spellCheck={true}
+            autoComplete={remote?.password ? "off" : "on"}
+            autoCapitalize={remote?.password ? "none" : "sentences"}
+            autoCorrect={remote?.password ? "off" : "on"}
+            spellCheck={!remote?.password}
             enterKeyHint="enter"
             inputMode="text"
             onFocus={() => setFocused(true)}

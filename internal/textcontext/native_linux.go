@@ -141,9 +141,19 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	if err = a.object(r).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role); err != nil {
 		return Snapshot{}, err
 	}
-	if role == 40 {
-		return Snapshot{Protected: true}, nil
-	} // ATSPI_ROLE_PASSWORD_TEXT, before reading text
+	if role == 40 { // ATSPI_ROLE_PASSWORD_TEXT: never call GetText or read selection.
+		masked := Snapshot{Protected: true, Password: true, Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch)}
+		if count, err := a.property(ctx, r, "CharacterCount"); err == nil && count >= 0 {
+			count = min(4096, count)
+			masked.MaskedLength = &count
+		}
+		// Discard even mask metadata if focus or lock state changed during the query.
+		now, err := a.states(ctx, r)
+		if err != nil || !state(now, 12) || a.locked(ctx) {
+			return Snapshot{Protected: true}, nil
+		}
+		return masked, nil
+	}
 	if !state(states, 7) || !state(states, 8) || !state(states, 24) {
 		return Snapshot{}, nil
 	} // ATSPI_STATE_EDITABLE

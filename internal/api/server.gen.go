@@ -725,10 +725,16 @@ type TrackpadMessageTextType string
 
 // TrackpadMessageTextContext Focused field window. All offsets are absolute Unicode code-point offsets. Unavailable or protected fields carry no text.
 type TrackpadMessageTextContext struct {
-	Available      bool                           `json:"available"`
-	Editable       bool                           `json:"editable"`
-	FieldId        string                         `json:"fieldId"`
-	Multiline      bool                           `json:"multiline"`
+	Available bool   `json:"available"`
+	Editable  bool   `json:"editable"`
+	FieldId   string `json:"fieldId"`
+
+	// MaskedLength Optional password character count obtained without reading text. Omitted when unavailable; clients show a fixed mask.
+	MaskedLength *int `json:"maskedLength,omitempty"`
+	Multiline    bool `json:"multiline"`
+
+	// Password A focused password field, distinct from a locked or inaccessible session. Its value and selection are always omitted.
+	Password       bool                           `json:"password"`
 	Protected      bool                           `json:"protected"`
 	Rejected       *bool                          `json:"rejected,omitempty"`
 	RequestId      *int                           `json:"requestId,omitempty"`

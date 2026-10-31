@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset } from "../src/remoteText";
+import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview } from "../src/remoteText";
 import { diffText } from "../src/trackpadText";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "../src/api";
 const context: TrackpadMessageTextContext = {
  type:"textcontext", fieldId:"focus-a", revision:1, value:"a😀b",selectionStart:2,selectionEnd:2,
- windowStart:0, available:true, editable:true, multiline:true,protected:false,
+ windowStart:0, available:true, editable:true, multiline:true,protected:false,password:false,
 };
 function setup() {
  const sent: TrackpadMessage[]=[];const model=new RemoteText(v=>sent.push(v));model.receive(context);return {model,sent};
@@ -46,4 +46,28 @@ test("backspace keeps joined emoji and combining marks intact", () => {
  expect(previousCharacterOffset("a👨‍👩‍👧‍👦", 8)).toBe(1);
  expect(previousCharacterOffset("ae\u0301", 3)).toBe(1);
  expect(previousCharacterOffset("مرحبا", 5)).toBe(4);
+});
+
+describe("password preview masking", () => {
+ test("uses only the explicit character count and ignores raw text and selections", () => {
+  const password = {...context, protected:true, password:true, value:"must never appear", selectionStart:10, maskedLength:6};
+  expect(textPreview(password, "also secret")).toBe("••••••");
+  expect(textPreview({...password, maskedLength:0}, "secret")).toBe("");
+ });
+ test("shows a fixed mask when protected length is unavailable", () => {
+  expect(textPreview({...context, password:true, protected:true, maskedLength:undefined}, "secret")).toBe("••••••••");
+ });
+ test("bounds malformed lengths and keeps locked or unavailable sessions blank", () => {
+  expect(textPreview({...context,password:true,maskedLength:99999}, "secret").length).toBe(4096);
+  expect(textPreview({...context,password:true,maskedLength:-1}, "secret")).toBe("••••••••");
+  expect(textPreview({...context,password:true,maskedLength:NaN}, "secret")).toBe("••••••••");
+  expect(textPreview({...context,protected:true,available:false}, "secret")).toBe("");
+  expect(textPreview(null, "ordinary draft")).toBe("ordinary draft");
+ });
+ test("keeps password typing on the keystroke path", () => {
+  const {model,sent}=setup();
+  model.receive({...context, protected:true, password:true, maskedLength:5});
+  expect(model.replace(0,1,"x")).toBe(false);
+  expect(sent.length).toBe(0);
+ });
 });

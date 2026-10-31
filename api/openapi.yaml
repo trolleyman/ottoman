@@ -1445,7 +1445,7 @@ components:
     TrackpadMessageTextContext:
       description: Focused field window. All offsets are absolute Unicode code-point offsets. Unavailable or protected fields carry no text.
       type: object
-      required: [type, fieldId, revision, value, selectionStart, selectionEnd, windowStart, editable, multiline, available, protected]
+      required: [type, fieldId, revision, value, selectionStart, selectionEnd, windowStart, editable, multiline, available, protected, password]
       properties:
         type: {type: string, enum: [textcontext]}
         fieldId: {type: string}
@@ -1458,6 +1458,14 @@ components:
         multiline: {type: boolean}
         available: {type: boolean}
         protected: {type: boolean}
+        password:
+          type: boolean
+          description: A focused password field, distinct from a locked or inaccessible session. Its value and selection are always omitted.
+        maskedLength:
+          type: integer
+          minimum: 0
+          maximum: 4096
+          description: Optional password character count obtained without reading text. Omitted when unavailable; clients show a fixed mask.
         requestId: {type: integer}
         rejected: {type: boolean}
     TrackpadMessageTextEdit:

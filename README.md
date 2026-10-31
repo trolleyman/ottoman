@@ -124,8 +124,12 @@ editors without that model retain keystroke input and a read-only native preview
 If the OS requests accessibility access, grant it to the desktop agent. Elevated
 or inaccessible applications may not expose a usable text model.
 
-Passwords and locked sessions send an empty protected state. Context stays in
-memory, is limited to 4,096 Unicode code points around the caret, and clears on
+With **Mirror focused text** enabled, password fields show dots without reading
+or mirroring their text or selection. Linux uses a character-count property when
+available (capped at 4,096); when the count is unavailable, including on Windows,
+the preview shows a fixed eight-dot mask that does not indicate actual length.
+Password fields use opaque focus tokens so typing history clears between fields.
+Locked or inaccessible sessions remain blank. Context stays in memory, is limited to 4,096 Unicode code points around the caret, and clears on
 focus loss, disabling mirroring, or disconnection. Unsupported applications use
 the existing typing indicator. Focus tokens and revisions reject stale edits
 and replace the phone's pending state with the latest desktop context. macOS

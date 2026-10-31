@@ -13,7 +13,7 @@ public class OttomanText {
  public class Context {
   public string Identity="", Value="";
   public int Start, End, WindowStart;
-  public bool Editable, Multiline, Available, Protected;
+  public bool Editable, Multiline, Available, Protected, Password;
  }
  static long epoch;
  static AutomationFocusChangedEventHandler focus = delegate(object s, AutomationFocusChangedEventArgs e) { Interlocked.Increment(ref epoch); };
@@ -31,7 +31,7 @@ public class OttomanText {
    if(Locked()){c.Protected=true;return c;}
    AutomationElement e=AutomationElement.FocusedElement;
    if(e==null||!e.Current.HasKeyboardFocus)return c;
-   if(e.Current.IsPassword){c.Protected=true;return c;}
+   if(e.Current.IsPassword){c.Protected=true;c.Password=true;c.Identity=ID(e);return c;}
    object p;
    if(!e.TryGetCurrentPattern(TextPattern.Pattern,out p))return c;
    TextPattern t=(TextPattern)p;
