@@ -87,6 +87,7 @@
 
 .custom-keyboard-shell,
 .custom-keyboard-shell button,
+.custom-keyboard-shell button *,
 [data-scroll-phase] {
   -webkit-user-select: none;
   user-select: none;

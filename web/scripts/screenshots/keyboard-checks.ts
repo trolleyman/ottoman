@@ -196,14 +196,27 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const backspace = page.getByRole("button", { name: "Backspace", exact: true });
   const box = await backspace.boundingBox();
   assert(box, "Missing backspace");
+  const nativeDefaults = await backspace.evaluate((element) => {
+    const touch = new TouchEvent("touchstart", { bubbles: true, cancelable: true });
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    element.dispatchEvent(touch);
+    element.dispatchEvent(menu);
+    const icon = element.querySelector("svg")!;
+    return { touch: touch.defaultPrevented, menu: menu.defaultPrevented, selection: getComputedStyle(icon).webkitUserSelect };
+  });
+  assert(nativeDefaults.touch && nativeDefaults.menu && nativeDefaults.selection === "none", "Backspace and its icon must suppress native selection/callout defaults");
   const beforeErase = sent.length;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(2100);
-  await page.mouse.up();
+  const heldTouch = await page.context().newCDPSession(page);
+  try {
+    await heldTouch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2, id: 1 }] });
+    await page.waitForTimeout(2100);
+    await heldTouch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally { await heldTouch.detach(); }
   await page.waitForTimeout(60);
   const erases = sent.slice(beforeErase).filter(({ message }) => message.type === "keydown" && message.key === "Backspace");
-  assert(erases.length > 35, "Backspace hold must repeat");
+  assert(erases.length > 35, "Touch backspace hold must repeat despite native-default prevention");
+  await page.waitForTimeout(100);
+  assert(sent.slice(beforeErase).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === erases.length, "Backspace must stop repeating after touch release");
   const average = (values: SentMessage[]) => (values[values.length - 1].time - values[0].time) / (values.length - 1);
   assert(average(erases.slice(-8)) < average(erases.slice(2, 10)) * 0.8, "Backspace repeat must accelerate");
 

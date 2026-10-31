@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowBigUp,
   ArrowDown,
@@ -92,6 +92,16 @@ function KeyboardSession({
   const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Safari's selection loupe can ignore pointerdown prevention and CSS.
+  // https://bugs.webkit.org/show_bug.cgi?id=231161
+  // A native, non-passive touchstart listener blocks its long-press default.
+  // Keep deletion on pointer events so touch and pointer input never double-fire.
+  const backspaceTouchRef = useCallback((button: HTMLButtonElement | null) => {
+    if (!button) return;
+    const preventNativeHold = (event: TouchEvent) => event.preventDefault();
+    button.addEventListener("touchstart", preventNativeHold, { passive: false });
+    return () => button.removeEventListener("touchstart", preventNativeHold);
+  }, []);
   const [backspaceHeld, setBackspaceHeld] = useState(false);
   const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spaceHeld = useRef(false);
@@ -478,6 +488,8 @@ function KeyboardSession({
                   <button
                     type="button"
                     aria-label="Backspace"
+                    ref={backspaceTouchRef}
+                    onContextMenu={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
                       event.preventDefault();
                       event.currentTarget.setPointerCapture(event.pointerId);
