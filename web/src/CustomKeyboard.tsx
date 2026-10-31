@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowBigUp,
+  ArrowDown,
   ArrowLeft,
+  ArrowRight,
   ArrowRightToLine,
+  ArrowUp,
   ChevronUp,
   Clock3,
   Command,
@@ -139,7 +142,7 @@ function ModifierButton({
       aria-pressed={active}
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => onToggle(modifier)}
-      className={`flex h-9 min-w-10 flex-1 items-center justify-center gap-1 rounded-md border px-1 transition-colors ${
+      className={`flex h-9 min-w-10 flex-1 items-center justify-center gap-2 rounded-md border px-1 transition-colors ${
         active
           ? "border-blue-400/60 bg-blue-500 text-white shadow-[0_0_0_2px_rgba(59,130,246,.16)]"
           : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
@@ -286,6 +289,28 @@ function UtilityKey({
   );
 }
 
+function NavigationKey({
+  label,
+  children,
+  onPress,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={onPress}
+      className="custom-keyboard-utility flex h-8 min-w-0 flex-1 touch-none select-none items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] font-semibold text-zinc-400 shadow-sm hover:bg-zinc-800 hover:text-zinc-100 active:translate-y-px"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CustomKeyboard({
   open,
   connected,
@@ -294,6 +319,7 @@ export function CustomKeyboard({
   onBackspace,
   onEnter,
   onTab,
+  onNavigate,
   onClose,
   onSettingsChange,
   onUseCustomKeyboard,
@@ -310,6 +336,7 @@ export function CustomKeyboard({
   onBackspace: () => void;
   onEnter: (shifted: boolean) => void;
   onTab: () => void;
+  onNavigate: (key: string) => void;
   onClose: () => void;
   onSettingsChange: (patch: Partial<KeyboardSettings>) => void;
   onUseCustomKeyboard: () => void;
@@ -328,12 +355,17 @@ export function CustomKeyboard({
   const lastShiftTap = useRef(0);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setInterval> | null>(null);
+  const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spaceHeld = useRef(false);
+  const spaceLast = useRef({ x: 0, y: 0 });
+  const [spaceNavigating, setSpaceNavigating] = useState(false);
   const applePlatform = typeof navigator !== "undefined" &&
     /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 
   useEffect(() => () => {
     if (backspaceTimer.current) clearTimeout(backspaceTimer.current);
     if (backspaceRepeat.current) clearInterval(backspaceRepeat.current);
+    if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
   }, []);
 
   if (!open) return null;
@@ -384,6 +416,61 @@ export function CustomKeyboard({
     backspaceRepeat.current = null;
   };
 
+  const beginSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    spaceHeld.current = false;
+    spaceLast.current = { x: event.clientX, y: event.clientY };
+    spaceHoldTimer.current = setTimeout(() => {
+      spaceHeld.current = true;
+      setSpaceNavigating(true);
+      haptic(settings.haptics, 16);
+    }, 320);
+  };
+
+  const moveSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!spaceHeld.current) return;
+    const step = 18;
+    const dx = event.clientX - spaceLast.current.x;
+    const dy = event.clientY - spaceLast.current.y;
+    const horizontalSteps = Math.trunc(dx / step);
+    const verticalSteps = Math.trunc(dy / step);
+    const emit = (key: string, count: number) => {
+      for (let i = 0; i < Math.min(Math.abs(count), 6); i++) onNavigate(key);
+    };
+    if (horizontalSteps !== 0) {
+      emit(horizontalSteps > 0 ? "ArrowRight" : "ArrowLeft", horizontalSteps);
+      spaceLast.current.x += horizontalSteps * step;
+    }
+    if (verticalSteps !== 0) {
+      emit(verticalSteps > 0 ? "ArrowDown" : "ArrowUp", verticalSteps);
+      spaceLast.current.y += verticalSteps * step;
+    }
+  };
+
+  const endSpace = () => {
+    if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
+    spaceHoldTimer.current = null;
+    if (!spaceHeld.current) {
+      haptic(settings.haptics);
+      type(" ");
+    }
+    spaceHeld.current = false;
+    setSpaceNavigating(false);
+  };
+
+  const cancelSpace = () => {
+    if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
+    spaceHoldTimer.current = null;
+    spaceHeld.current = false;
+    setSpaceNavigating(false);
+  };
+
+  const navigate = (key: string) => {
+    haptic(settings.haptics);
+    onNavigate(key);
+  };
+
   const rows = mode === "symbols" ? SYMBOL_ROWS : LETTER_ROWS;
   const matchingEmoji = EMOJIS.filter(([, keywords]) =>
     !emojiQuery.trim() || keywords.includes(emojiQuery.trim().toLocaleLowerCase()),
@@ -399,6 +486,23 @@ export function CustomKeyboard({
 
   return (
     <div className="custom-keyboard-shell fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] shadow-[0_-16px_40px_rgba(0,0,0,.5)] backdrop-blur-xl md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border">
+      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-1.5" aria-label="Navigation keys">
+        <NavigationKey label="Escape" onPress={() => navigate("Escape")}>Esc</NavigationKey>
+        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
+        <NavigationKey label="Arrow left" onPress={() => navigate("ArrowLeft")}>
+          <ArrowLeft className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow up" onPress={() => navigate("ArrowUp")}>
+          <ArrowUp className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow down" onPress={() => navigate("ArrowDown")}>
+          <ArrowDown className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="Arrow right" onPress={() => navigate("ArrowRight")}>
+          <ArrowRight className="h-4 w-4" />
+        </NavigationKey>
+        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
+      </div>
       <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 py-1.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
@@ -652,12 +756,19 @@ export function CustomKeyboard({
           </UtilityKey>
           <button
             type="button"
-            aria-label="Space"
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => type(" ")}
-            className="custom-keyboard-key flex-[4] touch-none select-none rounded-md border border-white/10 bg-zinc-600/95 text-sm text-zinc-200 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px active:bg-zinc-500"
+            aria-label="Space. Hold and drag to move the cursor"
+            onPointerDown={beginSpace}
+            onPointerMove={moveSpace}
+            onPointerUp={endSpace}
+            onPointerCancel={cancelSpace}
+            onContextMenu={(event) => event.preventDefault()}
+            className={`custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px ${
+              spaceNavigating
+                ? "border-blue-400/50 bg-blue-500/80 text-white"
+                : "border-white/10 bg-zinc-600/95 text-zinc-200 active:bg-zinc-500"
+            }`}
           >
-            space
+            {spaceNavigating ? "move cursor" : "space"}
           </button>
           <UtilityKey label="Period" onPress={() => type(".")}>.</UtilityKey>
           <button

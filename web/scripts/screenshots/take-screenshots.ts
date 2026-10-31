@@ -54,7 +54,7 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
-  keyboard?: 'letters' | 'emoji' | 'emoji-search'
+  keyboard?: 'letters' | 'emoji' | 'emoji-search' | 'space-nav'
   settings?: boolean
   scheme?: 'light' | 'dark'
   platform?: 'apple' | 'pc'
@@ -65,6 +65,7 @@ const SHOTS: Shot[] = [
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
   { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
   { name: 'trackpad-keyboard-light-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::light', 'platform::apple'], keyboard: 'letters', scheme: 'light', platform: 'apple' },
+  { name: 'trackpad-space-navigation-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::space-navigation'], keyboard: 'space-nav', platform: 'pc' },
   { name: 'trackpad-emoji-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji'], keyboard: 'emoji' },
   { name: 'trackpad-emoji-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji-search'], keyboard: 'emoji-search' },
   { name: 'trackpad-settings-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::settings'], settings: true },
@@ -130,11 +131,12 @@ async function main() {
       const page = await ctx.newPage()
       await page.goto(base, { waitUntil: 'networkidle' })
       await settle(page)
+      let heldSpace = false
       if (shot.keyboard) {
         const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.click()
-        if (shot.keyboard === 'letters') {
+        if (shot.keyboard === 'letters' || shot.keyboard === 'space-nav') {
           await page.getByRole('button', { name: 'Control' }).click()
           await page.getByRole('button', { name: 'Shift' }).click()
           await page.getByRole('button', { name: 'c, hold for ¢' }).click()
@@ -142,6 +144,27 @@ async function main() {
           for (const key of ['h', 'e', 'l', 'l', 'o'])
             await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
           await page.getByRole('button', { name: 'Tab' }).click()
+          for (const key of ['Escape', 'Home', 'Arrow left', 'Arrow up', 'Arrow down', 'Arrow right', 'End'])
+            await page.getByRole('button', { name: key, exact: true }).click()
+          if (shot.platform === 'pc') {
+            if (shot.keyboard === 'space-nav') {
+              await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
+                element.scrollIntoView({ block: 'start' }),
+              )
+              await page.waitForTimeout(150)
+            }
+            const space = page.getByRole('button', { name: 'Space. Hold and drag to move the cursor' })
+            const box = await space.boundingBox()
+            if (!box) throw new Error('Space bar has no bounding box')
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            await page.mouse.down()
+            await page.waitForTimeout(360)
+            if (shot.keyboard === 'space-nav') heldSpace = true
+            else {
+              await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2)
+              await page.mouse.up()
+            }
+          }
         } else {
           await page.getByRole('button', { name: 'Emoji' }).click()
           if (shot.keyboard === 'emoji-search') {
@@ -150,10 +173,12 @@ async function main() {
               await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
           }
         }
-        await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
-          element.scrollIntoView({ block: 'start' }),
-        )
-        await page.waitForTimeout(150)
+        if (!heldSpace) {
+          await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
+            element.scrollIntoView({ block: 'start' }),
+          )
+          await page.waitForTimeout(150)
+        }
       } else if (shot.settings) {
         const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
         await openKeyboard.scrollIntoViewIfNeeded()
@@ -164,6 +189,7 @@ async function main() {
       const file = join(OUT, `${shot.name}.png`)
       await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings })
       if (shot.keyboard) {
+        if (heldSpace) await page.mouse.up()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
         await page.getByRole('button', { name: 'Device', exact: true }).click()
         await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()

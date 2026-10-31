@@ -868,6 +868,7 @@ function TouchArea({
             showDraftIndicator();
           }}
           onTab={() => sendKeyPress("Tab", activeModifiers)}
+          onNavigate={(key) => sendKeyPress(key, activeModifiers)}
           onClose={() => {
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);
