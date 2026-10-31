@@ -784,7 +784,7 @@ function TouchArea({
             <div
               aria-live="polite"
               aria-atomic="true"
-              className={`pointer-events-none absolute inset-x-3 bottom-14 max-h-24 select-none overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/55 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md transition-all duration-300 ${
+              className={`pointer-events-none absolute bottom-14 left-3 right-14 z-10 max-h-24 select-none overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/55 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md transition-all duration-300 ${
                 draftVisible
                   ? "translate-y-0 opacity-100"
                   : "translate-y-1 opacity-0"

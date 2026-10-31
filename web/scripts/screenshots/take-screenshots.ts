@@ -54,7 +54,7 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
-  keyboard?: 'letters' | 'emoji' | 'emoji-search' | 'space-nav'
+  keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav'
   settings?: boolean
   settingsTiming?: boolean
   scheme?: 'light' | 'dark'
@@ -67,6 +67,8 @@ const SHOTS: Shot[] = [
   { name: 'trackpad-keyboard-dark-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::dark', 'platform::pc'], keyboard: 'letters', scheme: 'dark', platform: 'pc' },
   { name: 'trackpad-keyboard-light-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard', 'theme::light', 'platform::apple'], keyboard: 'letters', scheme: 'light', platform: 'apple' },
   { name: 'trackpad-space-navigation-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::space-navigation'], keyboard: 'space-nav', platform: 'pc' },
+  { name: 'trackpad-symbols-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::symbols', 'platform::pc'], keyboard: 'symbols', platform: 'pc' },
+  { name: 'trackpad-symbol-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::symbol-search', 'platform::pc'], keyboard: 'symbol-search', platform: 'pc' },
   { name: 'trackpad-emoji-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji'], keyboard: 'emoji' },
   { name: 'trackpad-emoji-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji-search'], keyboard: 'emoji-search' },
   { name: 'trackpad-settings-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::settings'], settings: true },
@@ -167,12 +169,22 @@ async function main() {
               await page.mouse.up()
             }
           }
-        } else {
+        } else if (shot.keyboard === 'emoji' || shot.keyboard === 'emoji-search') {
           await page.getByRole('button', { name: 'Emoji' }).click()
           if (shot.keyboard === 'emoji-search') {
             await page.getByRole('button', { name: 'Search Emoji' }).click()
             for (const key of ['l', 'o', 'v', 'e'])
               await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+          }
+        } else {
+          await page.getByRole('button', { name: 'Symbols' }).click()
+          if (shot.keyboard === 'symbol-search') {
+            await page.getByRole('button', { name: 'Search Symbols' }).click()
+            for (const key of ['p', 'o', 'u', 'n', 'd'])
+              await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
+            await page.getByRole('button', { name: 'Type £' }).waitFor()
+          } else {
+            await page.getByRole('button', { name: '£', exact: true }).waitFor()
           }
         }
         if (!heldSpace) {

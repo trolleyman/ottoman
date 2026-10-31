@@ -89,9 +89,23 @@ const LETTER_ROWS: KeyDefinition[][] = [
 
 const SYMBOL_ROWS: KeyDefinition[][] = [
   ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((key) => ({ key })),
-  ["@", "#", "$", "%", "&", "-", "+", "(", ")"].map((key) => ({ key })),
+  ["@", "#", "£", "$", "%", "&", "-", "+", "(", ")"].map((key) => ({ key })),
   ['"', "'", ":", ";", "!", "?", "/"].map((key) => ({ key })),
 ];
+
+const SYMBOLS = [
+  ["£", "pound sterling currency british gbp"], ["€", "euro currency"],
+  ["$", "dollar currency usd"], ["¥", "yen yuan currency"], ["¢", "cent currency"],
+  ["©", "copyright"], ["®", "registered trademark"], ["™", "trademark"],
+  ["°", "degree temperature angle"], ["±", "plus minus"], ["×", "multiply times"],
+  ["÷", "divide division"], ["≈", "approximately equal"], ["≠", "not equal"],
+  ["≤", "less than or equal"], ["≥", "greater than or equal"], ["∞", "infinity"],
+  ["√", "square root"], ["π", "pi"], ["µ", "micro micron"], ["Ω", "omega ohm"],
+  ["→", "right arrow"], ["←", "left arrow"], ["↑", "up arrow"], ["↓", "down arrow"],
+  ["•", "bullet dot"], ["…", "ellipsis dots"], ["§", "section"], ["¶", "paragraph"],
+  ["†", "dagger"], ["‡", "double dagger"], ["✓", "check tick"], ["—", "em dash"],
+  ["–", "en dash"], ["№", "number numero"], ["@", "at sign"], ["#", "hash pound number"],
+] as const;
 
 const EMOJIS = [
   ["😀", "grinning happy smile"], ["😂", "laugh tears funny"],
@@ -124,6 +138,14 @@ function loadRecentEmoji(): string[] {
 
 type ShiftState = "off" | "once" | "locked";
 type KeyboardMode = "letters" | "symbols" | "emoji";
+
+function WindowsIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M3 5.4 11 4.3v7.2H3V5.4Zm9.2-1.3L21 2.9v8.6h-8.8V4.1ZM3 12.7h8v7.2l-8-1.1v-6.1Zm9.2 0H21v8.6l-8.8-1.2v-7.4Z" />
+    </svg>
+  );
+}
 
 function ModifierButton({
   modifier,
@@ -426,8 +448,10 @@ export function CustomKeyboard({
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const [shift, setShift] = useState<ShiftState>("off");
   const [emojiSearching, setEmojiSearching] = useState(false);
+  const [symbolSearching, setSymbolSearching] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
   const [emojiQuery, setEmojiQuery] = useState("");
+  const [symbolQuery, setSymbolQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
   const lastShiftTap = useRef(0);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -453,7 +477,12 @@ export function CustomKeyboard({
       haptic(settings.haptics);
       return;
     }
-    const shifted = mode === "letters" && shift !== "off";
+    if (mode === "symbols" && symbolSearching) {
+      setSymbolQuery((current) => `${current}${value.toLocaleLowerCase()}`);
+      haptic(settings.haptics);
+      return;
+    }
+    const shifted = (mode === "letters" || symbolSearching) && shift !== "off";
     const next = shifted ? value.toUpperCase() : value;
     onText(next, shifted);
     if (shift === "once") {
@@ -479,6 +508,8 @@ export function CustomKeyboard({
     const erase = () => {
       if (mode === "emoji" && emojiSearching)
         setEmojiQuery((current) => Array.from(current).slice(0, -1).join(""));
+      else if (mode === "symbols" && symbolSearching)
+        setSymbolQuery((current) => Array.from(current).slice(0, -1).join(""));
       else onBackspace();
     };
     erase();
@@ -548,10 +579,18 @@ export function CustomKeyboard({
     onNavigate(key);
   };
 
-  const rows = mode === "symbols" ? SYMBOL_ROWS : LETTER_ROWS;
+  const rows = mode === "symbols" && !symbolSearching ? SYMBOL_ROWS : LETTER_ROWS;
   const matchingEmoji = EMOJIS.filter(([, keywords]) =>
     !emojiQuery.trim() || keywords.includes(emojiQuery.trim().toLocaleLowerCase()),
   );
+  const matchingSymbols = SYMBOLS.filter(([, keywords]) =>
+    !symbolQuery.trim() || keywords.includes(symbolQuery.trim().toLocaleLowerCase()),
+  );
+
+  const selectSymbol = (symbol: string) => {
+    haptic(settings.haptics);
+    onText(symbol);
+  };
 
   const selectEmoji = (emoji: string) => {
     haptic(settings.haptics);
@@ -602,12 +641,7 @@ export function CustomKeyboard({
         ) : (
           <>
             <ModifierButton modifier={Modifier.META} label="Windows" text="Win" selected={modifiers} onToggle={onToggleModifier}>
-              <span className="grid h-4 w-4 grid-cols-2 grid-rows-2 gap-[1.5px]" aria-hidden="true">
-                <span className="bg-current" />
-                <span className="bg-current" />
-                <span className="bg-current" />
-                <span className="bg-current" />
-              </span>
+              <WindowsIcon className="h-[17px] w-[17px]" />
             </ModifierButton>
             <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
@@ -761,6 +795,35 @@ export function CustomKeyboard({
                 ))}
               </div>
             )}
+            {mode === "symbols" && !symbolSearching && (
+              <button
+                type="button"
+                onClick={() => setSymbolSearching(true)}
+                className="custom-keyboard-utility flex h-8 shrink-0 items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-2.5 text-left text-xs text-zinc-400"
+              >
+                <Search className="h-3.5 w-3.5" />
+                Search Symbols
+              </button>
+            )}
+            {mode === "symbols" && symbolSearching && (
+              <div className="flex h-11 shrink-0 items-center gap-1.5 overflow-hidden rounded-md bg-zinc-900/70 px-2">
+                <Search className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                <span className="min-w-12 flex-1 truncate text-sm text-zinc-200">
+                  {symbolQuery || <span className="text-zinc-500">Search Symbols</span>}
+                </span>
+                {matchingSymbols.slice(0, 6).map(([symbol]) => (
+                  <button
+                    type="button"
+                    key={symbol}
+                    aria-label={`Type ${symbol}`}
+                    onClick={() => selectSymbol(symbol)}
+                    className="h-8 w-8 shrink-0 rounded text-lg text-zinc-100 hover:bg-zinc-800"
+                  >
+                    {symbol}
+                  </button>
+                ))}
+              </div>
+            )}
             {settings.numberRow && mode === "letters" && (
               <div className="flex min-h-0 flex-1 gap-1 sm:gap-1.5">
                 {NUMBER_ROW.map((definition) => (
@@ -773,7 +836,7 @@ export function CustomKeyboard({
                 key={index}
                 className={`flex min-h-0 flex-1 gap-1 sm:gap-1.5 ${index === 1 ? "px-[4.5%]" : ""}`}
               >
-                {index === 2 && mode === "letters" && (
+                {index === 2 && (mode === "letters" || symbolSearching) && (
                   <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
                   </UtilityKey>
@@ -787,7 +850,7 @@ export function CustomKeyboard({
                   <Key
                     key={definition.key}
                     definition={definition}
-                    label={mode === "letters" && shift !== "off" ? definition.key.toUpperCase() : undefined}
+                    label={(mode === "letters" || symbolSearching) && shift !== "off" ? definition.key.toUpperCase() : undefined}
                     settings={settings}
                     onType={type}
                   />
@@ -815,14 +878,15 @@ export function CustomKeyboard({
 
         <div className="flex h-12 shrink-0 gap-1.5 sm:gap-2">
           <UtilityKey
-            label={emojiSearching ? "Back to emoji" : mode === "symbols" ? "Letters" : "Symbols"}
+            label={emojiSearching ? "Back to emoji" : symbolSearching ? "Back to symbols" : mode === "symbols" ? "Letters" : "Symbols"}
             wide
             onPress={() => {
               if (emojiSearching) setEmojiSearching(false);
+              else if (symbolSearching) setSymbolSearching(false);
               else setMode(mode === "symbols" ? "letters" : "symbols");
             }}
           >
-            {emojiSearching ? <ArrowLeft className="h-5 w-5" /> : mode === "symbols" ? "ABC" : "?123"}
+            {emojiSearching || symbolSearching ? <ArrowLeft className="h-5 w-5" /> : mode === "symbols" ? "ABC" : "?123"}
           </UtilityKey>
           <UtilityKey
             label={mode === "emoji" ? "Letters" : "Emoji"}
@@ -830,7 +894,10 @@ export function CustomKeyboard({
               if (mode === "emoji") {
                 setMode("letters");
                 setEmojiSearching(false);
-              } else setMode("emoji");
+              } else {
+                setMode("emoji");
+                setSymbolSearching(false);
+              }
             }}
           >
             {mode === "emoji" ? "ABC" : <Smile className="h-5 w-5" />}
@@ -867,6 +934,7 @@ export function CustomKeyboard({
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => {
               if (emojiSearching && matchingEmoji[0]) selectEmoji(matchingEmoji[0][0]);
+              else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
             }}
             className="flex min-w-[54px] flex-[1.4] touch-none select-none items-center justify-center rounded-md border border-blue-400/40 bg-blue-500 text-white shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-blue-400 disabled:opacity-40"
