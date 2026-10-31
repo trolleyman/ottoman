@@ -986,7 +986,15 @@ function TouchArea({
             showDraftIndicator();
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
-          onNavigate={(key) => { dismissDraft(); sendKeyPress(key, activeModifiers); }}
+          onNavigate={(key) => {
+            // Navigation keeps the mirrored field relevant. Hiding it on every
+            // drag step makes it flash as desktop caret notifications arrive.
+            if (remoteModel.current!.view?.available) {
+              setTypingContext((value) => value + 1);
+              showDraftIndicator();
+            } else dismissDraft();
+            sendKeyPress(key, activeModifiers);
+          }}
           onClose={() => {
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);

@@ -93,14 +93,46 @@ try {
     const input = document.querySelector('textarea');
     return input?.selectionStart === 8 && input.selectionEnd === 17;
   });
+  if (await page.locator('[data-preview-caret]').count()) throw Error('A selected range must not show an extra blinking caret');
   await page.keyboard.insertText('😀');
   await page.waitForFunction(() => document.querySelector('textarea')?.value === 'Ottoman 😀 text xyz');
-  console.log("Checking disable clearing");
+  console.log("Checking live preview during spacebar navigation");
   await page.getByRole('button', { name: 'Open keyboard settings' }).click();
+  await page.getByRole('button', { name: 'Ottoman', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click();
+  const space = page.getByRole('button', { name: 'Space. Hold and drag to move the cursor' });
+  await space.scrollIntoViewIfNeeded();
+  const spaceBox = await space.boundingBox();
+  if (!spaceBox) throw Error('Missing spacebar');
+  // Watch removals as well as the final state: a desktop update can restore the
+  // preview before a visibility assertion notices the flash.
+  await page.evaluate(() => {
+    const preview = document.querySelector('[data-text-preview]')!;
+    const observer = new MutationObserver((records) => {
+      if (records.some(record => Array.from(record.removedNodes).some(node => node === preview || node.contains(preview)))) {
+        document.documentElement.dataset.previewRemoved = 'true';
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+  const x = spaceBox.x + spaceBox.width / 2, y = spaceBox.y + spaceBox.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(500);
+  for (const offset of [-24, -48, -24, 0]) {
+    await page.mouse.move(x + offset, y);
+    await page.waitForTimeout(80);
+    if (!await page.locator('[data-text-preview]').isVisible()) throw Error('Navigation hid the live preview');
+  }
+  await page.mouse.up();
+  if (await page.evaluate(() => document.documentElement.dataset.previewRemoved)) throw Error('Live preview flickered during spacebar navigation');
+  console.log("Checking disable clearing");
+  await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click();
   await page.getByRole('switch', { name: 'Mirror focused text' }).click();
+  await page.getByRole('button', { name: 'Device', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
   if (errors.length) throw Error(errors.join('\n'));
-  console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, and disable clearing');
+  console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');
 } finally {
   await browser?.close();
   server.kill('SIGKILL');
