@@ -122,7 +122,9 @@ async function main() {
         deviceScaleFactor: shot.dpi,
         colorScheme: shot.scheme || 'dark',
         ...(shot.platform === 'apple' ? {
-          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+          // Exercise the Apple modifier order without Chromium applying its
+          // synthetic iPhone text autosizing to an otherwise desktop context.
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
         } : {}),
       })
       const page = await ctx.newPage()
@@ -136,6 +138,9 @@ async function main() {
           await page.getByRole('button', { name: 'Control' }).click()
           await page.getByRole('button', { name: 'Shift' }).click()
           await page.getByRole('button', { name: 'c, hold for ¢' }).click()
+          await page.getByRole('button', { name: 'Control' }).click()
+          for (const key of ['h', 'e', 'l', 'l', 'o'])
+            await page.getByRole('button', { name: new RegExp(`^${key}, hold for`) }).click()
         } else {
           await page.getByRole('button', { name: 'Emoji' }).click()
           if (shot.keyboard === 'emoji-search') {
@@ -158,8 +163,13 @@ async function main() {
       await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings })
       if (shot.keyboard) {
         await page.getByRole('button', { name: 'Close keyboard' }).click()
+        await page.getByRole('button', { name: 'Trackpad settings' }).click()
         await page.getByRole('button', { name: 'Device', exact: true }).click()
-        await page.getByLabel('Type on the remote computer with the device keyboard').waitFor({ state: 'visible' })
+        await page.getByRole('button', { name: 'Close settings' }).click()
+        await page.getByRole('button', { name: 'Open device keyboard to type on the remote computer' }).click()
+        const nativeInput = page.getByLabel('Type on the remote computer with the device keyboard')
+        if (!await nativeInput.evaluate((element) => document.activeElement === element))
+          throw new Error('Device keyboard input did not receive focus')
       }
       writeFileSync(`${file}.meta`, JSON.stringify({ tags: shot.tags, dpi: shot.dpi }))
       await ctx.close()

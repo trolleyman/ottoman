@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronUp,
   Keyboard,
-  RotateCcw,
   Settings,
   X,
 } from "lucide-react";
@@ -72,14 +71,12 @@ function TouchArea({
   send,
   settings,
   onOpenSettings,
-  onSettingsChange,
 }: {
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
   settings: TrackpadSettings;
   onOpenSettings: () => void;
-  onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
@@ -95,7 +92,10 @@ function TouchArea({
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
   const [draft, setDraft] = useState("");
+  const [draftCursor, setDraftCursor] = useState(0);
+  const [draftVisible, setDraftVisible] = useState(false);
   const draftRef = useRef("");
+  const draftFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteCursor = useRef(0);
   // Fallback mouse position tracking when pointer lock is unavailable (e.g. after Escape cooldown)
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
@@ -165,6 +165,16 @@ function TouchArea({
     [send],
   );
 
+  const showDraftIndicator = useCallback(() => {
+    setDraftVisible(true);
+    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
+    draftFadeTimer.current = setTimeout(() => setDraftVisible(false), 4500);
+  }, []);
+
+  useEffect(() => () => {
+    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
+  }, []);
+
   const toggleModifier = useCallback((modifier: Modifier) => {
     setActiveModifiers((current) =>
       current.includes(modifier)
@@ -217,18 +227,23 @@ function TouchArea({
 
       draftRef.current = next;
       setDraft(next);
+      setDraftCursor(e.currentTarget.selectionEnd);
+      showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, send, sendKeyPress],
+    [moveRemoteCursor, send, sendKeyPress, showDraftIndicator],
   );
 
   const handleSelection = useCallback(
     (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
       const input = e.currentTarget;
-      if (input.selectionStart === input.selectionEnd)
+      if (input.selectionStart === input.selectionEnd) {
+        setDraftCursor(input.selectionEnd);
+        showDraftIndicator();
         moveRemoteCursor(characterCount(input.value.slice(0, input.selectionEnd)));
+      }
     },
-    [moveRemoteCursor],
+    [moveRemoteCursor, showDraftIndicator],
   );
 
   const appendText = useCallback(
@@ -256,6 +271,8 @@ function TouchArea({
         draftRef.current = next;
         remoteCursor.current = Math.max(0, remoteCursor.current - 1) + 2;
         setDraft(next);
+        setDraftCursor(next.length);
+        showDraftIndicator();
         return;
       }
 
@@ -264,8 +281,10 @@ function TouchArea({
       draftRef.current = next;
       remoteCursor.current += characterCount(value);
       setDraft(next);
+      setDraftCursor(next.length);
+      showDraftIndicator();
     },
-    [activeModifiers, send, sendKeyPress, settings.doubleSpacePeriod],
+    [activeModifiers, send, sendKeyPress, settings.doubleSpacePeriod, showDraftIndicator],
   );
 
   const backspace = useCallback(() => {
@@ -277,17 +296,13 @@ function TouchArea({
     draftRef.current = next;
     remoteCursor.current = Math.max(0, remoteCursor.current - 1);
     setDraft(next);
-  }, [activeModifiers, sendKeyPress]);
-
-  const resetDraft = useCallback(() => {
-    draftRef.current = "";
-    remoteCursor.current = 0;
-    setDraft("");
-    if (!settings.customKeyboard) inputRef.current?.focus();
-  }, [settings.customKeyboard]);
+    setDraftCursor(next.length);
+    showDraftIndicator();
+  }, [activeModifiers, sendKeyPress, showDraftIndicator]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
+    setDraftVisible(false);
 
     // Stop any active inertia scrolling when the user touches the screen again
     if (inertiaFrame.current) {
@@ -544,6 +559,7 @@ function TouchArea({
   // Mouse drag via Pointer Lock (or fallback position tracking after Escape cooldown)
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
+    setDraftVisible(false);
 
     const modifiers = combineModifiers(getModifiers(e), activeModifiers);
 
@@ -704,6 +720,11 @@ function TouchArea({
     return () => el.removeEventListener("wheel", handleWheel);
   }, [connected, send, settings.scrollSensitivity]);
 
+  const indicatorStart = Math.max(0, draftCursor - 160);
+  const indicatorEnd = Math.min(draft.length, indicatorStart + 260);
+  const indicatorBefore = draft.slice(indicatorStart, draftCursor);
+  const indicatorAfter = draft.slice(draftCursor, indicatorEnd);
+
   return (
     <div className="w-full md:max-w-sm md:shrink-0 flex flex-col gap-2">
       <div className="relative">
@@ -711,7 +732,7 @@ function TouchArea({
           ref={trackpadRef}
           tabIndex={0}
           aria-label="Trackpad. Tap to click, move one finger to point, tap two fingers to right click, or move two fingers to scroll."
-          className={`w-full aspect-square max-h-[60vh] rounded-xl border-2 transition-colors select-none touch-none outline-none ${
+          className={`relative w-full aspect-square max-h-[60vh] overflow-hidden rounded-xl border-2 transition-colors select-none touch-none outline-none ${
             connected
               ? focused
                 ? "border-blue-500 ring-2 ring-blue-500/30 bg-zinc-900/80 cursor-crosshair"
@@ -749,93 +770,63 @@ function TouchArea({
               )}
             </div>
           )}
+          {connected && draft && (
+            <div
+              aria-live="polite"
+              aria-atomic="true"
+              className={`pointer-events-none absolute inset-x-3 bottom-14 max-h-24 select-none overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/55 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md transition-all duration-300 ${
+                draftVisible
+                  ? "translate-y-0 opacity-100"
+                  : "translate-y-1 opacity-0"
+              }`}
+            >
+              {indicatorStart > 0 && <span className="text-zinc-500">…</span>}
+              {indicatorBefore}
+              <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
+              {indicatorAfter}
+              {indicatorEnd < draft.length && <span className="text-zinc-500">…</span>}
+            </div>
+          )}
         </div>
         {connected && (
           <ScrollRail send={send} sensitivity={settings.scrollSensitivity} />
         )}
-      </div>
-      <div className="relative rounded-xl border border-zinc-700 bg-zinc-900/80 p-2">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-            Keyboard
-          </span>
-          <div className="flex rounded-md bg-zinc-950 p-0.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => {
-                setKeyboardOpen(false);
-                onSettingsChange({ customKeyboard: true });
-              }}
-              className={`rounded px-2 py-1 ${settings.customKeyboard ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"}`}
-            >
-              Ottoman
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onSettingsChange({ customKeyboard: false });
-                setKeyboardOpen(false);
-                requestAnimationFrame(() => inputRef.current?.focus());
-              }}
-              className={`rounded px-2 py-1 ${!settings.customKeyboard ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"}`}
-            >
-              Device
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Keyboard
-            className="h-4 w-4 shrink-0 text-zinc-400"
-            aria-hidden="true"
+        <button
+          type="button"
+          disabled={!connected}
+          aria-label={settings.customKeyboard
+            ? "Open Ottoman keyboard to type on the remote computer"
+            : "Open device keyboard to type on the remote computer"}
+          title={settings.customKeyboard ? "Open Ottoman keyboard" : "Open device keyboard"}
+          onClick={() => {
+            if (settings.customKeyboard) setKeyboardOpen(true);
+            else inputRef.current?.focus();
+          }}
+          className="absolute bottom-3 left-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-zinc-950/75 text-zinc-300 shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-40"
+        >
+          <Keyboard className="h-[18px] w-[18px]" aria-hidden="true" />
+        </button>
+        {!settings.customKeyboard && (
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            disabled={!connected}
+            aria-label="Type on the remote computer with the device keyboard"
+            className="pointer-events-none absolute bottom-2 left-2 h-px w-px resize-none opacity-0"
+            autoComplete="on"
+            autoCapitalize="sentences"
+            autoCorrect="on"
+            spellCheck={true}
+            enterKeyHint="enter"
+            inputMode="text"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={handleInputKeyDown}
+            onChange={handleTextChange}
+            onSelect={handleSelection}
           />
-          {settings.customKeyboard ? (
-            <button
-              type="button"
-              disabled={!connected}
-              aria-label="Open Ottoman keyboard to type on the remote computer"
-              onClick={() => setKeyboardOpen(true)}
-              className="min-h-10 max-h-24 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-left text-base text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
-            >
-              {draft || <span className="text-zinc-500">Tap to type…</span>}
-            </button>
-          ) : (
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={draft}
-              disabled={!connected}
-              aria-label="Type on the remote computer with the device keyboard"
-              placeholder="Tap to type…"
-              className="min-h-10 max-h-24 flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-base text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
-              autoComplete="on"
-              autoCapitalize="sentences"
-              autoCorrect="on"
-              spellCheck={true}
-              enterKeyHint="enter"
-              inputMode="text"
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              onKeyDown={handleInputKeyDown}
-              onChange={handleTextChange}
-              onSelect={handleSelection}
-            />
-          )}
-          <button
-            type="button"
-            onClick={resetDraft}
-            disabled={!draft}
-            aria-label="Clear typing preview"
-            title="Clear preview without deleting remote text"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-30"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="mt-1 px-6 text-[11px] text-zinc-500">
-          {settings.customKeyboard
-            ? "No browser toolbar — just keys. Hold a key for its faint symbol."
-            : "Device keyboard keeps autocorrect and space-bar cursor control."}
-        </p>
+        )}
         <CustomKeyboard
           open={keyboardOpen && settings.customKeyboard}
           connected={connected}
@@ -853,6 +844,8 @@ function TouchArea({
             draftRef.current = next;
             remoteCursor.current += 1;
             setDraft(next);
+            setDraftCursor(next.length);
+            showDraftIndicator();
           }}
           onClose={() => setKeyboardOpen(false)}
           onOpenSettings={() => {
@@ -1121,7 +1114,6 @@ export function Trackpad({
           send={send}
           settings={settings}
           onOpenSettings={() => setShowSettings(true)}
-          onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
         />
         <MonitorDisplay
           layouts={layouts}

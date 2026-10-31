@@ -118,12 +118,14 @@ type KeyboardMode = "letters" | "symbols" | "emoji";
 function ModifierButton({
   modifier,
   label,
+  text,
   selected,
   onToggle,
   children,
 }: {
   modifier: Modifier;
   label: string;
+  text: string;
   selected: Modifier[];
   onToggle: (modifier: Modifier) => void;
   children: React.ReactNode;
@@ -137,13 +139,14 @@ function ModifierButton({
       aria-pressed={active}
       onPointerDown={(event) => event.preventDefault()}
       onClick={() => onToggle(modifier)}
-      className={`flex h-9 min-w-10 flex-1 items-center justify-center rounded-md border transition-colors ${
+      className={`flex h-9 min-w-10 flex-1 items-center justify-center gap-1 rounded-md border px-1 transition-colors ${
         active
           ? "border-blue-400/60 bg-blue-500 text-white shadow-[0_0_0_2px_rgba(59,130,246,.16)]"
           : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
       }`}
     >
       {children}
+      <span className="text-[10px] font-semibold tracking-wide">{text}</span>
     </button>
   );
 }
@@ -389,6 +392,7 @@ export function CustomKeyboard({
         <ModifierButton
           modifier={Modifier.CTRL}
           label="Control"
+          text="Ctrl"
           selected={modifiers}
           onToggle={onToggleModifier}
         >
@@ -396,19 +400,19 @@ export function CustomKeyboard({
         </ModifierButton>
         {applePlatform ? (
           <>
-            <ModifierButton modifier={Modifier.ALT} label="Option" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
             </ModifierButton>
-            <ModifierButton modifier={Modifier.META} label="Command" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier}>
               <Command className="h-4 w-4" />
             </ModifierButton>
           </>
         ) : (
           <>
-            <ModifierButton modifier={Modifier.META} label="Windows" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.META} label="Windows" text="Win" selected={modifiers} onToggle={onToggleModifier}>
               <PanelsTopLeft className="h-4 w-4" />
             </ModifierButton>
-            <ModifierButton modifier={Modifier.ALT} label="Alt" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
               <Option className="h-4 w-4" />
             </ModifierButton>
           </>
