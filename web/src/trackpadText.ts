@@ -10,25 +10,30 @@ export interface TextEdit {
 export function diffText(before: string, after: string): TextEdit | null {
   if (before === after) return null;
 
+  // Compare whole code points: two different emoji can share one UTF-16
+  // surrogate. Sending only the changed half would inject invalid text.
+  const beforeCharacters = Array.from(before);
+  const afterCharacters = Array.from(after);
   let start = 0;
-  const commonLength = Math.min(before.length, after.length);
-  while (start < commonLength && before[start] === after[start]) start++;
+  const commonLength = Math.min(beforeCharacters.length, afterCharacters.length);
+  while (start < commonLength && beforeCharacters[start] === afterCharacters[start]) start++;
 
-  let beforeEnd = before.length;
-  let afterEnd = after.length;
+  let beforeEnd = beforeCharacters.length;
+  let afterEnd = afterCharacters.length;
   while (
     beforeEnd > start &&
     afterEnd > start &&
-    before[beforeEnd - 1] === after[afterEnd - 1]
+    beforeCharacters[beforeEnd - 1] === afterCharacters[afterEnd - 1]
   ) {
     beforeEnd--;
     afterEnd--;
   }
 
   return {
-    start,
-    removed: before.slice(start, beforeEnd),
-    inserted: after.slice(start, afterEnd),
+    // Textareas use UTF-16 offsets, so keep the public start index in those units.
+    start: beforeCharacters.slice(0, start).join("").length,
+    removed: beforeCharacters.slice(start, beforeEnd).join(""),
+    inserted: afterCharacters.slice(start, afterEnd).join(""),
   };
 }
 

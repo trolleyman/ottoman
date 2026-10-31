@@ -1,85 +1,53 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { type TrackpadMessage } from "./api";
+import type { TrackpadMessage } from "./api";
+import { createTrackpadConnection, type ConnectionState } from "./trackpadConnection";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [state, setState] = useState<ConnectionState>({ connected: false, connecting: false });
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
-  // Whether the agent can read/set the absolute cursor position. The uinput
-  // backend (Wayland) can inject input but can't query the cursor, so it sends
-  // a "connected" message instead of position updates; hide cursor UI then.
+  // Wayland's uinput backend injects input but cannot query cursor position.
   const [cursorSupported, setCursorSupported] = useState(true);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const connectRef = useRef<() => void>(() => {});
+  const connectionRef = useRef<ReturnType<typeof createTrackpadConnection> | null>(null);
 
-  const connect = useCallback(() => {
+  useEffect(() => {
     if (!authed) return;
-
-    if (reconnectRef.current) {
-      clearTimeout(reconnectRef.current);
-      reconnectRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-    }
-
-    setConnecting(true);
-
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/trackpad`);
-    wsRef.current = ws;
-
-    ws.onclose = () => {
-      setConnected(false);
-      setConnecting(false);
-      setCursorPos(null);
-      // Attempt reconnect after 3 seconds
-      reconnectRef.current = setTimeout(() => connectRef.current(), 3000);
-    };
-    ws.onmessage = (e) => {
-      // First data message from client proves connection is live
-      setConnected(true);
-      setConnecting(false);
-      try {
-        const msg = JSON.parse(e.data as string) as TrackpadMessage;
-        if (msg.type === "mousepositionupdate") {
+    const connection = createTrackpadConnection(
+      `${protocol}//${window.location.host}/api/trackpad`,
+      (next) => {
+        setState(next);
+        if (!next.connected) setCursorPos(null);
+      },
+      (message) => {
+        if (message.type === "mousepositionupdate") {
           setCursorSupported(true);
-          setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
-        } else if (msg.type === "connected") {
-          // Agent can't read the cursor position (e.g. uinput on Wayland).
+          setCursorPos({ x: message.x ?? 0, y: message.y ?? 0 });
+        } else if (message.type === "connected") {
           setCursorSupported(false);
           setCursorPos(null);
         }
-      } catch { /* ignore parse errors */ }
+      },
+    );
+    connectionRef.current = connection;
+    return () => {
+      connection.dispose();
+      connectionRef.current = null;
     };
   }, [authed]);
 
   useEffect(() => {
-    connectRef.current = connect;
-  }, [connect]);
-
-  useEffect(() => {
-    reconnectRef.current = setTimeout(() => connectRef.current(), 0);
-    return () => {
-      wsRef.current?.close();
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
-    };
-  }, [connect]);
-
-  useEffect(() => {
-    if (!connected && authed) {
-      reconnectRef.current = setTimeout(() => connectRef.current(), 0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    connectionRef.current?.reconnect();
   }, [refreshKey]);
 
-  const send = useCallback((msg: TrackpadMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    }
+  const send = useCallback((message: TrackpadMessage) => {
+    connectionRef.current?.send(message);
   }, []);
 
-  return { connected, connecting, cursorPos, cursorSupported, send };
+  return {
+    connected: authed && state.connected,
+    connecting: authed && state.connecting,
+    cursorPos: authed ? cursorPos : null,
+    cursorSupported,
+    send,
+  };
 }
