@@ -13,5 +13,8 @@ import type { TrackpadMessageMousePositionUpdate } from './TrackpadMessageMouseP
 import type { TrackpadMessageMouseScroll } from './TrackpadMessageMouseScroll';
 import type { TrackpadMessageMouseUp } from './TrackpadMessageMouseUp';
 import type { TrackpadMessageText } from './TrackpadMessageText';
-export type TrackpadMessage = (TrackpadMessageMousePositionUpdate | TrackpadMessageMouseMoveRelative | TrackpadMessageMouseMoveTo | TrackpadMessageMouseClick | TrackpadMessageMouseDown | TrackpadMessageMouseUp | TrackpadMessageMouseScroll | TrackpadMessageKeyDown | TrackpadMessageKeyUp | TrackpadMessageText | TrackpadMessageConnected);
+import type { TrackpadMessageTextContext } from './TrackpadMessageTextContext';
+import type { TrackpadMessageTextEdit } from './TrackpadMessageTextEdit';
+import type { TrackpadMessageTextWatch } from './TrackpadMessageTextWatch';
+export type TrackpadMessage = (TrackpadMessageMousePositionUpdate | TrackpadMessageMouseMoveRelative | TrackpadMessageMouseMoveTo | TrackpadMessageMouseClick | TrackpadMessageMouseDown | TrackpadMessageMouseUp | TrackpadMessageMouseScroll | TrackpadMessageKeyDown | TrackpadMessageKeyUp | TrackpadMessageText | TrackpadMessageConnected | TrackpadMessageTextWatch | TrackpadMessageTextContext | TrackpadMessageTextEdit);
 

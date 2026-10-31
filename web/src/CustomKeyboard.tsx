@@ -21,6 +21,7 @@ import {
 import { Modifier } from "./api";
 
 export interface KeyboardSettings {
+  mirrorFocusedText: boolean;
   numberRow: boolean;
   symbolHints: boolean;
   doubleSpacePeriod: boolean;
@@ -705,6 +706,7 @@ export function CustomKeyboard({
             </div>
             <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
               {([
+                ["Mirror focused text", "mirrorFocusedText"],
                 ["Number row", "numberRow"],
                 ["Long-press symbols", "symbolHints"],
                 ["Double-space period", "doubleSpacePeriod"],
@@ -735,6 +737,7 @@ export function CustomKeyboard({
               <TimingField label="Preview fade" value={settings.previewFadeMs} min={1000} max={10000} step={250} onChange={(value) => onSettingsChange({ previewFadeMs: value })} />
             </div>
             <p className="mt-3 text-[11px] leading-4 text-zinc-500">
+              Mirror focused text allows the desktop agent to read the focused editable field through operating-system accessibility APIs. Passwords are excluded. Enable accessibility access on the desktop if requested.
               Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
             </p>
           </div>

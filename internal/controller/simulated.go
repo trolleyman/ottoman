@@ -24,6 +24,7 @@ import (
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
 	"github.com/trolleyman/ottoman/internal/input"
+	"github.com/trolleyman/ottoman/internal/textcontext"
 )
 
 type agentState int
@@ -1068,6 +1069,15 @@ func (s *SimulatedController) handleTrackpadWebSocket(w http.ResponseWriter, r *
 		}
 	}()
 
+	conn.SetReadLimit(64 * 1024)
+	simulatedText := &textcontext.Simulated{Current: textcontext.Snapshot{Identity: "simulated-field", Value: "Ottoman simulated text", Start: 22, End: 22, Available: true, Editable: true, Multiline: true}}
+	textSession := textcontext.New(ctx, func(context.Context) (textcontext.Backend, error) { return simulatedText, nil }, func(v api.TrackpadMessageTextContext) error {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		return conn.Write(ctx, websocket.MessageText, data)
+	})
 	// Read loop
 	for {
 		_, data, err := conn.Read(ctx)
@@ -1086,6 +1096,11 @@ func (s *SimulatedController) handleTrackpadWebSocket(w http.ResponseWriter, r *
 		}
 
 		switch v := castMsg.(type) {
+		case api.TrackpadMessageTextWatch:
+			textSession.Watch(ctx, v)
+		case api.TrackpadMessageTextEdit:
+			textSession.Edit(ctx, v)
+
 		case api.TrackpadMessageMouseMoveRelative:
 			mouse.MoveRelative(v.Dx, v.Dy)
 		case api.TrackpadMessageMouseClick:

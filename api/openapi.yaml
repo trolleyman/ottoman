@@ -1434,6 +1434,44 @@ components:
         type: { type: string, enum: ["text"] }
         text: { type: string }
 
+    TrackpadMessageTextWatch:
+      type: object
+      required: [type, enabled]
+      properties:
+        type: {type: string, enum: [textwatch]}
+        enabled: {type: boolean}
+        windowSize: {type: integer, minimum: 128, maximum: 4096, default: 4096}
+    TrackpadMessageTextContext:
+      description: Focused field window. All offsets are absolute Unicode code-point offsets. Unavailable or protected fields carry no text.
+      type: object
+      required: [type, fieldId, revision, value, selectionStart, selectionEnd, windowStart, editable, multiline, available, protected]
+      properties:
+        type: {type: string, enum: [textcontext]}
+        fieldId: {type: string}
+        revision: {type: integer}
+        value: {type: string}
+        selectionStart: {type: integer}
+        selectionEnd: {type: integer}
+        windowStart: {type: integer}
+        editable: {type: boolean}
+        multiline: {type: boolean}
+        available: {type: boolean}
+        protected: {type: boolean}
+        requestId: {type: integer}
+        rejected: {type: boolean}
+    TrackpadMessageTextEdit:
+      description: Revision-guarded replacement of an absolute code-point range. selectionOnly changes the selection without replacing text.
+      type: object
+      required: [type, fieldId, baseRevision, start, end, text, requestId]
+      properties:
+        type: {type: string, enum: [textedit]}
+        fieldId: {type: string}
+        baseRevision: {type: integer}
+        start: {type: integer, minimum: 0}
+        end: {type: integer, minimum: 0}
+        text: {type: string, maxLength: 4096}
+        requestId: {type: integer}
+        selectionOnly: {type: boolean}
     # Server -> client only. Sent once when the trackpad socket is accepted, so
     # the frontend (which treats the first message as proof the agent end of the
     # proxy is live) marks the trackpad connected even when the cursor position
@@ -1457,6 +1495,9 @@ components:
         - $ref: '#/components/schemas/TrackpadMessageKeyUp'
         - $ref: '#/components/schemas/TrackpadMessageText'
         - $ref: '#/components/schemas/TrackpadMessageConnected'
+        - $ref: '#/components/schemas/TrackpadMessageTextWatch'
+        - $ref: '#/components/schemas/TrackpadMessageTextContext'
+        - $ref: '#/components/schemas/TrackpadMessageTextEdit'
       discriminator:
         propertyName: type
         mapping:
@@ -1471,3 +1512,6 @@ components:
           keyup: '#/components/schemas/TrackpadMessageKeyUp'
           text: '#/components/schemas/TrackpadMessageText'
           connected: '#/components/schemas/TrackpadMessageConnected'
+          textwatch: '#/components/schemas/TrackpadMessageTextWatch'
+          textcontext: '#/components/schemas/TrackpadMessageTextContext'
+          textedit: '#/components/schemas/TrackpadMessageTextEdit'

@@ -10,25 +10,17 @@ export interface TextEdit {
 export function diffText(before: string, after: string): TextEdit | null {
   if (before === after) return null;
 
-  let start = 0;
-  const commonLength = Math.min(before.length, after.length);
-  while (start < commonLength && before[start] === after[start]) start++;
-
-  let beforeEnd = before.length;
-  let afterEnd = after.length;
-  while (
-    beforeEnd > start &&
-    afterEnd > start &&
-    before[beforeEnd - 1] === after[afterEnd - 1]
-  ) {
-    beforeEnd--;
-    afterEnd--;
-  }
-
+  const oldChars = Array.from(before);
+  const newChars = Array.from(after);
+  let prefix = 0;
+  while (prefix < Math.min(oldChars.length, newChars.length) && oldChars[prefix] === newChars[prefix]) prefix++;
+  let oldEnd = oldChars.length;
+  let newEnd = newChars.length;
+  while (oldEnd > prefix && newEnd > prefix && oldChars[oldEnd - 1] === newChars[newEnd - 1]) { oldEnd--; newEnd--; }
   return {
-    start,
-    removed: before.slice(start, beforeEnd),
-    inserted: after.slice(start, afterEnd),
+    start: oldChars.slice(0, prefix).join("").length,
+    removed: oldChars.slice(prefix, oldEnd).join(""),
+    inserted: newChars.slice(prefix, newEnd).join(""),
   };
 }
 

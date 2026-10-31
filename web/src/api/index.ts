@@ -60,6 +60,9 @@ export type { TrackpadMessageMousePositionUpdate } from './models/TrackpadMessag
 export type { TrackpadMessageMouseScroll } from './models/TrackpadMessageMouseScroll';
 export type { TrackpadMessageMouseUp } from './models/TrackpadMessageMouseUp';
 export type { TrackpadMessageText } from './models/TrackpadMessageText';
+export type { TrackpadMessageTextContext } from './models/TrackpadMessageTextContext';
+export type { TrackpadMessageTextEdit } from './models/TrackpadMessageTextEdit';
+export type { TrackpadMessageTextWatch } from './models/TrackpadMessageTextWatch';
 export type { TVConn } from './models/TVConn';
 export type { UpdateLayoutRequest } from './models/UpdateLayoutRequest';
 export type { UpdateLayoutResponse } from './models/UpdateLayoutResponse';

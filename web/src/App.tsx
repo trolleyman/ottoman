@@ -19,7 +19,7 @@ export default function App() {
   const logout = useStore((s) => s.logout);
   const refreshKey = useStore((s) => s.refreshKey);
 
-  const { connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
+  const { textContext, connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
 
   // Check auth on mount
   useEffect(() => {
@@ -82,6 +82,7 @@ export default function App() {
         <Audio />
 
         <Trackpad
+          textContext={textContext}
           connected={connected}
           connecting={connecting}
           cursorPos={cursorPos}

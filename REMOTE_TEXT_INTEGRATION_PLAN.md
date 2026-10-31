@@ -128,3 +128,28 @@ References: [Apple accessibility trust API](https://developer.apple.com/document
 - Password content is never transmitted or logged.
 - Unsupported controls retain today's keyboard behavior and do not leave a stale preview behind.
 - Disconnect, focus loss, permission revocation, and agent shutdown all clear the mirrored value immediately.
+
+## Implementation status
+
+The protocol, simulator, browser synchronization, Linux AT-SPI adapter, and
+Windows UI Automation helper are implemented. `textwatch` opts each authenticated
+socket into mirroring; `textcontext` also carries `available`, `protected`,
+`windowStart`, and edit acknowledgement fields. `textedit` supports selection-only
+updates. One browser edit is sent at a time; a rejection or external revision
+resets pending edits to the authoritative snapshot.
+
+Native calls run on one worker per socket. Focus notifications invalidate focus
+tokens; snapshots are sampled every 40 ms to include text/caret changes even in
+applications with incomplete event notifications. Linux uses EditableText range
+operations. Windows uses ValuePattern only when its text matches TextPattern,
+then restores the caret through TextPattern. Other rich editors retain injected
+input and read-only mirroring. Unobservable lock state fails closed on Linux.
+The Windows helper uses only system assemblies and exchanges text over private
+stdio, with no temporary scripts, clipboard writes, or text in command arguments.
+
+Automated coverage includes private-bus AT-SPI reads/writes and password read
+suppression, session focus/revision guards, opt-in and disable behavior, browser
+edit queuing, Unicode range conversion, and selection replacement. Live Windows
+and Linux application/permission testing is still required to validate the
+100 ms target across toolkits. macOS and broader application/RTL/grapheme testing
+remain deferred as described above.

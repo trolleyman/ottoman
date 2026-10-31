@@ -27,3 +27,6 @@ scripts/screenshots/out
 *.njsproj
 *.sln
 *.sw?
+
+# Project-local Playwright browser binaries
+.playwright

@@ -618,6 +618,7 @@ func (c *Controller) handleTrackpadWebSocket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer browserConn.CloseNow()
+	browserConn.SetReadLimit(64 * 1024)
 
 	// Dial client WebSocket
 	clientURL := c.agentWebSocketURL("/api/trackpad")
@@ -636,6 +637,7 @@ func (c *Controller) handleTrackpadWebSocket(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer clientConn.CloseNow()
+	clientConn.SetReadLimit(64 * 1024)
 
 	log.Printf("Trackpad proxy: connected")
 

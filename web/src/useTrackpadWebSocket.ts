@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { type TrackpadMessage } from "./api";
+import { type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
 
 export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
+  const [textContext, setTextContext] = useState<TrackpadMessageTextContext | null>(null);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
@@ -14,7 +15,12 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
-    if (!authed) return;
+    if (!authed) {
+      setTextContext(null);
+      setConnected(false);
+      setConnecting(false);
+      return;
+    }
 
     if (reconnectRef.current) {
       clearTimeout(reconnectRef.current);
@@ -25,6 +31,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       wsRef.current.close();
     }
 
+    setTextContext(null);
     setConnecting(true);
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -32,6 +39,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
     wsRef.current = ws;
 
     ws.onclose = () => {
+      setTextContext(null);
       setConnected(false);
       setConnecting(false);
       setCursorPos(null);
@@ -39,12 +47,15 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
       reconnectRef.current = setTimeout(() => connectRef.current(), 3000);
     };
     ws.onmessage = (e) => {
+      if (wsRef.current !== ws) return;
       // First data message from client proves connection is live
       setConnected(true);
       setConnecting(false);
       try {
         const msg = JSON.parse(e.data as string) as TrackpadMessage;
-        if (msg.type === "mousepositionupdate") {
+        if (msg.type === "textcontext") {
+          setTextContext(msg);
+        } else if (msg.type === "mousepositionupdate") {
           setCursorSupported(true);
           setCursorPos({ x: msg.x ?? 0, y: msg.y ?? 0 });
         } else if (msg.type === "connected") {
@@ -63,6 +74,7 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   useEffect(() => {
     reconnectRef.current = setTimeout(() => connectRef.current(), 0);
     return () => {
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.onmessage = null; }
       wsRef.current?.close();
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
     };
@@ -76,10 +88,11 @@ export function useTrackpadWebSocket(authed: boolean, refreshKey: number) {
   }, [refreshKey]);
 
   const send = useCallback((msg: TrackpadMessage) => {
+    if (msg.type === "textwatch") setTextContext(null);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
 
-  return { connected, connecting, cursorPos, cursorSupported, send };
+  return { textContext, connected, connecting, cursorPos, cursorSupported, send };
 }

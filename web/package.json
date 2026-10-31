@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "bun test",
+    "test:native-text": "bun run build && bun scripts/tests/native-text-smoke.ts"
   },
   "dependencies": {
     "lucide-react": "^1.66.0",
