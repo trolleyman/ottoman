@@ -103,15 +103,26 @@ function KeyboardSession({
   const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Safari's selection loupe can ignore pointerdown prevention and CSS.
-  // https://bugs.webkit.org/show_bug.cgi?id=231161
-  // A native, non-passive touchstart listener blocks its long-press default.
-  // Keep deletion on pointer events so touch and pointer input never double-fire.
-  const backspaceTouchRef = useCallback((button: HTMLButtonElement | null) => {
-    if (!button) return;
-    const preventNativeHold = (event: TouchEvent) => event.preventDefault();
-    button.addEventListener("touchstart", preventNativeHold, { passive: false });
-    return () => button.removeEventListener("touchstart", preventNativeHold);
+  // iOS can start its selection magnifier despite pointerdown prevention and
+  // user-select: none. Cancel the native touch gesture for keys, leaving input
+  // handling to pointer events. Scrollable pickers/settings retain native pans.
+  const keyboardTouchRef = useCallback((keyboard: HTMLDivElement | null) => {
+    if (!keyboard) return;
+    const preventNativeHold = (event: TouchEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const key = target.closest("button");
+      if (key && !key.closest(".keyboard-scroll")) event.preventDefault();
+    };
+    const preventKeyMenu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest("button")) event.preventDefault();
+    };
+    keyboard.addEventListener("touchstart", preventNativeHold, { passive: false });
+    keyboard.addEventListener("contextmenu", preventKeyMenu);
+    return () => {
+      keyboard.removeEventListener("touchstart", preventNativeHold);
+      keyboard.removeEventListener("contextmenu", preventKeyMenu);
+    };
   }, []);
   const [backspaceHeld, setBackspaceHeld] = useState(false);
   const spaceHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -337,7 +348,7 @@ function KeyboardSession({
     : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : [];
 
   return (
-    <div data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
+    <div ref={keyboardTouchRef} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
       <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
@@ -538,7 +549,6 @@ function KeyboardSession({
                   <button
                     type="button"
                     aria-label="Backspace"
-                    ref={backspaceTouchRef}
                     onContextMenu={(event) => event.preventDefault()}
                     onPointerDown={(event) => {
                       event.preventDefault();

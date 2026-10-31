@@ -1,6 +1,7 @@
 // Run from web after `bun run build`, with a project-local Playwright Chromium.
 import { chromium, webkit } from 'playwright';
 import { checkAddressBar, installTestFont } from './address-bar-checks';
+import { checkKeyboardTouchDefaults } from './keyboard-touch-checks';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -128,6 +129,7 @@ try {
   }
   await page.mouse.up();
   if (await page.evaluate(() => document.documentElement.dataset.previewRemoved)) throw Error('Live preview flickered during spacebar navigation');
+  await checkKeyboardTouchDefaults(page);
   console.log("Checking disable clearing");
   await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click();
   await page.getByRole('switch', { name: 'Mirror focused text' }).click();
