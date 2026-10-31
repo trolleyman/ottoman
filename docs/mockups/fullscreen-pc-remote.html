@@ -1,0 +1,124 @@
+<style>
+#ottoman-remote-concept{--remote-bg:#09090b;--remote-panel:#18181b;--remote-key:#3f3f46;--remote-line:#303036;--remote-text:#f4f4f5;--remote-muted:#a1a1aa;--remote-accent:#60a5fa;font:14px/1.4 system-ui,sans-serif;color:var(--remote-text);background:var(--remote-bg);padding:18px;border-radius:16px;box-sizing:border-box}
+#ottoman-remote-concept *{box-sizing:border-box;font-family:inherit}
+#ottoman-remote-concept button,#ottoman-remote-concept input,#ottoman-remote-concept select{font:inherit;color:inherit}
+#ottoman-remote-concept button{background:var(--remote-panel);border:1px solid var(--remote-line);border-radius:8px;min-height:38px;padding:8px 12px;touch-action:manipulation}
+#ottoman-remote-concept button:active{background:var(--remote-key)}
+#ottoman-remote-concept button:focus-visible,#ottoman-remote-concept select:focus-visible{outline:2px solid var(--remote-accent);outline-offset:2px}
+#ottoman-remote-concept button[aria-pressed=true]{border-color:var(--remote-accent)}
+#ottoman-remote-concept select{max-width:100%;background:var(--remote-panel);border:1px solid var(--remote-line);border-radius:8px;padding:8px;min-height:38px}
+#ottoman-remote-concept .remote-header,#ottoman-remote-concept .remote-tools,#ottoman-remote-concept .remote-player,#ottoman-remote-concept .remote-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#ottoman-remote-concept .remote-header{justify-content:space-between;margin-bottom:16px}
+#ottoman-remote-concept .remote-brand{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+#ottoman-remote-concept .remote-brand strong{font-weight:600}
+#ottoman-remote-concept .remote-muted{color:var(--remote-muted);font-size:12px}
+#ottoman-remote-concept .remote-main{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:18px}
+#ottoman-remote-concept .remote-pad-wrap{position:relative;min-width:0}
+#ottoman-remote-concept .remote-pad{display:block;position:relative;width:100%;height:264px;padding:18px;border:1px solid #3b465c;background:radial-gradient(circle,#35353c 1px,transparent 1px) 0 0/20px 20px;touch-action:none;user-select:none;overflow:hidden;text-align:left}
+#ottoman-remote-concept .remote-pad-label{position:absolute;left:18px;top:14px;color:var(--remote-muted);font-size:12px}
+#ottoman-remote-concept .remote-pointer{position:absolute;left:43%;top:40%;height:16px;width:16px;border:2px solid var(--remote-accent);border-radius:50%;background:#0d1d31;pointer-events:none}
+#ottoman-remote-concept .remote-preview{position:absolute;left:18px;right:70px;bottom:18px;padding:10px 12px;background:#111114;border:1px solid var(--remote-line);border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none}
+#ottoman-remote-concept .remote-scroll{position:absolute;right:10px;top:16px;bottom:16px;display:flex;align-items:center;justify-content:center;width:44px;background:#121215;border:1px solid var(--remote-line);border-radius:24px}
+#ottoman-remote-concept .remote-scroll input{writing-mode:vertical-lr;direction:rtl;height:82%;width:28px;accent-color:var(--remote-accent)}
+#ottoman-remote-concept .remote-clicks{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+#ottoman-remote-concept .remote-audio{display:flex;flex-direction:column;gap:18px;padding-top:2px;min-width:0}
+#ottoman-remote-concept .remote-volume-label{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}
+#ottoman-remote-concept .remote-volume input{width:100%;accent-color:var(--remote-accent);min-height:28px}
+#ottoman-remote-concept .remote-volume .remote-row{justify-content:space-between;margin-top:6px}
+#ottoman-remote-concept .remote-auto{display:flex;align-items:center;gap:8px}
+#ottoman-remote-concept .remote-auto input{accent-color:var(--remote-accent);width:18px;height:18px}
+#ottoman-remote-concept .remote-player{margin:16px 0;padding:12px 0;border-top:1px solid var(--remote-line);border-bottom:1px solid var(--remote-line);justify-content:space-between}
+#ottoman-remote-concept .remote-now-playing{min-width:0;flex:1 1 180px}
+#ottoman-remote-concept .remote-now-playing strong{font-weight:500;display:block}
+#ottoman-remote-concept .remote-keyboard{display:flex;flex-direction:column;gap:7px}
+#ottoman-remote-concept .remote-suggestions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:3px}
+#ottoman-remote-concept .remote-suggestions button{border-color:transparent;background:transparent;min-width:0;padding:7px 2px}
+#ottoman-remote-concept .remote-suggestions button:first-child{color:var(--remote-accent)}
+#ottoman-remote-concept .remote-keys{display:flex;justify-content:center;gap:6px}
+#ottoman-remote-concept .remote-keys button{background:var(--remote-key);flex:1;min-width:0;padding:8px 0}
+#ottoman-remote-concept .remote-keys.indented{padding:0 4.5%}
+#ottoman-remote-concept .remote-keys button.utility{background:#27272a;flex:1.4}
+#ottoman-remote-concept .remote-keys button.space{flex:5}
+#ottoman-remote-concept .remote-footer{min-height:20px;margin-top:9px;color:var(--remote-muted);font-size:12px}
+#ottoman-remote-concept[data-density=compact] .remote-pad{height:220px}
+#ottoman-remote-concept[data-audio=above] .remote-main{display:flex;flex-direction:column-reverse}
+#ottoman-remote-concept[data-audio=above] .remote-audio{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#ottoman-remote-concept[hidden],#ottoman-remote-concept [hidden]{display:none!important}
+@media(max-width:650px){#ottoman-remote-concept{padding:12px}#ottoman-remote-concept .remote-main{grid-template-columns:1fr}#ottoman-remote-concept .remote-audio{display:grid;grid-template-columns:1fr 1fr;gap:14px}#ottoman-remote-concept .remote-header{gap:12px}#ottoman-remote-concept .remote-tools{gap:7px}#ottoman-remote-concept button{min-height:44px}#ottoman-remote-concept .remote-keys{gap:4px}#ottoman-remote-concept .remote-keys button{padding:6px 0}#ottoman-remote-concept .remote-player{gap:12px}#ottoman-remote-concept .remote-keys button.utility{flex:1.5}#ottoman-remote-concept .remote-scroll{width:42px}}
+
+@media(max-width:650px){
+#ottoman-remote-concept .remote-pad{height:170px}
+#ottoman-remote-concept .remote-audio{gap:8px 12px}
+#ottoman-remote-concept .remote-volume .remote-row{margin-top:0}
+#ottoman-remote-concept .remote-volume .remote-muted{display:none}
+#ottoman-remote-concept .remote-main{gap:10px}
+#ottoman-remote-concept .remote-header{margin-bottom:10px}
+#ottoman-remote-concept .remote-player{margin:10px 0;padding:8px 0;gap:6px}
+#ottoman-remote-concept .remote-now-playing{flex-basis:100%}
+#ottoman-remote-concept .remote-auto{font-size:12px}
+#ottoman-remote-concept .remote-volume-label{margin-bottom:0}
+}
+</style>
+<div id="ottoman-remote-concept" aria-label="Fullscreen PC remote concept" data-density="roomy" data-audio="beside">
+  <header class="remote-header">
+    <div class="remote-brand"><strong>Ottoman · PC remote</strong><span class="remote-muted">Interactive concept · no PC connection</span></div>
+    <div class="remote-tools">
+      <select id="remote-layout" aria-label="Display layout"><option value="tv">TV layout</option><option value="desktop">Desktop layout</option></select>
+      <button id="remote-view" type="button" aria-pressed="true" class="cursor-interaction">Fullscreen layout</button>
+    </div>
+  </header>
+  <div class="remote-main">
+    <div>
+      <div class="remote-row" style="justify-content:space-between;margin-bottom:8px"><span class="remote-muted">Trackpad + scroll</span><button type="button" id="remote-clear" class="cursor-interaction">Clear preview</button></div>
+      <div class="remote-pad-wrap">
+        <button type="button" class="remote-pad cursor-interaction" id="remote-pad" aria-label="Demo trackpad: drag to move the local cursor, arrow keys also move it">
+          <span class="remote-pad-label">PC pointer</span><span class="remote-pointer" id="remote-pointer"></span><span class="remote-preview" id="remote-preview">Let's watch a film on the televi▏</span>
+        </button>
+        <label class="remote-scroll"><input type="range" id="remote-scroll" min="0" max="100" value="50" aria-label="Scroll position"></label>
+      </div>
+      <div class="remote-clicks"><button type="button" data-status="Left click" class="cursor-interaction">Left click</button><button type="button" id="remote-drag" aria-pressed="false" class="cursor-interaction">Drag lock</button><button type="button" data-status="Right click" class="cursor-interaction">Right click</button></div>
+    </div>
+    <aside class="remote-audio" aria-label="Audio controls">
+      <div class="remote-volume"><label class="remote-volume-label" for="remote-pc-volume"><span>PC volume</span><output id="remote-pc-value">72%</output></label><input type="range" id="remote-pc-volume" min="0" max="100" value="72"><div class="remote-row"><span class="remote-muted" id="remote-pc-target">TV · HDMI</span><button type="button" data-mute="pc" aria-pressed="false" class="cursor-interaction">Mute PC</button></div></div>
+      <div class="remote-volume"><label class="remote-volume-label" for="remote-tv-volume"><span>TV volume</span><output id="remote-tv-value">24%</output></label><input type="range" id="remote-tv-volume" min="0" max="100" value="24"><div class="remote-row"><span class="remote-muted">LG TV · hardware</span><button type="button" data-mute="tv" aria-pressed="false" class="cursor-interaction">Mute TV</button></div></div>
+      <label class="remote-auto"><input type="checkbox" id="remote-auto" checked>Audio follows layout</label>
+      <label class="remote-muted">PC output<select id="remote-output" aria-label="PC audio output" style="display:block;width:100%;margin-top:5px"><option value="tv">TV · HDMI</option><option value="speakers">Desktop speakers</option></select></label>
+    </aside>
+  </div>
+  <section class="remote-player" aria-label="Media controls">
+    <div class="remote-now-playing"><strong id="remote-track">Evening playlist</strong><span class="remote-muted" id="remote-player-state">Sample player · playing</span></div>
+    <div class="remote-row"><button type="button" id="remote-previous" class="cursor-interaction">Previous</button><button type="button" id="remote-play" aria-pressed="true" class="cursor-interaction">Pause</button><button type="button" id="remote-next" class="cursor-interaction">Next</button></div>
+  </section>
+  <section class="remote-keyboard" id="remote-keyboard" aria-label="British keyboard and word suggestions">
+    <div class="remote-row" style="justify-content:space-between"><div class="remote-row"><button type="button" data-status="Control" class="cursor-interaction">Ctrl</button><button type="button" data-status="Super" class="cursor-interaction">Super</button><button type="button" data-status="Alt" class="cursor-interaction">Alt</button></div><button type="button" id="remote-keyboard-hide" class="cursor-interaction">Hide keyboard</button></div>
+    <div class="remote-keys" aria-label="Navigation keys"><button type="button" class="utility cursor-interaction" data-status="Escape">Esc</button><button type="button" class="utility cursor-interaction" data-status="Home">Home</button><button type="button" class="utility cursor-interaction" data-status="End">End</button><button type="button" class="utility cursor-interaction" data-status="Arrow left" aria-label="Arrow left">←</button><button type="button" class="utility cursor-interaction" data-status="Arrow up" aria-label="Arrow up">↑</button><button type="button" class="utility cursor-interaction" data-status="Arrow down" aria-label="Arrow down">↓</button><button type="button" class="utility cursor-interaction" data-status="Arrow right" aria-label="Arrow right">→</button><button type="button" class="utility cursor-interaction" data-status="Delete">Del</button></div>
+    <div class="remote-suggestions" id="remote-suggestions"><button type="button" data-word="televi" class="cursor-interaction">“televi”</button><button type="button" data-word="television" class="cursor-interaction">television</button><button type="button" data-word="televised" class="cursor-interaction">televised</button></div>
+    <div class="remote-keys" id="remote-row-one"></div><div class="remote-keys indented" id="remote-row-two"></div><div class="remote-keys" id="remote-row-three"></div>
+    <div class="remote-keys"><button type="button" class="utility cursor-interaction" data-status="Symbol layer">?123</button><button type="button" class="utility cursor-interaction" data-char=",">,</button><button type="button" class="space cursor-interaction" data-char=" ">space</button><button type="button" class="utility cursor-interaction" data-char=".">.</button><button type="button" class="utility cursor-interaction" data-char="\n" aria-label="Enter">↵</button></div>
+  </section>
+  <div id="remote-status" class="remote-footer" aria-live="polite">Sample controls only · no changes to the real PC</div>
+</div>
+<script>
+(()=>{
+const root=document.getElementById('ottoman-remote-concept');
+const find=id=>root.querySelector('#'+id);
+const state={text:"Let's watch a film on the televi",keyboard:true,density:'roomy',audio:'beside',playing:true,track:0,x:43,y:40};
+const tracks=['Evening playlist','Next in the queue','One more track'];
+const say=text=>{find('remote-status').textContent=text+' · demo only';};
+function persist(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{layout:find('remote-layout').value,output:find('remote-output').value,keyboard:state.keyboard},privateContent:{density:state.density,audio:state.audio}}).catch(()=>{});}
+function render(){root.dataset.density=state.density;root.dataset.audio=state.audio;find('remote-keyboard').hidden=!state.keyboard;find('remote-pad').setAttribute('aria-pressed',String(state.keyboard));find('remote-preview').textContent=state.text+'▏';find('remote-preview').hidden=!state.text;find('remote-pointer').style.left=state.x+'%';find('remote-pointer').style.top=state.y+'%';find('remote-play').textContent=state.playing?'Pause':'Play';find('remote-play').setAttribute('aria-pressed',String(state.playing));find('remote-player-state').textContent='Sample player · '+(state.playing?'playing':'paused');find('remote-track').textContent=tracks[state.track];}
+function updateWords(){const prefix=state.text.match(/[a-z]+$/i)?.[0]||'';const words=prefix.startsWith('telev')?[prefix,'television','televised']:prefix.startsWith('spea')?[prefix,'speakers','speaking']:[prefix||'…',prefix?prefix+'s':'the',prefix?prefix+'ing':'and'];find('remote-suggestions').replaceChildren(...words.map((word,index)=>{const button=document.createElement('button');button.type='button';button.className='cursor-interaction';button.textContent=index===0?'“'+word+'”':word;button.dataset.word=word;return button;}));}
+for(const [id,letters] of [['remote-row-one','qwertyuiop'],['remote-row-two','asdfghjkl'],['remote-row-three','zxcvbnm']]){const row=find(id);if(id==='remote-row-three'){const shift=document.createElement('button');shift.type='button';shift.textContent='⇧';shift.className='utility cursor-interaction';shift.dataset.status='Shift';row.append(shift);}for(const letter of letters){const button=document.createElement('button');button.type='button';button.textContent=letter;button.dataset.char=letter;button.className='cursor-interaction';row.append(button);}if(id==='remote-row-three'){const erase=document.createElement('button');erase.type='button';erase.textContent='⌫';erase.className='utility cursor-interaction';erase.id='remote-backspace';erase.setAttribute('aria-label','Backspace');row.append(erase);}}
+root.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(button.dataset.char!==undefined){state.text+=button.dataset.char==='\\n'?'\n':button.dataset.char;updateWords();render();}if(button.dataset.word){state.text=state.text.replace(/[a-z]*$/i,button.dataset.word)+' ';updateWords();render();}if(button.dataset.status)say(button.dataset.status);if(button.id==='remote-backspace'){state.text=Array.from(state.text).slice(0,-1).join('');updateWords();render();}if(button.dataset.mute){const active=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(active));button.textContent=active?'Unmute '+button.dataset.mute.toUpperCase():'Mute '+button.dataset.mute.toUpperCase();}if(button.id==='remote-clear'){state.text='';updateWords();render();say('Preview cleared; PC text would stay unchanged');}if(button.id==='remote-keyboard-hide'){state.keyboard=false;render();persist();}if(button.id==='remote-drag'){button.setAttribute('aria-pressed',String(button.getAttribute('aria-pressed')!=='true'));}if(button.id==='remote-play'){state.playing=!state.playing;render();}if(button.id==='remote-next'||button.id==='remote-previous'){state.track=(state.track+(button.id==='remote-next'?1:tracks.length-1))%tracks.length;render();}if(button.id==='remote-view'){const active=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(active));button.textContent=active?'Fullscreen layout':'Windowed layout';root.style.borderRadius=active?'0':'16px';say(active?'Fullscreen control layout':'Windowed control layout');}});
+for(const kind of ['pc','tv'])find('remote-'+kind+'-volume').addEventListener('input',event=>{find('remote-'+kind+'-value').textContent=event.target.value+'%';});
+function output(){find('remote-pc-target').textContent=find('remote-output').selectedOptions[0].textContent;persist();}
+find('remote-layout').addEventListener('change',()=>{if(find('remote-auto').checked){find('remote-output').value=find('remote-layout').value==='tv'?'tv':'speakers';output();}say(find('remote-layout').selectedOptions[0].textContent);persist();});
+find('remote-output').addEventListener('change',()=>{find('remote-auto').checked=false;output();say('Manual output override');});
+find('remote-auto').addEventListener('change',()=>{if(find('remote-auto').checked){find('remote-output').value=find('remote-layout').value==='tv'?'tv':'speakers';output();}persist();});
+find('remote-scroll').addEventListener('input',event=>{find('remote-pad').style.backgroundPositionY=event.target.value+'px';say('Scroll '+event.target.value);});
+const pad=find('remote-pad');pad.addEventListener('focus',()=>{state.keyboard=true;render();});let pointer=null;pad.addEventListener('pointerdown',event=>{event.preventDefault();pad.focus({preventScroll:true});state.keyboard=true;render();pad.setPointerCapture(event.pointerId);pointer=event.pointerId;});pad.addEventListener('pointermove',event=>{if(pointer!==event.pointerId)return;const box=pad.getBoundingClientRect();state.x=Math.max(3,Math.min(88,(event.clientX-box.x)/box.width*100));state.y=Math.max(8,Math.min(82,(event.clientY-box.y)/box.height*100));render();});pad.addEventListener('pointerup',()=>{pointer=null;say('Pointer moved');});pad.addEventListener('pointercancel',()=>{pointer=null;});pad.addEventListener('keydown',event=>{if(!event.key.startsWith('Arrow'))return;event.preventDefault();state.x=Math.max(3,Math.min(88,state.x+(event.key==='ArrowRight'?3:event.key==='ArrowLeft'?-3:0)));state.y=Math.max(8,Math.min(82,state.y+(event.key==='ArrowDown'?3:event.key==='ArrowUp'?-3:0)));render();});
+function restore(saved){if(!saved)return;const model=saved.modelContent||{};const detail=saved.privateContent||{};if(['tv','desktop'].includes(model.layout))find('remote-layout').value=model.layout;if(['tv','speakers'].includes(model.output))find('remote-output').value=model.output;if(typeof model.keyboard==='boolean')state.keyboard=model.keyboard;if(['roomy','compact'].includes(detail.density))state.density=detail.density;if(['beside','above'].includes(detail.audio))state.audio=detail.audio;find('remote-pc-target').textContent=find('remote-output').selectedOptions[0].textContent;render();}
+render();restore(window.openai?.widgetState);window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addSelect(state,'density',{label:'Trackpad height',options:['roomy','compact']});tweak.addSelect(state,'audio',{label:'Audio placement',options:['beside','above']});tweak.addToggle(state,'keyboard',{label:'Keyboard visible'});}
+})();
+</script>
