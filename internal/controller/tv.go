@@ -30,33 +30,7 @@ func (c *Controller) startTVSync(ctx context.Context) {
 	if c.registry == nil {
 		return // TV mirror unavailable (see New)
 	}
-	go func() {
-		lastErr := true // force a one-time "sync ok" log on first success
-		sync := func() {
-			if err := c.syncTVFromAgent(ctx); err != nil {
-				if !lastErr {
-					log.Printf("TV sync from agent failed (using last-known mirror): %v", err)
-				}
-				lastErr = true
-				return
-			}
-			if lastErr {
-				log.Printf("TV sync from agent OK")
-			}
-			lastErr = false
-		}
-		sync()
-		ticker := time.NewTicker(tvSyncInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				sync()
-			}
-		}
-	}()
+	startMirrorSync(ctx, "TV", tvSyncInterval, c.syncTVFromAgent)
 }
 
 // syncTVFromAgent fetches the agent's TV export and writes it into the local
