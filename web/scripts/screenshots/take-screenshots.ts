@@ -56,6 +56,7 @@ type Shot = {
   tags: string[]
   keyboard?: 'letters' | 'emoji' | 'emoji-search' | 'space-nav'
   settings?: boolean
+  settingsTiming?: boolean
   scheme?: 'light' | 'dark'
   platform?: 'apple' | 'pc'
 }
@@ -69,6 +70,7 @@ const SHOTS: Shot[] = [
   { name: 'trackpad-emoji-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji'], keyboard: 'emoji' },
   { name: 'trackpad-emoji-search-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji-search'], keyboard: 'emoji-search' },
   { name: 'trackpad-settings-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::settings'], settings: true },
+  { name: 'trackpad-settings-timing-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::settings-timing'], settingsTiming: true },
   { name: 'home-online-desktop', state: 'online', width: 1280, height: 900, dpi: 1, tags: ['viewport::desktop', 'state::online'] },
 ]
 
@@ -179,15 +181,22 @@ async function main() {
           )
           await page.waitForTimeout(150)
         }
-      } else if (shot.settings) {
+      } else if (shot.settings || shot.settingsTiming) {
         const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.click()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
+        if (shot.settingsTiming) {
+          await page.getByText('Timing', { exact: true }).scrollIntoViewIfNeeded()
+          await page.getByLabel('Space cursor hold milliseconds').fill('500')
+          await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
+            element.scrollIntoView({ block: 'start' }),
+          )
+        }
         await page.waitForTimeout(150)
       }
       const file = join(OUT, `${shot.name}.png`)
-      await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings })
+      await page.screenshot({ path: file, fullPage: !shot.keyboard && !shot.settings && !shot.settingsTiming })
       if (shot.keyboard) {
         if (heldSpace) await page.mouse.up()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()

@@ -11,6 +11,7 @@ import {
   Command,
   CornerDownLeft,
   Delete,
+  Move,
   Option,
   Search,
   Settings,
@@ -24,6 +25,12 @@ export interface KeyboardSettings {
   symbolHints: boolean;
   doubleSpacePeriod: boolean;
   haptics: boolean;
+  longPressDelayMs: number;
+  spaceHoldDelayMs: number;
+  backspaceRepeatDelayMs: number;
+  backspaceRepeatIntervalMs: number;
+  shiftDoubleTapMs: number;
+  previewFadeMs: number;
 }
 
 interface KeyDefinition {
@@ -213,7 +220,7 @@ function Key({
       setPreview(true);
       haptic(settings.haptics, 16);
       onType(definition.alt!, true);
-    }, 430);
+    }, settings.longPressDelayMs);
   };
 
   const finish = () => {
@@ -311,6 +318,76 @@ function NavigationKey({
   );
 }
 
+function SettingSwitch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+        checked
+          ? "border-blue-400/60 bg-blue-500"
+          : "border-zinc-600 bg-zinc-700"
+      }`}
+    >
+      <span
+        className={`absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-[18px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function TimingField({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-2 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300">
+      <span>{label}</span>
+      <span className="flex items-center gap-1 text-zinc-500">
+        <input
+          type="number"
+          inputMode="numeric"
+          aria-label={`${label} milliseconds`}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            if (Number.isFinite(next)) onChange(Math.min(max, Math.max(min, next)));
+          }}
+          className="h-7 w-16 appearance-none rounded border border-zinc-600 bg-zinc-950 px-1.5 text-right text-xs text-zinc-200 outline-none focus:border-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        ms
+      </span>
+    </label>
+  );
+}
+
 export function CustomKeyboard({
   open,
   connected,
@@ -387,7 +464,7 @@ export function CustomKeyboard({
 
   const toggleShift = () => {
     const now = performance.now();
-    const next: ShiftState = now - lastShiftTap.current < 350
+    const next: ShiftState = now - lastShiftTap.current < settings.shiftDoubleTapMs
       ? "locked"
       : shift === "off" ? "once" : "off";
     setShift(next);
@@ -406,8 +483,8 @@ export function CustomKeyboard({
     };
     erase();
     backspaceTimer.current = setTimeout(() => {
-      backspaceRepeat.current = setInterval(erase, 65);
-    }, 430);
+      backspaceRepeat.current = setInterval(erase, settings.backspaceRepeatIntervalMs);
+    }, settings.backspaceRepeatDelayMs);
   };
   const endBackspace = () => {
     if (backspaceTimer.current) clearTimeout(backspaceTimer.current);
@@ -425,7 +502,7 @@ export function CustomKeyboard({
       spaceHeld.current = true;
       setSpaceNavigating(true);
       haptic(settings.haptics, 16);
-    }, 320);
+    }, settings.spaceHoldDelayMs);
   };
 
   const moveSpace = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -596,19 +673,29 @@ export function CustomKeyboard({
                 ["Double-space period", "doubleSpacePeriod"],
                 ["Key haptics", "haptics"],
               ] as const).map(([label, key]) => (
-                <label
+                <div
                   key={key}
                   className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300"
                 >
                   {label}
-                  <input
-                    type="checkbox"
+                  <SettingSwitch
+                    label={label}
                     checked={settings[key]}
-                    onChange={(event) => onSettingsChange({ [key]: event.target.checked })}
-                    className="h-4 w-4 accent-blue-500"
+                    onChange={(checked) => onSettingsChange({ [key]: checked })}
                   />
-                </label>
+                </div>
               ))}
+            </div>
+            <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Timing
+            </div>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
+              <TimingField label="Symbol hold" value={settings.longPressDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ longPressDelayMs: value })} />
+              <TimingField label="Space cursor hold" value={settings.spaceHoldDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ spaceHoldDelayMs: value })} />
+              <TimingField label="Backspace repeat" value={settings.backspaceRepeatDelayMs} min={150} max={1000} step={25} onChange={(value) => onSettingsChange({ backspaceRepeatDelayMs: value })} />
+              <TimingField label="Repeat interval" value={settings.backspaceRepeatIntervalMs} min={25} max={250} step={5} onChange={(value) => onSettingsChange({ backspaceRepeatIntervalMs: value })} />
+              <TimingField label="Shift double-tap" value={settings.shiftDoubleTapMs} min={200} max={800} step={25} onChange={(value) => onSettingsChange({ shiftDoubleTapMs: value })} />
+              <TimingField label="Preview fade" value={settings.previewFadeMs} min={1000} max={10000} step={250} onChange={(value) => onSettingsChange({ previewFadeMs: value })} />
             </div>
             <p className="mt-3 text-[11px] leading-4 text-zinc-500">
               Device uses the phone's native keyboard. Tap the small settings button on the trackpad to return here.
@@ -749,10 +836,7 @@ export function CustomKeyboard({
             {mode === "emoji" ? "ABC" : <Smile className="h-5 w-5" />}
           </UtilityKey>
           <UtilityKey label="Tab" onPress={onTab}>
-            <span className="flex items-center gap-0.5 text-[11px] font-semibold">
-              <ArrowRightToLine className="h-4 w-4" />
-              Tab
-            </span>
+            <ArrowRightToLine className="h-5 w-5" />
           </UtilityKey>
           <button
             type="button"
@@ -764,11 +848,16 @@ export function CustomKeyboard({
             onContextMenu={(event) => event.preventDefault()}
             className={`custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px ${
               spaceNavigating
-                ? "border-blue-400/50 bg-blue-500/80 text-white"
+                ? "border-blue-400/60 bg-zinc-700/95 text-blue-100 ring-2 ring-inset ring-blue-400/15"
                 : "border-white/10 bg-zinc-600/95 text-zinc-200 active:bg-zinc-500"
             }`}
           >
-            {spaceNavigating ? "move cursor" : "space"}
+            {spaceNavigating ? (
+              <span className="flex items-center justify-center gap-2 font-medium tracking-wide">
+                <Move className="h-4 w-4 text-blue-300" />
+                cursor
+              </span>
+            ) : "space"}
           </button>
           <UtilityKey label="Period" onPress={() => type(".")}>.</UtilityKey>
           <button

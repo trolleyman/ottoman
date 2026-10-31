@@ -53,6 +53,12 @@ const DEFAULT_SETTINGS: TrackpadSettings = {
   symbolHints: true,
   doubleSpacePeriod: true,
   haptics: true,
+  longPressDelayMs: 430,
+  spaceHoldDelayMs: 320,
+  backspaceRepeatDelayMs: 430,
+  backspaceRepeatIntervalMs: 65,
+  shiftDoubleTapMs: 350,
+  previewFadeMs: 4500,
 };
 
 function loadSettings(): TrackpadSettings {
@@ -169,8 +175,11 @@ function TouchArea({
   const showDraftIndicator = useCallback(() => {
     setDraftVisible(true);
     if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
-    draftFadeTimer.current = setTimeout(() => setDraftVisible(false), 4500);
-  }, []);
+    draftFadeTimer.current = setTimeout(
+      () => setDraftVisible(false),
+      settings.previewFadeMs,
+    );
+  }, [settings.previewFadeMs]);
 
   useEffect(() => () => {
     if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
