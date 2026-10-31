@@ -19,8 +19,8 @@ export function keyboardRows(layout: KeyboardLayout) {
   // symbols. Keep backtick/pipe/backslash left and hash/tilde on the right.
   // Empty hints deliberately leave an unused cell in the matching symbol grid.
   const hints: (string | undefined)[][] = layout === "en-GB" ? [
-    ["`", "€", undefined, "<", ">", "-", "=", "_", "#", "~"],
-    [":", ";", "[", "]", "{", "}", "@", "+", undefined],
+    ["`", "¬", "€", "<", ">", "@", undefined, "_", "#", "~"],
+    [":", ";", "[", "]", "{", "}", "-", "+", "="],
     ["|", "\\", ",", ".", "?", "'", "/"],
   ] : [
     Array.from(shiftedNumbers),

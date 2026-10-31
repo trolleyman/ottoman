@@ -81,12 +81,12 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.waitForTimeout(60);
   assert(await page.locator('[data-key-preview="letter"]').textContent() === "w", "Press popup must show the letter immediately");
   await page.waitForTimeout(450);
-  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "€", "Held W must preview euro");
+  assert(await page.locator('[data-key-preview="alternate"]').textContent() === "¬", "Held W must preview not sign");
   const beforeHold = textMessages().length;
   await page.mouse.up();
   await page.waitForTimeout(60);
   const holdMessages = textMessages().slice(beforeHold);
-  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "€", "Held key must emit only euro on release");
+  assert(holdMessages.length === 1 && holdMessages[0].message.type === "text" && holdMessages[0].message.text === "¬", "Held key must emit only not sign on release");
 
   const sterling = page.getByRole("button", { name: '3, hold for £', exact: true });
   const sterlingBox = await sterling.boundingBox();

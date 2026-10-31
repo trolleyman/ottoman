@@ -16,18 +16,22 @@ describe("keyboard layout", () => {
     expect(numberRow.map(({ alt }) => alt).join("")).toBe('!"£$%^&*()');
     const holds = Object.fromEntries(letterRows.flat().map(({ key, alt }) => [key, alt]));
     expect(holds.q).toBe("`");
-    expect(holds.e).toBeUndefined();
+    expect(holds.w).toBe("¬");
+    expect(holds.e).toBe("€");
+    expect(holds.y).toBe("@");
+    expect(holds.u).toBeUndefined();
     expect(holds.o).toBe("#");
     expect(holds.p).toBe("~");
     expect(holds.z).toBe("|");
     expect(holds.x).toBe("\\");
-    expect(holds.j).toBe("@");
+    expect(holds.j).toBe("-");
+    expect(holds.l).toBe("=");
     expect(holds.k).toBe("+");
     expect(holds.v).toBe(".");
     expect(holds.m).toBe("/");
     const allHints = [...numberRow, ...letterRows.flat()].flatMap(({ alt }) => alt ? [alt] : []);
     expect(new Set(allHints).size).toBe(allHints.length);
-    for (const symbol of Array.from("!\"£$%^&*()-=_+[]{};:'@#~,.<>/?\\|`€"))
+    for (const symbol of Array.from("!\"£$%^&*()-=_+[]{};:'@#~,.<>/?\\|`€¬"))
       expect(allHints).toContain(symbol);
     expect(symbolRows.map((row) => row.map(({ key }) => key))).toEqual(letterRows.map((row) => row.map(({ alt }) => alt ?? "")));
     expect(symbolRows.map((row) => row.length)).toEqual([10, 9, 7]);
