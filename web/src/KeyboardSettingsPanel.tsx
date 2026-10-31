@@ -85,7 +85,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
   usingCustomKeyboard: boolean;
 }) {
   return (
-          <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-zinc-900/70 p-3">
+          <div className="keyboard-scroll custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg bg-zinc-900/70 p-3">
             <ActionKey type="button" onPress={onBack} className="custom-keyboard-utility mb-3 flex min-h-9 shrink-0 items-center gap-2 rounded-md bg-zinc-800 px-3 text-sm font-medium text-zinc-200">
               <ArrowLeft className="h-4 w-4" />Back to keyboard
             </ActionKey>

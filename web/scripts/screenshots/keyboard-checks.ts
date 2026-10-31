@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { checkKeyboardTouchDefaults } from "../tests/keyboard-touch-checks";
 import type { TrackpadMessage } from "../../src/api";
 
 export interface SentMessage { message: TrackpadMessage; time: number }
@@ -155,6 +156,20 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.mouse.up();
   await page.waitForTimeout(500);
   assert(textMessages().length === beforeCancel, "Cancelled press must not emit a delayed character");
+
+  await checkKeyboardTouchDefaults(page);
+  const heldI = await centre("i");
+  const beforeTouchHold = textMessages().length;
+  const holdTouch = await page.context().newCDPSession(page);
+  try {
+    await holdTouch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...heldI, id: 1 }] });
+    await page.waitForTimeout(550);
+    assert(await page.locator('[data-key-preview="alternate"]').textContent() === "=", "A real held touch on I must keep the equals popup");
+    await holdTouch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  } finally { await holdTouch.detach(); }
+  await page.waitForTimeout(60);
+  const touchHoldText = textMessages().slice(beforeTouchHold);
+  assert(touchHoldText.length === 1 && touchHoldText[0].message.type === "text" && touchHoldText[0].message.text === "=", "Held I must type equals exactly once with native touch defaults suppressed");
 
   const beforeClear = sent.length;
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
