@@ -50,7 +50,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
     {/* The zero-width sentinel gives empty text and trailing newlines a caret box. */}
     <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span>
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
-    {!hideCaret && geometry && <span key={`${value}:${selectionEnd}`} aria-hidden="true"
+    {!hideCaret && cursor === selectionEnd && geometry && <span key={`${value}:${cursor}`} aria-hidden="true"
       data-preview-caret={variant === "preview" || undefined} data-search-caret={variant === "search" || undefined}
       className="keyboard-caret pointer-events-none absolute z-20 w-px bg-blue-300"
       style={{ left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height }} />}
