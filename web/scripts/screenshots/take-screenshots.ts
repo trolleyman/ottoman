@@ -54,11 +54,14 @@ type Shot = {
   height: number
   dpi: number
   tags: string[]
+  keyboard?: 'letters' | 'emoji'
 }
 
 const SHOTS: Shot[] = [
   { name: 'home-offline-phone', state: 'offline', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::offline'] },
   { name: 'home-online-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online'] },
+  { name: 'trackpad-keyboard-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::keyboard'], keyboard: 'letters' },
+  { name: 'trackpad-emoji-phone', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::online', 'feature::emoji'], keyboard: 'emoji' },
   { name: 'home-online-desktop', state: 'online', width: 1280, height: 900, dpi: 1, tags: ['viewport::desktop', 'state::online'] },
 ]
 
@@ -116,8 +119,25 @@ async function main() {
       const page = await ctx.newPage()
       await page.goto(base, { waitUntil: 'networkidle' })
       await settle(page)
+      if (shot.keyboard) {
+        const openKeyboard = page.getByRole('button', { name: 'Open Ottoman keyboard to type on the remote computer' })
+        await openKeyboard.scrollIntoViewIfNeeded()
+        await openKeyboard.click()
+        if (shot.keyboard === 'letters') {
+          await page.locator('button[aria-pressed]').filter({ hasText: 'Ctrl' }).last().click()
+          await page.locator('button[aria-pressed]').filter({ hasText: 'Shift' }).last().click()
+          await page.getByRole('button', { name: "c, hold for '" }).click()
+        } else {
+          await page.getByRole('button', { name: 'Emoji' }).click()
+        }
+        await page.waitForTimeout(150)
+      }
       const file = join(OUT, `${shot.name}.png`)
-      await page.screenshot({ path: file, fullPage: true })
+      await page.screenshot({ path: file, fullPage: !shot.keyboard })
+      if (shot.keyboard) {
+        await page.getByRole('button', { name: 'Device', exact: true }).last().click()
+        await page.getByLabel('Type on the remote computer with the device keyboard').waitFor({ state: 'visible' })
+      }
       writeFileSync(`${file}.meta`, JSON.stringify({ tags: shot.tags, dpi: shot.dpi }))
       await ctx.close()
     }

@@ -11,6 +11,11 @@ import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage } from "./api";
 import { characterCount, diffText } from "./trackpadText";
+import {
+  CustomKeyboard,
+  ModifierBar,
+  type KeyboardSettings,
+} from "./CustomKeyboard";
 
 function getModifiers(e: {
   shiftKey: boolean;
@@ -26,12 +31,40 @@ function getModifiers(e: {
   return mod.length > 0 ? mod : [];
 }
 
-interface TrackpadSettings {
+function combineModifiers(...groups: Modifier[][]): Modifier[] {
+  return [...new Set(groups.flat())];
+}
+
+interface TrackpadSettings extends KeyboardSettings {
   cursorSensitivity: number;
   cursorFriction: number;
   scrollSensitivity: number;
   scrollFriction: number;
   clickAndDrag: boolean;
+  customKeyboard: boolean;
+}
+
+const DEFAULT_SETTINGS: TrackpadSettings = {
+  cursorSensitivity: 1.5,
+  cursorFriction: 0.92,
+  scrollSensitivity: 1.5,
+  scrollFriction: 0.92,
+  clickAndDrag: false,
+  customKeyboard: true,
+  numberRow: true,
+  symbolHints: true,
+  doubleSpacePeriod: true,
+  haptics: true,
+};
+
+function loadSettings(): TrackpadSettings {
+  try {
+    const saved = localStorage.getItem("ottoman-trackpad-settings");
+    const parsed = saved ? JSON.parse(saved) as Partial<TrackpadSettings> : null;
+    return parsed ? { ...DEFAULT_SETTINGS, ...parsed } : DEFAULT_SETTINGS;
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
 }
 
 function TouchArea({
@@ -39,11 +72,15 @@ function TouchArea({
   connecting,
   send,
   settings,
+  onOpenSettings,
+  onSettingsChange,
 }: {
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
   settings: TrackpadSettings;
+  onOpenSettings: () => void;
+  onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
@@ -56,6 +93,8 @@ function TouchArea({
   const dragLocked = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
   const [draft, setDraft] = useState("");
   const draftRef = useRef("");
   const remoteCursor = useRef(0);
@@ -92,9 +131,13 @@ function TouchArea({
       e.preventDefault();
       e.stopPropagation();
 
-      send({ type: "keydown", key: e.key, modifiers: getModifiers(e) });
+      send({
+        type: "keydown",
+        key: e.key,
+        modifiers: combineModifiers(getModifiers(e), activeModifiers),
+      });
     },
-    [send],
+    [activeModifiers, send],
   );
 
   // Release keys pressed via handleKeyDown (physical keyboard). Without a keyup
@@ -106,18 +149,30 @@ function TouchArea({
       e.preventDefault();
       e.stopPropagation();
 
-      send({ type: "keyup", key: e.key, modifiers: getModifiers(e) });
+      send({
+        type: "keyup",
+        key: e.key,
+        modifiers: combineModifiers(getModifiers(e), activeModifiers),
+      });
+    },
+    [activeModifiers, send],
+  );
+
+  const sendKeyPress = useCallback(
+    (key: string, modifiers: Modifier[] = []) => {
+      send({ type: "keydown", key, modifiers });
+      send({ type: "keyup", key, modifiers });
     },
     [send],
   );
 
-  const sendKeyPress = useCallback(
-    (key: string) => {
-      send({ type: "keydown", key, modifiers: [] });
-      send({ type: "keyup", key, modifiers: [] });
-    },
-    [send],
-  );
+  const toggleModifier = useCallback((modifier: Modifier) => {
+    setActiveModifiers((current) =>
+      current.includes(modifier)
+        ? current.filter((item) => item !== modifier)
+        : [...current, modifier],
+    );
+  }, []);
 
   const moveRemoteCursor = useCallback(
     (target: number) => {
@@ -129,8 +184,6 @@ function TouchArea({
     [sendKeyPress],
   );
 
-  // Printable keys are handled only by onChange below. Sending their keydown as
-  // well duplicates symbols on iOS and can leave Shift held on the remote host.
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (
@@ -138,8 +191,7 @@ function TouchArea({
         e.key === "Process" ||
         e.key.length === 1 ||
         e.key === "Backspace"
-      )
-        return;
+      ) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -153,13 +205,10 @@ function TouchArea({
       const next = e.currentTarget.value;
       const edit = diffText(draftRef.current, next);
       if (edit) {
-        // Put the remote caret immediately after the range being replaced, erase
-        // it, then insert the replacement iOS produced (including autocorrections).
         const editStart = characterCount(draftRef.current.slice(0, edit.start));
         const removedCount = characterCount(edit.removed);
         moveRemoteCursor(editStart + removedCount);
-        for (let i = 0; i < removedCount; i++)
-          sendKeyPress("Backspace");
+        for (let i = 0; i < removedCount; i++) sendKeyPress("Backspace");
         remoteCursor.current = editStart;
         if (edit.inserted) {
           send({ type: "text", text: edit.inserted });
@@ -174,8 +223,6 @@ function TouchArea({
     [moveRemoteCursor, send, sendKeyPress],
   );
 
-  // iOS's hold-space trackpad changes only the input selection. Mirror that
-  // movement with arrow presses so the remote caret follows it.
   const handleSelection = useCallback(
     (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
       const input = e.currentTarget;
@@ -185,12 +232,53 @@ function TouchArea({
     [moveRemoteCursor],
   );
 
+  const appendText = useCallback(
+    (value: string) => {
+      const before = draftRef.current;
+      if (activeModifiers.length > 0 && characterCount(value) === 1) {
+        sendKeyPress(value, activeModifiers);
+        return;
+      }
+      if (
+        settings.doubleSpacePeriod &&
+        value === " " &&
+        /\S $/.test(before)
+      ) {
+        sendKeyPress("Backspace");
+        send({ type: "text", text: ". " });
+        const next = `${before.slice(0, -1)}. `;
+        draftRef.current = next;
+        remoteCursor.current = Math.max(0, remoteCursor.current - 1) + 2;
+        setDraft(next);
+        return;
+      }
+
+      send({ type: "text", text: value });
+      const next = before + value;
+      draftRef.current = next;
+      remoteCursor.current += characterCount(value);
+      setDraft(next);
+    },
+    [activeModifiers, send, sendKeyPress, settings.doubleSpacePeriod],
+  );
+
+  const backspace = useCallback(() => {
+    sendKeyPress("Backspace", activeModifiers);
+    if (activeModifiers.length > 0) return;
+    const characters = Array.from(draftRef.current);
+    characters.pop();
+    const next = characters.join("");
+    draftRef.current = next;
+    remoteCursor.current = Math.max(0, remoteCursor.current - 1);
+    setDraft(next);
+  }, [activeModifiers, sendKeyPress]);
+
   const resetDraft = useCallback(() => {
     draftRef.current = "";
     remoteCursor.current = 0;
     setDraft("");
-    inputRef.current?.focus();
-  }, []);
+    if (!settings.customKeyboard) inputRef.current?.focus();
+  }, [settings.customKeyboard]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -247,7 +335,7 @@ function TouchArea({
       dist < 40
     ) {
       isDragging.current = true;
-      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
     }
 
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
@@ -337,7 +425,7 @@ function TouchArea({
           !twoFingerMoved.current &&
           performance.now() - twoFingerStartTime.current < 300
         ) {
-          send({ type: "mouseclick", btn: MouseButton.RIGHT, modifiers: [] });
+          send({ type: "mouseclick", btn: MouseButton.RIGHT, modifiers: activeModifiers });
           // Only trigger inertia if the user was scrolling recently and with sufficient velocity
         } else if (
           timeSinceLastScroll < 50 &&
@@ -383,7 +471,7 @@ function TouchArea({
     lastTouchEndTime.current = now;
 
     if (isDragging.current) {
-      send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+      send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
       isDragging.current = false;
       // A drag can be continued: lifting and quickly re-touching resumes it.
       lastGestureAllowsDrag.current = true;
@@ -431,7 +519,7 @@ function TouchArea({
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 10) {
-          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
           wasTap = true;
         }
       }
@@ -451,7 +539,7 @@ function TouchArea({
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return;
 
-    const modifiers = getModifiers(e);
+    const modifiers = combineModifiers(getModifiers(e), activeModifiers);
 
     // Middle click
     if (e.button === 1) {
@@ -527,7 +615,7 @@ function TouchArea({
         send({
           type: "mouseup",
           btn: MouseButton.LEFT,
-          modifiers: getModifiers(e),
+          modifiers: combineModifiers(getModifiers(e), activeModifiers),
         }); // TODO: Handle non-LEFT
       }
     };
@@ -536,11 +624,11 @@ function TouchArea({
       if (!document.pointerLockElement) {
         if (mouseHeld.current) {
           mouseHeld.current = false;
-          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
         }
         if (dragLocked.current) {
           dragLocked.current = false;
-          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] }); // TODO: Modifiers
+          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
         }
         lastMousePos.current = null;
         // Don't blur - keep trackpad focused for keyboard events and easy re-lock
@@ -559,7 +647,7 @@ function TouchArea({
       );
       if (document.pointerLockElement) document.exitPointerLock();
     };
-  }, [connected, send, settings.cursorSensitivity]);
+  }, [activeModifiers, connected, send, settings.cursorSensitivity]);
 
   // Keyboard capture on the trackpad div
   useEffect(() => {
@@ -660,32 +748,77 @@ function TouchArea({
           <ScrollRail send={send} sensitivity={settings.scrollSensitivity} />
         )}
       </div>
-      <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-2">
+      <div className="relative rounded-xl border border-zinc-700 bg-zinc-900/80 p-2">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            Keyboard
+          </span>
+          <div className="flex rounded-md bg-zinc-950 p-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => {
+                setKeyboardOpen(false);
+                onSettingsChange({ customKeyboard: true });
+              }}
+              className={`rounded px-2 py-1 ${settings.customKeyboard ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"}`}
+            >
+              Ottoman
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSettingsChange({ customKeyboard: false });
+                setKeyboardOpen(false);
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }}
+              className={`rounded px-2 py-1 ${!settings.customKeyboard ? "bg-zinc-700 text-zinc-100" : "text-zinc-500"}`}
+            >
+              Device
+            </button>
+          </div>
+        </div>
+        <ModifierBar
+          selected={activeModifiers}
+          onToggle={toggleModifier}
+          className="mb-2"
+        />
         <div className="flex items-center gap-2">
           <Keyboard
             className="h-4 w-4 shrink-0 text-zinc-400"
             aria-hidden="true"
           />
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            disabled={!connected}
-            aria-label="Type on the remote computer"
-            placeholder="Tap to type…"
-            className="min-h-10 max-h-24 flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-base text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
-            autoComplete="on"
-            autoCapitalize="sentences"
-            autoCorrect="on"
-            spellCheck={true}
-            enterKeyHint="enter"
-            inputMode="text"
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onKeyDown={handleInputKeyDown}
-            onChange={handleTextChange}
-            onSelect={handleSelection}
-          />
+          {settings.customKeyboard ? (
+            <button
+              type="button"
+              disabled={!connected}
+              aria-label="Open Ottoman keyboard to type on the remote computer"
+              onClick={() => setKeyboardOpen(true)}
+              className="min-h-10 max-h-24 flex-1 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-left text-base text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
+            >
+              {draft || <span className="text-zinc-500">Tap to type…</span>}
+            </button>
+          ) : (
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={draft}
+              disabled={!connected}
+              aria-label="Type on the remote computer with the device keyboard"
+              placeholder="Tap to type…"
+              className="min-h-10 max-h-24 flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-base text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
+              autoComplete="on"
+              autoCapitalize="sentences"
+              autoCorrect="on"
+              spellCheck={true}
+              enterKeyHint="enter"
+              inputMode="text"
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onKeyDown={handleInputKeyDown}
+              onChange={handleTextChange}
+              onSelect={handleSelection}
+            />
+          )}
           <button
             type="button"
             onClick={resetDraft}
@@ -698,9 +831,37 @@ function TouchArea({
           </button>
         </div>
         <p className="mt-1 px-6 text-[11px] text-zinc-500">
-          Text stays here for autocorrect and space-bar cursor control. Reset
-          starts a fresh preview.
+          {settings.customKeyboard
+            ? "No browser toolbar — just keys. Hold a key for its faint symbol."
+            : "Device keyboard keeps autocorrect and space-bar cursor control."}
         </p>
+        <CustomKeyboard
+          open={keyboardOpen && settings.customKeyboard}
+          connected={connected}
+          settings={settings}
+          onText={appendText}
+          onBackspace={backspace}
+          onEnter={() => {
+            sendKeyPress("Enter", activeModifiers);
+            if (activeModifiers.length > 0) return;
+            const next = `${draftRef.current}\n`;
+            draftRef.current = next;
+            remoteCursor.current += 1;
+            setDraft(next);
+          }}
+          onClose={() => setKeyboardOpen(false)}
+          onOpenSettings={() => {
+            setKeyboardOpen(false);
+            onOpenSettings();
+          }}
+          onUseNative={() => {
+            onSettingsChange({ customKeyboard: false });
+            setKeyboardOpen(false);
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }}
+          modifiers={activeModifiers}
+          onToggleModifier={toggleModifier}
+        />
       </div>
     </div>
   );
@@ -765,14 +926,12 @@ export function Trackpad({
   const currentLayout = useStore((s) => s.currentLayout);
   const loading = useStore((s) => s.layoutsLoading);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<TrackpadSettings>({
-    cursorSensitivity: 1.5,
-    cursorFriction: 0.92,
-    scrollSensitivity: 1.5,
-    scrollFriction: 0.92,
-    clickAndDrag: false,
-  });
+  const [settings, setSettings] = useState<TrackpadSettings>(loadSettings);
   const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem("ottoman-trackpad-settings", JSON.stringify(settings));
+  }, [settings]);
 
   useEffect(() => {
     if (showSettings) {
@@ -818,7 +977,48 @@ export function Trackpad({
             )}
           </button>
           {showSettings && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-4 z-20 flex flex-col gap-4">
+            <div className="absolute right-0 top-full z-[60] mt-2 flex max-h-[70vh] w-72 flex-col gap-4 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
+              <div>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  Keyboard
+                </div>
+                <div className="grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, customKeyboard: true })}
+                    className={`rounded-md px-2 py-1.5 ${settings.customKeyboard ? "bg-zinc-700 text-white" : "text-zinc-500"}`}
+                  >
+                    Ottoman
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, customKeyboard: false })}
+                    className={`rounded-md px-2 py-1.5 ${!settings.customKeyboard ? "bg-zinc-700 text-white" : "text-zinc-500"}`}
+                  >
+                    Device
+                  </button>
+                </div>
+              </div>
+              {([
+                ["Number row", "numberRow"],
+                ["Long-press hints", "symbolHints"],
+                ["Double-space period", "doubleSpacePeriod"],
+                ["Key haptics", "haptics"],
+              ] as const).map(([label, key]) => (
+                <label key={key} className="flex items-center justify-between gap-3 text-xs text-zinc-400">
+                  {label}
+                  <input
+                    type="checkbox"
+                    checked={settings[key]}
+                    onChange={(event) => setSettings({ ...settings, [key]: event.target.checked })}
+                    className="accent-blue-500"
+                  />
+                </label>
+              ))}
+              <div className="h-px bg-zinc-800" />
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Trackpad
+              </div>
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">
                   Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})
@@ -917,6 +1117,8 @@ export function Trackpad({
           connecting={connecting}
           send={send}
           settings={settings}
+          onOpenSettings={() => setShowSettings(true)}
+          onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
         />
         <MonitorDisplay
           layouts={layouts}
