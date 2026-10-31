@@ -969,6 +969,10 @@ func (a *Agent) handleTrackpad(w http.ResponseWriter, r *http.Request) {
 			a.keyboard.KeyUp(v.Key, nil)
 			delete(heldKeys, v.Key)
 		case api.TrackpadMessageText:
+			// Text already contains its intended case. Release any modifier left
+			// behind by an unreliable mobile key-up before typing it, otherwise a
+			// stale Shift inverts every following letter.
+			updateModifiers(nil)
 			a.typeText(v.Text)
 		case api.TrackpadMessageMouseMoveTo:
 			a.mouse.MoveTo(v.X, v.Y)
