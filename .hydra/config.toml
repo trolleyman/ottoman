@@ -129,7 +129,7 @@ cow_paths = ["~/.magefile"]
 ##       *.oaiusercontent.com
 ##     gemini: *.googleapis.com
 ##     copilot: *.githubcopilot.com
-allowed_hosts = ["mise-versions.jdx.dev", "vuln.go.dev", "storage.googleapis.com", "playwright.download.prss.microsoft.com"]
+allowed_hosts = ["mise-versions.jdx.dev", "vuln.go.dev", "storage.googleapis.com", "playwright.download.prss.microsoft.com", "unpkg.com"]
 
 ## outbound hosts (exact host or *.suffix) to deny even when otherwise allowed - overrides both allowed_hosts and the built-in defaults, so you can subtract a default host without redefining the list.
 # blocked_hosts = []
