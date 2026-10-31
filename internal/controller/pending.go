@@ -271,31 +271,5 @@ const layoutsSyncInterval = 5 * time.Minute
 // a ticker. Separate from the TV sync because it must run even when the TV
 // mirror is unavailable.
 func (c *Controller) startLayoutsSync(ctx context.Context) {
-	go func() {
-		lastErr := true // force a one-time "sync ok" log on first success
-		sync := func() {
-			if err := c.syncLayoutsFromAgent(ctx); err != nil {
-				if !lastErr {
-					log.Printf("Layout sync from agent failed (using last-known mirror): %v", err)
-				}
-				lastErr = true
-				return
-			}
-			if lastErr {
-				log.Printf("Layout sync from agent OK")
-			}
-			lastErr = false
-		}
-		sync()
-		ticker := time.NewTicker(layoutsSyncInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				sync()
-			}
-		}
-	}()
+	startMirrorSync(ctx, "Layout", layoutsSyncInterval, c.syncLayoutsFromAgent)
 }

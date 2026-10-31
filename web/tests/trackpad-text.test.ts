@@ -37,4 +37,15 @@ describe("mobile trackpad text reconciliation", () => {
   test("counts a composed character as one remote key", () => {
     expect(characterCount("a👍b")).toBe(3);
   });
+
+  test("replaces emoji sharing a surrogate without emitting half a character", () => {
+    expect(diffText("a😀b", "a😎b")).toEqual({ start: 1, removed: "😀", inserted: "😎" });
+    expect(diffText("a😀b", "a🨀b")).toEqual({ start: 1, removed: "😀", inserted: "🨀" });
+  });
+
+  test("keeps textarea offsets after non-BMP characters", () => {
+    expect(diffText("👍hello", "👍hallo")).toEqual({ start: 3, removed: "e", inserted: "a" });
+    expect(diffText("👍", "👍!")).toEqual({ start: 2, removed: "", inserted: "!" });
+  });
+
 });

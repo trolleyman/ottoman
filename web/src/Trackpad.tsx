@@ -1,20 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ChevronDown,
-  ChevronUp,
   Keyboard,
   Settings,
   X,
 } from "lucide-react";
+import { ScrollRail } from "./ScrollRail";
 import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
 import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
-import {
-  CustomKeyboard,
-  type KeyboardSettings,
-} from "./CustomKeyboard";
+import { CustomKeyboard } from "./CustomKeyboard";
+import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
+import { loadSettings, savePreference } from "./preferences";
 
 function getModifiers(e: {
   shiftKey: boolean;
@@ -32,45 +30,6 @@ function getModifiers(e: {
 
 function combineModifiers(...groups: Modifier[][]): Modifier[] {
   return [...new Set(groups.flat())];
-}
-
-interface TrackpadSettings extends KeyboardSettings {
-  cursorSensitivity: number;
-  cursorFriction: number;
-  scrollSensitivity: number;
-  scrollFriction: number;
-  clickAndDrag: boolean;
-  customKeyboard: boolean;
-}
-
-const DEFAULT_SETTINGS: TrackpadSettings = {
-  cursorSensitivity: 1.5,
-  cursorFriction: 0.92,
-  scrollSensitivity: 1.5,
-  scrollFriction: 0.92,
-  clickAndDrag: false,
-  customKeyboard: true,
-  mirrorFocusedText: false,
-  numberRow: true,
-  symbolHints: true,
-  doubleSpacePeriod: true,
-  haptics: true,
-  longPressDelayMs: 430,
-  spaceHoldDelayMs: 320,
-  backspaceRepeatDelayMs: 430,
-  backspaceRepeatIntervalMs: 65,
-  shiftDoubleTapMs: 350,
-  previewFadeMs: 4500,
-};
-
-function loadSettings(): TrackpadSettings {
-  try {
-    const saved = localStorage.getItem("ottoman-trackpad-settings");
-    const parsed = saved ? JSON.parse(saved) as Partial<TrackpadSettings> : null;
-    return parsed ? { ...DEFAULT_SETTINGS, ...parsed } : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
 }
 
 function TouchArea({
@@ -133,8 +92,8 @@ function TouchArea({
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftVisible, setDraftVisible] = useState(false);
+  const [typingContext, setTypingContext] = useState(0);
   const draftRef = useRef("");
-  const draftFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteCursor = useRef(0);
   // Fallback mouse position tracking when pointer lock is unavailable (e.g. after Escape cooldown)
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
@@ -204,18 +163,25 @@ function TouchArea({
     [send],
   );
 
-  const showDraftIndicator = useCallback(() => {
-    setDraftVisible(true);
-    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
-    draftFadeTimer.current = setTimeout(
-      () => setDraftVisible(false),
-      settings.previewFadeMs,
-    );
-  }, [settings.previewFadeMs]);
-
-  useEffect(() => () => {
-    if (draftFadeTimer.current) clearTimeout(draftFadeTimer.current);
+  const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
+  const dismissDraft = useCallback(() => {
+    setTypingContext((value) => value + 1);
+    setDraftVisible(false);
+    draftRef.current = "";
+    remoteCursor.current = 0;
+    setDraft("");
+    setDraftCursor(0);
   }, []);
+  const remoteOS = useStore((state) => state.agentInfo?.os ?? "");
+
+  useEffect(() => {
+    if (!keyboardOpen) return;
+    const frame = requestAnimationFrame(() => {
+      if (matchMedia("(max-width: 767px)").matches)
+        trackpadRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [keyboardOpen]);
 
   const toggleModifier = useCallback((modifier: Modifier) => {
     setActiveModifiers((current) =>
@@ -243,6 +209,7 @@ function TouchArea({
     setDraft("");
     setDraftCursor(0);
     setCompositionValue(null);
+    setTypingContext((value) => value + 1);
   }, [connected, settings.mirrorFocusedText, textContext?.fieldId, textContext?.protected]);
   useEffect(() => {
     // A native text/caret notification is activity even without phone input.
@@ -398,7 +365,7 @@ function TouchArea({
 
   const onTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
-    setDraftVisible(false);
+    dismissDraft();
 
     // Stop any active inertia scrolling when the user touches the screen again
     if (inertiaFrame.current) {
@@ -654,6 +621,7 @@ function TouchArea({
 
   // Mouse drag via Pointer Lock (or fallback position tracking after Escape cooldown)
   const onPointerDown = (e: React.PointerEvent) => {
+    dismissDraft();
     if (e.pointerType === "touch") return;
     setDraftVisible(false);
 
@@ -786,6 +754,7 @@ function TouchArea({
     if (!el || !connected) return;
 
     const handleWheel = (e: WheelEvent) => {
+      dismissDraft();
       e.preventDefault();
       // deltaMode: 0 = pixels (trackpads), 1 = lines (mouse wheels), 2 = pages
       if (e.deltaMode === 1) {
@@ -814,15 +783,12 @@ function TouchArea({
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [connected, send, settings.scrollSensitivity]);
+  }, [connected, dismissDraft, send, settings.scrollSensitivity]);
+
 
   const preview = remote?.available ? remote.value : remote?.protected ? "" : draft;
   const previewCursor = remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftCursor;
   const previewSelectionEnd = remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftCursor;
-  const indicatorStart = Math.max(0, previewCursor - 160);
-  const indicatorEnd = Math.min(preview.length, Math.max(previewSelectionEnd, indicatorStart + 260));
-  const indicatorBefore = preview.slice(indicatorStart, previewCursor);
-  const indicatorAfter = preview.slice(previewSelectionEnd, indicatorEnd);
 
   return (
     <div className="w-full md:max-w-sm md:shrink-0 flex flex-col gap-2">
@@ -844,6 +810,7 @@ function TouchArea({
                   backgroundImage:
                     "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
                   backgroundSize: "20px 20px",
+                  maxHeight: keyboardOpen ? "max(160px, calc(100dvh - 380px))" : undefined,
                 }
               : undefined
           }
@@ -869,27 +836,20 @@ function TouchArea({
               )}
             </div>
           )}
-          {connected && (preview || remote?.available) && (
-            <div
-              aria-live="polite"
-              aria-atomic="true"
-              className={`pointer-events-none absolute bottom-14 left-3 right-14 z-10 max-h-24 select-none overflow-hidden whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/55 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md transition-all duration-300 ${
-                draftVisible
-                  ? "translate-y-0 opacity-100"
-                  : "translate-y-1 opacity-0"
-              }`}
-            >
-              {indicatorStart > 0 && <span className="text-zinc-500">…</span>}
-              {indicatorBefore}
-              <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
-              <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
-              {indicatorAfter}
-              {indicatorEnd < preview.length && <span className="text-zinc-500">…</span>}
+          {connected && (preview || remote?.available) && draftVisible && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-end overflow-hidden pb-14 pl-3 pr-14" data-text-preview>
+              <div aria-live="polite" aria-atomic="true"
+                className="w-full shrink-0 whitespace-pre-wrap break-words rounded-lg border border-white/5 bg-zinc-950/65 px-3 py-2 text-sm leading-5 text-zinc-200 shadow-lg backdrop-blur-md [overflow-wrap:anywhere]">
+                {preview.slice(0, previewCursor)}
+                <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
+                <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />
+                {preview.slice(previewSelectionEnd)}
+              </div>
             </div>
           )}
         </div>
         {connected && (
-          <ScrollRail send={send} sensitivity={settings.scrollSensitivity} />
+          <ScrollRail send={send} sensitivity={settings.scrollSensitivity} friction={settings.scrollFriction} haptics={settings.haptics} onInteract={dismissDraft} />
         )}
         <button
           type="button"
@@ -963,8 +923,25 @@ function TouchArea({
           key={keyboardSettingsOpen ? "settings" : "keyboard"}
           open={keyboardOpen}
           connected={connected}
+          remoteOS={remoteOS}
+          textContext={typingContext}
           settings={settings}
           onText={appendText}
+          onReplaceText={(previous, next) => {
+            const view = remoteModel.current!.view;
+            if (view?.available) {
+              const beforeCaret = Array.from(view.value).slice(0, view.selectionStart - view.windowStart).join("");
+              if (view.selectionStart !== view.selectionEnd || !beforeCaret.endsWith(previous)) return;
+              if (view.editable) {
+                replaceRemote(view.selectionStart - characterCount(previous), view.selectionEnd, next);
+                return;
+              }
+            }
+            for (let index = 0; index < characterCount(previous); index++) sendKeyPress("Backspace");
+            draftRef.current = draftRef.current.slice(0, -previous.length);
+            remoteCursor.current = Math.max(0, remoteCursor.current - characterCount(previous));
+            appendText(next);
+          }}
           onBackspace={backspace}
           onEnter={(shifted) => {
             if (activeModifiers.length === 0 && remoteModel.current!.view?.multiline && insertRemote("\n")) return;
@@ -981,8 +958,8 @@ function TouchArea({
             setDraftCursor(next.length);
             showDraftIndicator();
           }}
-          onTab={() => sendKeyPress("Tab", activeModifiers)}
-          onNavigate={(key) => sendKeyPress(key, activeModifiers)}
+          onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
+          onNavigate={(key) => { dismissDraft(); sendKeyPress(key, activeModifiers); }}
           onClose={() => {
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);
@@ -1004,48 +981,6 @@ function TouchArea({
       {keyboardOpen && (
         <div className="h-[360px] md:hidden" aria-hidden="true" />
       )}
-    </div>
-  );
-}
-
-function ScrollRail({
-  send,
-  sensitivity,
-}: {
-  send: (msg: TrackpadMessage) => void;
-  sensitivity: number;
-}) {
-  const lastY = useRef<number | null>(null);
-
-  const start = (e: React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    lastY.current = e.touches[0]?.clientY ?? null;
-  };
-  const move = (e: React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const y = e.touches[0]?.clientY;
-    if (y == null || lastY.current == null) return;
-    const dy = (y - lastY.current) * sensitivity;
-    lastY.current = y;
-    if (Math.abs(dy) >= 0.5)
-      send({ type: "mousescroll", dx: 0, dy: Math.round(-dy), precise: true });
-  };
-
-  return (
-    <div
-      className="absolute inset-y-3 right-2 flex w-10 touch-none select-none flex-col items-center justify-between rounded-full border border-zinc-600/80 bg-zinc-950/80 py-3 text-zinc-400 shadow-lg backdrop-blur"
-      aria-label="One-finger scroll control"
-      onTouchStart={start}
-      onTouchMove={move}
-      onTouchEnd={() => {
-        lastY.current = null;
-      }}
-    >
-      <ChevronUp className="h-4 w-4" />
-      <div className="h-12 w-1 rounded-full bg-zinc-600" />
-      <ChevronDown className="h-4 w-4" />
     </div>
   );
 }
@@ -1073,7 +1008,7 @@ export function Trackpad({
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem("ottoman-trackpad-settings", JSON.stringify(settings));
+    savePreference("ottoman-trackpad-settings", settings);
   }, [settings]);
 
   useEffect(() => {
@@ -1124,83 +1059,26 @@ export function Trackpad({
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                 Trackpad
               </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Cursor Sensitivity ({settings.cursorSensitivity.toFixed(1)})
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="5"
-                  step="0.1"
-                  value={settings.cursorSensitivity}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cursorSensitivity: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Cursor Friction ({settings.cursorFriction.toFixed(2)})
-                </label>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="0.99"
-                  step="0.01"
-                  value={settings.cursorFriction}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cursorFriction: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div className="h-px bg-zinc-800" />
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Scroll Sensitivity ({settings.scrollSensitivity.toFixed(1)})
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="5"
-                  step="0.1"
-                  value={settings.scrollSensitivity}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      scrollSensitivity: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">
-                  Scroll Friction ({settings.scrollFriction.toFixed(2)})
-                </label>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="0.99"
-                  step="0.01"
-                  value={settings.scrollFriction}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      scrollFriction: parseFloat(e.target.value),
-                    })
-                  }
-                  className="w-full accent-blue-500"
-                />
-              </div>
+              {TRACKPAD_RANGES.map(({ key, label, min, max, step, decimals }, index) => (
+                <div key={key}>
+                  {index === 2 && <div className="mb-4 h-px bg-zinc-800" />}
+                  <label className="block text-xs text-zinc-400 mb-1">
+                    {label} ({settings[key].toFixed(decimals)})
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={settings[key]}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        setSettings((current) => ({ ...current, [key]: value }));
+                      }}
+                      className="w-full accent-blue-500"
+                    />
+                  </label>
+                </div>
+              ))}
               <div className="h-px bg-zinc-800" />
               <div className="flex items-center justify-between">
                 <label className="text-xs text-zinc-400">Click and Drag</label>

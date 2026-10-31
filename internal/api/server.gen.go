@@ -559,10 +559,13 @@ type StatusResponse struct {
 	Greeter   *bool                    `json:"greeter,omitempty"`
 	Hostname  string                   `json:"hostname"`
 	IpAddress StatusResponse_IpAddress `json:"ip_address"`
-	Port      string                   `json:"port"`
-	Status    string                   `json:"status"`
-	Uptime    string                   `json:"uptime"`
-	Version   string                   `json:"version"`
+
+	// Os Operating system of the responding computer (Go GOOS, e.g. windows, linux, darwin).
+	Os      string `json:"os"`
+	Port    string `json:"port"`
+	Status  string `json:"status"`
+	Uptime  string `json:"uptime"`
+	Version string `json:"version"`
 }
 
 // StatusResponseIpAddress0 defines model for StatusResponse.IpAddress.0.

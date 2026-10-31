@@ -1,1 +1,4 @@
 build
+
+# Worktree-local Playwright browser downloads
+web/.playwright/

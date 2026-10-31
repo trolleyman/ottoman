@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -181,6 +182,7 @@ func (c *Controller) GetStatus(ctx context.Context, request api.GetStatusRequest
 
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
+		Os:        runtime.GOOS,
 		Version:   "dev",
 		Uptime:    uptime,
 		Hostname:  "",

@@ -958,8 +958,9 @@ components:
 
     StatusResponse:
       type: object
-      required: [status, version, uptime, hostname, ip_address, port]
+      required: [status, version, uptime, hostname, ip_address, port, os]
       properties:
+        os: { type: string, description: "Operating system of the responding computer (Go GOOS, e.g. windows, linux, darwin)." }
         status: { type: string }
         version: { type: string }
         uptime: { type: string }

@@ -30,3 +30,6 @@ scripts/screenshots/out
 
 # Project-local Playwright browser binaries
 .playwright
+
+# Worktree-local dependency metadata cache
+.npm-cache

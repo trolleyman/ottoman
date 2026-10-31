@@ -1,73 +1,49 @@
-# React + TypeScript + Vite
+# Ottoman web client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React, TypeScript, and Vite frontend embedded in the Go binary via `web/embed.go`.
+Run these commands from `web/`:
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+bun install --frozen-lockfile
+bun run test
+bun run lint
+bun run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`bun run dev -- --host 127.0.0.1 --port 43217` starts the frontend dev
+server (choose an unused port). The production build writes `dist/`; build it before building the Go
+binary so it embeds the current UI.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The trackpad keeps gesture handling in `Trackpad.tsx` and text reconciliation in
+`trackpadText.ts`. `trackpadSettings.ts` defines defaults and shared UI/validation
+bounds; `preferences.ts` handles browser storage. The custom keyboard composes
+keys, data, haptics, and its settings panel from separate modules. WebSocket
+ownership and reconnect cleanup live in `trackpadConnection.ts`, with React state
+managed by `useTrackpadWebSocket.ts`.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+`src/api/` is generated; change `api/openapi.yaml` and use the repository's
+`mage generate:all` task rather than editing generated files.
+
+The browser regression script builds the UI and a temporary Go binary, starts
+the simulated controller on an available port, and checks keyboard interactions
+while capturing phone and desktop states:
+
+```sh
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" bun x playwright install chromium --only-shell
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" bun scripts/screenshots/take-screenshots.ts
 ```
+
+Set `HYDRA_ARTIFACT_OUTPUT` to override the default output directory,
+`scripts/screenshots/out/`. The script stops its simulated server when done.
+
+Keyboard settings default to British symbols and dark appearance. Layout,
+appearance, swipe typing, the period key, number row, and hold/repeat timings are
+configurable. Device-locale layout selection is optional; modifier labels always
+follow the remote agent's reported OS. Symbol mode uses the same key positions
+as the letter-key hold hints.
+
+Swipe suggestions run locally using a frequency-ranked English dictionary. The
+dictionary and grouped Unicode emoji data load on demand. Dataset notices ship
+in `public/keyboard-data-licenses.txt`. Native key vibration is used only where
+the browser supports it; iPhone Safari gets visual press/hold/scroll feedback.
+For a launch without Safari's address bar, add Ottoman to the home screen.
