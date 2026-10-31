@@ -299,6 +299,8 @@ function TouchArea({
       if (composing.current) return;
       const view = remoteModel.current!.view;
       if (view?.available && view.editable) {
+        // A delayed selection event can describe an older controlled value.
+        if (input.value !== view.value) return;
         const start = view.windowStart + codePointOffset(input.value, input.selectionStart);
         const end = view.windowStart + codePointOffset(input.value, input.selectionEnd);
         if (start !== view.selectionStart || end !== view.selectionEnd) replaceRemote(start, end, "", true);
@@ -865,8 +867,16 @@ function TouchArea({
         </div>
         {connected && (preview || remote?.available || remote?.password) && draftVisible && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
-            <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
-              className="pointer-events-auto flex h-7 w-7 shrink-0 self-end items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
+            <div className="flex items-center justify-end gap-2">
+              {settings.mirrorFocusedText && (
+                <span role="status" aria-label={textMirroringStatus(connected, remote)} title={textMirroringStatus(connected, remote)}
+                  data-native-text-status className="pointer-events-auto flex h-7 items-center px-1">
+                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${remote?.password ? "bg-amber-400" : remote?.available ? "bg-emerald-400" : "bg-zinc-500"}`} />
+                </span>
+              )}
+              <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
+                className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
+            </div>
             <div className="flex min-h-0 flex-col justify-end overflow-hidden rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
               <div aria-live="polite" aria-atomic="true"
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
@@ -997,11 +1007,6 @@ function TouchArea({
           onToggleModifier={toggleModifier}
         />
       </div>
-      {settings.mirrorFocusedText && (
-        <p role="status" data-native-text-status className="px-1 text-xs text-zinc-400">
-          {textMirroringStatus(connected, remote)}
-        </p>
-      )}
       {keyboardOpen && !docked && (
         <div className={settings.tallerKeys ? "h-[408px] md:hidden" : "h-[360px] md:hidden"} aria-hidden="true" />
       )}
