@@ -25,7 +25,7 @@ export function createSwipeDecoder(words: readonly string[]) {
   const seen = new Set<string>();
   words.forEach((raw, rank) => {
     const word = raw.toLowerCase();
-    if (!/^[a-z]{2,20}$/.test(word) || seen.has(word)) return;
+    if (!/^[a-z]+(?:'[a-z]+)?$/.test(word) || word.length < 2 || word.length > 20 || seen.has(word)) return;
     seen.add(word);
     const key = word[0] + word.at(-1)!;
     const bucket = buckets.get(key) ?? [];
@@ -44,7 +44,8 @@ export function createSwipeDecoder(words: readonly string[]) {
     const scale = Math.hypot((keys.q?.x ?? 0) - (keys.w?.x ?? 1), (keys.q?.y ?? 0) - (keys.w?.y ?? 0)) || 1;
     const candidates = buckets.get(first + last) ?? [];
     const ranked = candidates.map(({ word, rank }) => {
-      const letters = Array.from(word).filter((letter, index) => index === 0 || letter !== word[index - 1]);
+      const plain = word.replaceAll("'", "");
+      const letters = Array.from(plain).filter((letter, index) => index === 0 || letter !== plain[index - 1]);
       const ideal = resample(letters.map((letter) => keys[letter]));
       // Arc-length sampling removes finger-speed differences. Dynamic alignment
       // tolerates a small pause or a rounded corner near a key.

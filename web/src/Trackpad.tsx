@@ -874,7 +874,7 @@ function TouchArea({
                 className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]">
                 {preview.slice(0, previewCursor)}
                 <span className="bg-blue-500/40">{preview.slice(previewCursor, previewSelectionEnd)}</span>
-                {!remote?.password && <span className="mx-px inline-block h-[1.15em] w-px translate-y-0.5 animate-pulse bg-blue-300" />}
+                {!remote?.password && <span key={`${previewCursor}:${preview}`} data-preview-caret className="keyboard-caret mx-px inline-block h-[1.15em] w-px translate-y-0.5 bg-blue-300" />}
                 {preview.slice(previewSelectionEnd)}
               </div>
             </div>

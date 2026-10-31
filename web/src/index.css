@@ -102,7 +102,8 @@
 .custom-keyboard-shell button {
   -webkit-tap-highlight-color: transparent;
 }
-.custom-keyboard-shell [role="tabpanel"] {
+.custom-keyboard-shell [role="tabpanel"],
+.custom-keyboard-shell [aria-label="All emoji"] {
   touch-action: pan-y;
 }
 
@@ -123,9 +124,6 @@
   .remote-workspace { display: flex; flex-direction: column-reverse; gap: 12px; }
   .remote-pad { flex: 1; }
   .remote-audio { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .remote-output { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
-  .remote-output label { margin: 0; white-space: nowrap; }
-  .remote-output select { min-width: 0; }
 }
 @media (max-height: 540px) {
   .pc-remote { overflow-y: auto; }
@@ -137,3 +135,13 @@ html { touch-action: pan-x pan-y; }
 @media (pointer: coarse) {
   input, select, textarea { font-size: max(16px, 1em); }
 }
+
+/* Fixed scroll surfaces keep iOS elastic scrollbars from resizing the picker. */
+.keyboard-scroll { scrollbar-width: none; overscroll-behavior: none; }
+.keyboard-scroll::-webkit-scrollbar { display: none; }
+.custom-keyboard-shell .keyboard-suggestion[aria-pressed="true"] { border-color: #60a5fa; background: rgb(59 130 246 / .2); color: #bfdbfe; }
+.keyboard-caret { animation: keyboard-caret-idle 1.1s step-end infinite; }
+@keyframes keyboard-caret-idle { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .keyboard-caret { animation: none; } }
+
+.custom-keyboard-shell[data-keyboard-theme="light"] .keyboard-caret { background: #2563eb; }

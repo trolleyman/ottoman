@@ -23,7 +23,7 @@ export function RemotePage(props: {
   connected: boolean; connecting: boolean; cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean; send: (message: TrackpadMessage) => void;
 }) {
-  const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, audioError, monitors, setSinkDefault, setSinkVolume, setSinkMute, setMonitorVolume, setMonitorMute } = useStore();
+  const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, audioError, monitors, setSinkVolume, setSinkMute, setMonitorVolume, setMonitorMute } = useStore();
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement);
   const [fullscreenError, setFullscreenError] = useState("");
   useEffect(() => {
@@ -47,9 +47,7 @@ export function RemotePage(props: {
     <div className="remote-workspace">
       <div className="remote-pad"><Trackpad {...props} mode="remote" /></div>
       <aside className="remote-audio" aria-label="Remote audio">
-        <div className="remote-output min-w-0"><label className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-zinc-500" htmlFor="remote-output">PC output</label>
-          {audioSinks.length ? <select id="remote-output" value={sink?.name ?? ""} onChange={(event) => void setSinkDefault(event.target.value)} className="w-full rounded-lg border border-white/10 bg-zinc-900 p-2 text-xs text-zinc-300"><option value="" disabled>Choose output</option>{audioSinks.map((item) => <option key={item.name} value={item.name}>{item.description || item.name}</option>)}</select> : <p className="text-xs text-zinc-500">{audioError || "No audio outputs available"}</p>}
-        </div>
+        {!audioSinks.length && <p className="text-xs text-zinc-500">{audioError || "No PC audio output available"}</p>}
         {sink && <RemoteVolume key={sink.name} label="PC volume" value={Math.round(sink.volume * 100)} muted={sink.muted} onVolume={(value) => setSinkVolume(sink.name, value / 100)} onMute={() => void setSinkMute(sink.name, !sink.muted)} />}
         {tvs.map((tv) => <RemoteVolume key={tv.edid} label={tvs.length > 1 ? `${tv.friendly_name || tv.name} volume` : "TV volume"} value={tv.tv_state!.volume} muted={tv.tv_state!.muted} onVolume={(value) => setMonitorVolume(tv.edid, value)} onMute={() => void setMonitorMute(tv.edid, !tv.tv_state!.muted)} />)}
       </aside>

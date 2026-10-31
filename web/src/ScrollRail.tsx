@@ -24,7 +24,9 @@ export function ScrollRail({ send, sensitivity, friction, haptics, onInteract }:
       state.remainder -= dy;
       send({ type: "mousescroll", dx: 0, dy, precise: true });
       setDirection(dy > 0 ? "up" : "down");
-      setContentOffset((value) => (value - dy * 0.35) % 18);
+      // Three 16px rows repeat as one 48px pattern; wrapping at any other
+      // distance makes the lines jump and appear to change size.
+      setContentOffset((value) => (value - dy * 0.35) % 48);
     }
   };
   const finish = (cancelled: boolean) => {
@@ -81,13 +83,13 @@ export function ScrollRail({ send, sensitivity, friction, haptics, onInteract }:
       onLostPointerCapture={() => { if (motion.current.pointer !== -1) finish(true); }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <ChevronUp className={`h-4 w-4 ${phase !== "idle" && direction === "up" ? "text-blue-200" : "text-zinc-600"}`} />
+      <ChevronUp className="h-4 w-4 text-zinc-500" />
       <div aria-hidden="true" className="relative h-28 w-6 overflow-hidden" style={{ maskImage: "linear-gradient(transparent,black 20%,black 80%,transparent)" }}>
-        <div className="absolute inset-x-0 -top-5 flex flex-col gap-3" style={{ transform: `translateY(${contentOffset}px)` }}>
-          {Array.from({ length: 11 }, (_, index) => <span key={index} className={`h-1 rounded-full ${phase === "idle" ? "bg-zinc-700" : "bg-blue-300/80"}`} style={{ width: index % 3 === 2 ? "65%" : "100%" }} />)}
+        <div className="absolute inset-x-0 -top-5 flex flex-col gap-[12px]" style={{ transform: `translateY(${contentOffset}px)` }}>
+          {Array.from({ length: 15 }, (_, index) => <span key={index} className={`h-[4px] rounded-full ${phase === "idle" ? "bg-zinc-700" : "bg-blue-300/80"}`} style={{ width: index % 3 === 2 ? "65%" : "100%" }} />)}
         </div>
       </div>
-      <ChevronDown className={`h-4 w-4 ${phase !== "idle" && direction === "down" ? "text-blue-200" : "text-zinc-600"}`} />
+      <ChevronDown className="h-4 w-4 text-zinc-500" />
     </div>
   );
 }
