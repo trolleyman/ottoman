@@ -56,6 +56,7 @@ type Shot = {
   tags: string[]
   keyboard?: 'letters' | 'symbols' | 'symbol-search' | 'emoji' | 'emoji-search' | 'space-nav' | 'key-preview' | 'key-hold' | 'text-preview'
   remote?: boolean
+  taller?: boolean
   settings?: boolean
   settingsTiming?: boolean
   scheme?: 'light' | 'dark'
@@ -63,6 +64,8 @@ type Shot = {
 }
 
 const SHOTS: Shot[] = [
+  { name: 'pc-remote-taller-phone@2x', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::taller-keys'], remote: true, taller: true },
+  { name: 'pc-remote-taller-short-phone@2x', state: 'online', width: 375, height: 667, dpi: 2, tags: ['viewport::short-phone', 'feature::taller-keys'], remote: true, taller: true },
   { name: 'pc-remote-phone@2x', state: 'online', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'feature::remote'], remote: true },
   { name: 'pc-remote-desktop@2x', state: 'online', width: 1280, height: 900, dpi: 2, tags: ['viewport::desktop', 'feature::remote'], remote: true },
   { name: 'home-offline-phone', state: 'offline', width: 402, height: 874, dpi: 2, tags: ['viewport::phone', 'state::offline'] },
@@ -140,9 +143,9 @@ async function main() {
           userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_0) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
         } : {}),
       })
-      await ctx.addInitScript((theme) => {
-        localStorage.setItem('ottoman-trackpad-settings', JSON.stringify({ keyboardTheme: theme, keyboardLayout: 'en-GB' }))
-      }, shot.scheme || 'dark')
+      await ctx.addInitScript((preferences) => {
+        localStorage.setItem('ottoman-trackpad-settings', JSON.stringify({ ...preferences, keyboardLayout: 'en-GB' }))
+      }, { keyboardTheme: shot.scheme || 'dark', tallerKeys: shot.taller || false })
       const page = await ctx.newPage()
       const sent: SentMessage[] = []
       page.on('websocket', (socket) => socket.on('framesent', (frame) => {
@@ -163,6 +166,12 @@ async function main() {
         for (const letter of ["h", "e"]) await page.locator(`[data-letter="${letter}"]`).click()
         await page.getByLabel("Word suggestions").getByRole("button").first().waitFor()
         if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error("Remote page overflows horizontally")
+        if (shot.taller) {
+          const enter = page.getByRole('button', { name: 'Enter', exact: true })
+          await enter.scrollIntoViewIfNeeded()
+          const enterBox = await enter.boundingBox()
+          if (!enterBox || enterBox.y < 0 || enterBox.y + enterBox.height > shot.height) throw new Error('Tall keyboard Enter key is not reachable')
+        }
       } else if (shot.keyboard) {
         const openKeyboard = page.getByLabel(/Trackpad\. Tap to click/)
         await openKeyboard.scrollIntoViewIfNeeded()

@@ -145,3 +145,12 @@ html { touch-action: pan-x pan-y; }
 @media (prefers-reduced-motion: reduce) { .keyboard-caret { animation: none; } }
 
 .custom-keyboard-shell[data-keyboard-theme="light"] .keyboard-caret { background: #2563eb; }
+
+/* Tall keys retain their touch target size; short screens can scroll to every control. */
+.pc-remote:has([data-taller-keys="true"]) { overflow-y: auto; }
+@media (max-width: 767px) {
+  .remote-workspace:has([data-taller-keys="true"]) { min-height: 620px; }
+}
+@media (max-height: 540px) {
+  .remote-input:has([data-taller-keys="true"]) { min-height: 500px; }
+}

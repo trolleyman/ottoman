@@ -127,6 +127,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
               {([
                 ["Mirror focused text", "mirrorFocusedText"],
                 ["Number row", "numberRow"],
+                ["Taller keys", "tallerKeys"],
                 ["Long-press symbols", "symbolHints"],
                 ["Double-space period", "doubleSpacePeriod"],
                 ["Key haptics", "haptics"],

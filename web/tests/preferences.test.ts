@@ -37,6 +37,13 @@ describe("trackpad preferences", () => {
     expect(parseSettings({ mirrorFocusedText: "true" }).mirrorFocusedText).toBe(false);
   });
 
+  test("saves taller keys as an opt-in boolean preference", () => {
+    expect(loadSettings().tallerKeys).toBe(false);
+    savePreference("ottoman-trackpad-settings", { tallerKeys: true });
+    expect(loadSettings().tallerKeys).toBe(true);
+    expect(parseSettings({ tallerKeys: "true" }).tallerKeys).toBe(false);
+  });
+
   test("rejects invalid types and non-finite values", () => {
     for (const value of [null, [], "settings", 5]) expect(parseSettings(value)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings({ cursorSensitivity: "fast", cursorFriction: Infinity, longPressDelayMs: NaN, haptics: "false" })).toEqual(DEFAULT_SETTINGS);

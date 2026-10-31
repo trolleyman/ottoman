@@ -129,6 +129,11 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   assert(await page.locator('[data-key-preview="action"]').textContent() === "Home", "Navigation keys must show a press preview");
   await page.mouse.up();
   await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
+  const beforeBacktick = textMessages().length;
+  await page.getByRole("button", { name: "Type backtick", exact: true }).click();
+  await page.waitForTimeout(60);
+  assert(textMessages().slice(beforeBacktick).some(({ message }) => message.type === "text" && message.text === "`"), "The extra-key menu must type backtick");
+  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
   const beforePrint = sent.length;
   await page.getByRole("button", { name: /Print screen/i }).click();
   await page.waitForTimeout(60);
@@ -271,7 +276,15 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   assert(sent.filter(({ message }) => message.type === "mousescroll").length > scrollCount, "Rail must continue scrolling after release");
   assert(!await page.locator("[data-text-preview]").isVisible(), "Scrolling must dismiss the typing preview");
 
+  const regularKey = await key("q").boundingBox();
   await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Taller keys", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  const tallKey = await key("q").boundingBox();
+  assert(regularKey && tallKey && tallKey.height >= regularKey.height + 8 && tallKey.width === regularKey.width, "Taller keys must increase row height without changing the layout width");
+  assert(await page.evaluate(() => (JSON.parse(localStorage.getItem("ottoman-trackpad-settings") ?? "{}") as { tallerKeys?: boolean }).tallerKeys) === true, "Taller-key preference must be saved");
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Taller keys", exact: true }).click();
   await page.getByLabel("Keyboard appearance").selectOption("light");
   assert(await page.locator(".custom-keyboard-shell").getAttribute("data-keyboard-theme") === "light", "Explicit light theme must apply");
   await page.getByLabel("Keyboard appearance").selectOption("dark");

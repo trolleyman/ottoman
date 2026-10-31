@@ -13,7 +13,7 @@ const pathFor = (word: string) => Array.from(word).filter((letter, index) => let
 describe("keyboard layout", () => {
   test("uses UK shifts and promotes the exact letter hints to symbol keys", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
-    expect(letterRows[0][0]).toEqual({ key: "q", alt: "`" });
+    expect(letterRows[0][0]).toEqual({ key: "q", alt: "!" });
     expect(letterRows[2][1]).toEqual({ key: "x", alt: "|" });
     expect(numberRow[1].alt).toBe('"');
     expect(numberRow[2].alt).toBe("£");

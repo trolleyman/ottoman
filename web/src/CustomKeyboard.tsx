@@ -328,7 +328,7 @@ function KeyboardSession({
     : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : [];
 
   return (
-    <div data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
+    <div data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
       <div className="mx-auto flex max-w-3xl items-center gap-1.5 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
@@ -365,7 +365,10 @@ function KeyboardSession({
             <MoreHorizontal className="h-4 w-4" />
           </ActionKey>
           {moreOpen && <div id="keyboard-extra-actions" role="group" aria-label="Additional keyboard keys" className="absolute bottom-full right-0 z-[80] mb-2 w-60 rounded-xl border border-zinc-700 bg-zinc-900 p-2 shadow-2xl">
-            <ActionKey type="button" onPress={() => { navigate("PrintScreen"); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-zinc-100 hover:bg-zinc-800"><Camera className="h-4 w-4" />Print Screen</ActionKey>
+            <div className="grid grid-cols-2 gap-1">
+              <ActionKey type="button" onPress={() => { navigate("PrintScreen"); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-xs text-zinc-100 hover:bg-zinc-800"><Camera className="h-4 w-4" />Print Screen</ActionKey>
+              <ActionKey type="button" aria-label="Type backtick" onPress={() => { type("`", true); haptic(settings.haptics); setMoreOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-xs text-zinc-100 hover:bg-zinc-800"><span className="w-4 text-center font-mono text-lg">`</span>Backtick</ActionKey>
+            </div>
             <div className="grid grid-cols-3 gap-1">
               {["PageUp", "PageDown", "Insert", ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`)].map((key) => (
                 <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="rounded-lg bg-zinc-800 px-1 py-2 text-xs text-zinc-200 hover:bg-zinc-700">{key === "PageUp" ? "Page up" : key === "PageDown" ? "Page down" : key}</ActionKey>
@@ -422,7 +425,7 @@ function KeyboardSession({
         </NavigationKey>
       </div>
 
-      <div className="mx-auto flex h-[252px] max-w-3xl flex-col gap-1.5 px-1.5 sm:h-[274px] sm:gap-2 sm:px-2">
+      <div className={`mx-auto flex max-w-3xl flex-col gap-1.5 px-1.5 sm:gap-2 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
         {settingsOpen ? (
           <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
             onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
@@ -534,7 +537,7 @@ function KeyboardSession({
           </>
         )}
 
-        <div className="flex h-12 shrink-0 gap-1.5 sm:gap-2">
+        <div className={`flex shrink-0 gap-1.5 sm:gap-2 ${settings.tallerKeys ? "h-14" : "h-12"}`}>
           <UtilityKey
             label={emojiSearching ? "Back to emoji" : symbolSearching ? "Back to symbols" : mode === "symbols" ? "Letters" : "Symbols"}
             wide

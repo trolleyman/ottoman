@@ -832,7 +832,7 @@ function TouchArea({
                   backgroundImage:
                     "radial-gradient(circle, rgba(63,63,70,0.3) 1px, transparent 1px)",
                   backgroundSize: "20px 20px",
-                  maxHeight: !docked && keyboardOpen ? "max(160px, calc(100dvh - 380px))" : undefined,
+                  maxHeight: !docked && keyboardOpen ? `max(160px, calc(100dvh - ${settings.tallerKeys ? 428 : 380}px))` : undefined,
                 }
               : undefined
           }
@@ -1003,7 +1003,7 @@ function TouchArea({
         </p>
       )}
       {keyboardOpen && !docked && (
-        <div className="h-[360px] md:hidden" aria-hidden="true" />
+        <div className={settings.tallerKeys ? "h-[408px] md:hidden" : "h-[360px] md:hidden"} aria-hidden="true" />
       )}
     </div>
   );
