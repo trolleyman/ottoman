@@ -4,7 +4,8 @@ export type TextContext = TrackpadMessageTextContext;
 interface Pending { message: TrackpadMessageTextEdit; value: string }
 
 // Only one revision-dependent edit may be in flight. Subsequent phone edits
-// remain ordered; an external change or rejection replaces all optimistic state.
+// remain ordered. Same-field notifications wait for the matching acknowledgment;
+// the agent rechecks revisions before writing, so external edits still reject safely.
 export class RemoteText {
   context: TextContext | null = null;
   view: TextContext | null = null;
@@ -26,7 +27,11 @@ export class RemoteText {
       } else this.view = next;
       return;
     }
-    if (first && next.fieldId === this.context?.fieldId && next.revision === this.context.revision) return;
+    // Polling can observe an in-flight edit before its acknowledgment. Do not
+    // replace newer phone input with that intermediate desktop value. Focus and
+    // privacy changes still take effect immediately.
+    if (first && next.fieldId === this.context?.fieldId && next.available &&
+      next.editable && !next.protected && !next.password && !next.requestId) return;
     this.pending = [];
     this.context = next;
     this.view = next;

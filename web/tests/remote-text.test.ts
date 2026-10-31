@@ -17,6 +17,30 @@ describe("native text synchronization",()=>{
   expect(model.view?.value).toBe("a😀xyb");
   model.receive({...context,value:"a😀xyb",selectionStart:4,selectionEnd:4,revision:3,requestId:2});expect(model.view?.revision).toBe(3);
  });
+ test("keeps a fast typing burst through desktop notifications before each acknowledgment",()=>{
+  const {model,sent}=setup();
+  const burst=Array.from(" really fast 😀 typing");
+  let caret=2;
+  for(const char of burst) {model.replace(caret,caret,char);caret++;}
+  const optimistic=model.view!.value;
+  let value=context.value;
+  for(let i=0;i<burst.length;i++) {
+   const chars=Array.from(value); chars.splice(2+i,0,burst[i]); value=chars.join("");
+   // A newer poll result used to discard the remaining keystrokes here.
+   const echo={...context,value,selectionStart:3+i,selectionEnd:3+i,revision:2+i};
+   model.receive(echo);
+   expect(model.view?.value).toBe(optimistic);
+   model.receive({...echo,requestId:i+1});
+   expect(model.view?.value).toBe(optimistic);
+  }
+  expect(sent.length).toBe(burst.length);
+  expect(model.context?.value).toBe(optimistic);
+ });
+ test("privacy changes immediately clear a pending typing burst",()=>{
+  const {model}=setup();model.replace(2,2,"x");model.replace(3,3,"y");
+  model.receive({...context,available:false,editable:false,protected:true,value:""});
+  expect(model.view?.value).toBe("");expect(model.view?.protected).toBe(true);
+ });
  test("discards pending edits when native focus changes",()=>{
   const {model,sent}=setup();model.replace(2,2,"x");model.replace(3,3,"y");
   model.receive({...context,fieldId:"focus-b",value:"other",revision:3});expect(model.view?.value).toBe("other");expect(sent.length).toBe(1);
