@@ -1,5 +1,6 @@
 // Run from web after `bun run build`, with a project-local Playwright Chromium.
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
+import { checkAddressBar, installTestFont } from './address-bar-checks';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -46,7 +47,7 @@ try {
     await Bun.sleep(100);
   }
   if (!ready) throw Error('Simulator did not become ready');
-  browser = await chromium.launch();
+  browser = await (process.env.TEXT_TEST_BROWSER === "webkit" ? webkit : chromium).launch();
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -54,6 +55,7 @@ try {
     mirrorFocusedText: true, customKeyboard: false,
   })));
   await page.goto(base);
+  await installTestFont(page);
   const input = page.getByLabel('Type on the remote computer with the device keyboard');
   await input.waitFor({ state: 'attached' });
   console.log("Checking initial native field");
@@ -132,6 +134,7 @@ try {
   await page.getByRole('button', { name: 'Device', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
   if (errors.length) throw Error(errors.join('\n'));
+  await checkAddressBar(browser, base);
   console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');
 } finally {
   await browser?.close();

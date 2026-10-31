@@ -269,3 +269,28 @@ func TestEditSettlementRejectsUnconfirmedWrites(t *testing.T) {
 		t.Fatal("accepted a native write that never appeared")
 	}
 }
+
+func TestEditSettlementAcceptsSelectedInlineCompletion(t *testing.T) {
+	before := Snapshot{Identity: "omnibox", Value: "g", Start: 1, End: 1, Available: true, Editable: true}
+	next := before
+	next.Value, next.Start, next.End = "google.com", 2, 10
+	calls := 0
+	result, rejected := settleEdit(context.Background(), before, Edit{Start: 1, End: 1, Text: "o"}, 4096, func() Snapshot {
+		calls++
+		return next
+	})
+	if rejected || result != next || calls != 1 {
+		t.Fatalf("inline completion must acknowledge the typed prefix immediately: rejected=%v calls=%d", rejected, calls)
+	}
+	for _, invalid := range []Snapshot{
+		{Identity: "omnibox", Value: "xxgle.com", Start: 2, End: 9, Available: true, Editable: true},
+		{Identity: "omnibox", Value: "google.com", Start: 2, End: 6, Available: true, Editable: true},
+		{Identity: "different", Value: "google.com", Start: 2, End: 10, Available: true, Editable: true},
+	} {
+		want := before
+		want.Value, want.Start, want.End = "go", 2, 2
+		if inlineCompletion(want, invalid) {
+			t.Fatal("accepted a change beyond a selected suffix")
+		}
+	}
+}

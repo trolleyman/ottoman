@@ -256,6 +256,12 @@ func settleEdit(ctx context.Context, before Snapshot, edit Edit, window int, rea
 		if next.WindowStart == want.WindowStart && utf8.RuneCountInString(before.Value) < window {
 			matches = next.Value == want.Value
 		}
+		// Chrome's omnibox can publish a selected completion instead of the
+		// plain inserted text. The user's prefix is committed in this case.
+		// Acknowledge it so the next queued edit can replace that suffix.
+		if inlineCompletion(want, next) {
+			return next, false
+		}
 		if matches && next.Start == want.Start && next.End == want.End {
 			return next, false
 		}
@@ -270,4 +276,18 @@ func settleEdit(ctx context.Context, before Snapshot, edit Edit, window int, rea
 		case <-timer.C:
 		}
 	}
+}
+
+// Only accept an appended, selected suggestion at the exact intended caret.
+// In particular this cannot hide changes to the text the user already typed.
+func inlineCompletion(want, next Snapshot) bool {
+	if want.Identity != next.Identity || want.WindowStart != next.WindowStart ||
+		want.Start != want.End || next.Start != want.Start || next.Start < next.WindowStart || next.End <= next.Start ||
+		!next.Available || !next.Editable || next.Protected || next.Password {
+		return false
+	}
+	chars := []rune(next.Value)
+	return next.End == next.WindowStart+len(chars) &&
+		want.End == want.WindowStart+utf8.RuneCountInString(want.Value) &&
+		string(chars[:next.Start-next.WindowStart]) == want.Value
 }
