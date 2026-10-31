@@ -837,13 +837,8 @@ export function CustomKeyboard({
             {rows.map((row, index) => (
               <div
                 key={index}
-                className={`flex min-h-0 flex-1 ${index === 1 ? "gap-0.5 sm:gap-1" : "gap-1 sm:gap-1.5"}`}
+                className={`flex min-h-0 flex-1 gap-1 sm:gap-1.5 ${index === 1 ? "px-[4.5%]" : ""}`}
               >
-                {index === 1 && (
-                  <UtilityKey label="Tab" wide onPress={onTab}>
-                    <ArrowRightToLine className="h-5 w-5" />
-                  </UtilityKey>
-                )}
                 {index === 2 && (mode === "letters" || symbolSearching) && (
                   <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
@@ -909,6 +904,9 @@ export function CustomKeyboard({
             }}
           >
             {mode === "emoji" ? "ABC" : <Smile className="h-5 w-5" />}
+          </UtilityKey>
+          <UtilityKey label="Tab" onPress={onTab}>
+            <ArrowRightToLine className="h-5 w-5" />
           </UtilityKey>
           <button
             type="button"
