@@ -288,6 +288,7 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 	mappedStart, mappedEnd := start-low, end-low
 	source := []rune(value)
 	processed := 0
+	previousParagraph := false
 	for i, ch := range source {
 		if len(result) >= limit {
 			break
@@ -312,6 +313,13 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 			if err := a.object(child).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role); err != nil || role == 40 {
 				return "", 0, 0, ErrUnavailable
 			}
+			// Adjacent paragraph objects do not necessarily include a literal
+			// newline in Chromium's parent hypertext. Keep their line break,
+			// including empty paragraphs; explicit parent newlines reset this.
+			if role == 73 && previousParagraph {
+				result = append(result, '\n')
+			}
+			previousParagraph = role == 73 // ATSPI_ROLE_PARAGRAPH
 			count, err := a.property(ctx, child, "CharacterCount")
 			if err != nil || count < 0 {
 				return "", 0, 0, ErrUnavailable
@@ -339,6 +347,8 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 				}
 			}
 			piece = []rune(text)
+		} else {
+			previousParagraph = false
 		}
 		if start-low == i {
 			mappedStart = len(result) + childStart

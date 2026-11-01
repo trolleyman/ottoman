@@ -295,9 +295,15 @@ func TestChromeAccessibilityActivationAndFocusedWindowRecovery(t *testing.T) {
 
 type fakeRichText struct {
 	fakeAccessible
+	links map[int32]int32
 }
 
-func (*fakeRichText) GetLinkIndex(offset int32) (int32, *dbus.Error) { return offset / 2, nil }
+func (f *fakeRichText) GetLinkIndex(offset int32) (int32, *dbus.Error) {
+	if f.links != nil {
+		return f.links[offset], nil
+	}
+	return offset / 2, nil
+}
 func (*fakeRichText) GetLink(index int32) (reference, *dbus.Error) {
 	if index == 0 {
 		return reference{"org.ottoman.Test", "/link1"}, nil
@@ -313,8 +319,8 @@ func TestNativeRichEditorPreview(t *testing.T) {
 	server, ctx, _ := privateTextBus(t)
 	root := &fakeAccessible{root: true}
 	editor := &fakeRichText{fakeAccessible: fakeAccessible{value: "\ufffc\n\ufffc", start: 2, end: 2}}
-	first := &fakeAccessible{value: "Hello", start: 5, end: 5}
-	second := &fakeAccessible{value: "world × €", start: 2, end: 2}
+	first := &fakeAccessible{role: 73, value: "Hello", start: 5, end: 5}
+	second := &fakeAccessible{role: 73, value: "world × €", start: 2, end: 2}
 	exportTextObject(t, server, root, "/org/a11y/atspi/accessible/root", accessible)
 	exportTextObject(t, server, root, "/org/a11y/atspi/registry", "org.a11y.atspi.Registry")
 	for path, object := range map[dbus.ObjectPath]interface{}{"/field": editor, "/first": first, "/second": second} {
@@ -333,6 +339,30 @@ func TestNativeRichEditorPreview(t *testing.T) {
 	snapshot, err := backend.Snapshot(ctx, 128)
 	if err != nil || !snapshot.Available || snapshot.Value != "Hello\nworld × €" || snapshot.Start != 8 || snapshot.End != 8 || snapshot.Editable {
 		t.Fatalf("rich editor was not expanded safely: %#v, %v", snapshot, err)
+	}
+	// Chrome may omit parent separators for adjacent embedded paragraphs.
+	editor.mu.Lock()
+	editor.value, editor.start, editor.end = "\ufffc\ufffc", 1, 1
+	editor.links = map[int32]int32{0: 0, 1: 1}
+	editor.mu.Unlock()
+	snapshot, err = backend.Snapshot(ctx, 128)
+	if err != nil || snapshot.Value != "Hello\nworld × €" || snapshot.Start != 8 || snapshot.End != 8 {
+		t.Fatalf("paragraph newline lost: %#v, %v", snapshot, err)
+	}
+	first.mu.Lock()
+	first.value, first.start, first.end = "", 0, 0
+	first.mu.Unlock()
+	snapshot, err = backend.Snapshot(ctx, 128)
+	if err != nil || snapshot.Value != "\nworld × €" || snapshot.Start != 3 {
+		t.Fatalf("empty paragraph lost: %#v, %v", snapshot, err)
+	}
+	editor.mu.Lock()
+	editor.value, editor.start, editor.end = "\ufffc\ufffc\ufffc", 2, 2
+	editor.links = map[int32]int32{0: 0, 1: 0, 2: 1}
+	editor.mu.Unlock()
+	snapshot, err = backend.Snapshot(ctx, 128)
+	if err != nil || snapshot.Value != "\n\nworld × €" || snapshot.Start != 4 {
+		t.Fatalf("consecutive empty paragraphs lost: %#v, %v", snapshot, err)
 	}
 	if err := backend.Replace(ctx, snapshot, Edit{Start: 0, End: 5, Text: "changed"}); err == nil {
 		t.Fatal("expanded preview offsets must never be written to the editor")

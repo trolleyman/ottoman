@@ -44,11 +44,11 @@ describe("trackpad preferences", () => {
     expect(parseSettings({ suggestionsAboveControls: "false" }).suggestionsAboveControls).toBe(true);
   });
 
-  test("saves taller keys as an opt-in boolean preference", () => {
-    expect(loadSettings().tallerKeys).toBe(false);
-    savePreference("ottoman-trackpad-settings", { tallerKeys: true });
+  test("defaults to taller keys and preserves an explicit shorter-key preference", () => {
     expect(loadSettings().tallerKeys).toBe(true);
-    expect(parseSettings({ tallerKeys: "true" }).tallerKeys).toBe(false);
+    savePreference("ottoman-trackpad-settings", { tallerKeys: false });
+    expect(loadSettings().tallerKeys).toBe(false);
+    expect(parseSettings({ tallerKeys: "true" }).tallerKeys).toBe(true);
   });
 
   test("rejects invalid types and non-finite values", () => {
