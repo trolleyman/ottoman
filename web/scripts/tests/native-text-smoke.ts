@@ -161,6 +161,27 @@ try {
   if (errors.length) throw Error(errors.join('\n'));
   await checkAddressBar(browser, base);
   await checkDelayedTypingEcho(browser, base);
+  if (browser.browserType().name() === 'chromium') {
+    const insetPage = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const emulation = await insetPage.context().newCDPSession(insetPage);
+    try {
+      await emulation.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 59, bottom: 34, left: 0, right: 0 } });
+      await insetPage.goto(base + '/remote');
+      await insetPage.locator('.pc-remote header .bg-emerald-400').waitFor();
+      await insetPage.getByLabel(/Trackpad\. Tap to click/).focus();
+      await insetPage.locator('.remote-keyboard').waitFor();
+      const remotePadding = await insetPage.locator('.remote-keyboard').evaluate(element => getComputedStyle(element).paddingBottom);
+      const pagePadding = await insetPage.locator('.pc-remote').evaluate(element => getComputedStyle(element).paddingBottom);
+      if (remotePadding !== '8px' || pagePadding !== '34px') throw Error(`Remote safe area counted twice: keyboard=${remotePadding}, page=${pagePadding}`);
+      await insetPage.screenshot({ path: '/tmp/ottoman-bottom-spacing@2x.png' });
+      await insetPage.getByRole('link', { name: 'Back to dashboard', exact: true }).click();
+      await insetPage.getByLabel(/Trackpad\. Tap to click/).focus();
+      await insetPage.locator('.custom-keyboard-shell').waitFor();
+      const floatingPadding = await insetPage.locator('.custom-keyboard-shell').evaluate(element => getComputedStyle(element).paddingBottom);
+      if (floatingPadding !== '34px') throw Error(`Floating keyboard lost its safe area: ${floatingPadding}`);
+      console.log('PASS: emulated iPhone insets apply once on remote and remain on the floating keyboard');
+    } finally { await emulation.detach(); await insetPage.close(); }
+  }
   console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');
 } finally {
   await browser?.close();
