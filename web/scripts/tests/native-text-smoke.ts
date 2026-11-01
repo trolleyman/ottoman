@@ -1,6 +1,7 @@
 // Run from web after `bun run build`, with a project-local Playwright Chromium.
 import { chromium, webkit } from 'playwright';
 import { checkAddressBar, installTestFont } from './address-bar-checks';
+import { checkDelayedTypingEcho } from './typing-race-checks';
 import { checkKeyboardTouchDefaults } from './keyboard-touch-checks';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -159,6 +160,7 @@ try {
   console.log('PASS: text status is visible before typing, opt-in works, and navigation/back/forward preserve the page and connection');
   if (errors.length) throw Error(errors.join('\n'));
   await checkAddressBar(browser, base);
+  await checkDelayedTypingEcho(browser, base);
   console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');
 } finally {
   await browser?.close();

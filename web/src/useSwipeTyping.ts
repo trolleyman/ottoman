@@ -73,7 +73,8 @@ export function useSwipeTyping(enabled: boolean, holdDelay: number, context: num
         const current = gesture.current;
         if (!current || current.pointer !== event.pointerId) return;
         if (!enabled || current.context !== context) {
-          consumed.current.add(event.pointerId);
+          // A desktop echo may arrive while the next tap is held. Only an
+          // activated glide owns the pointer's tap; its id is already consumed.
           stop();
           return;
         }
@@ -102,7 +103,8 @@ export function useSwipeTyping(enabled: boolean, holdDelay: number, context: num
         const current = gesture.current;
         if (!current || current.pointer !== event.pointerId) return;
         if (!enabled || current.context !== context) {
-          consumed.current.add(event.pointerId);
+          // A desktop echo may arrive while the next tap is held. Only an
+          // activated glide owns the pointer's tap; its id is already consumed.
           stop();
           return;
         }
