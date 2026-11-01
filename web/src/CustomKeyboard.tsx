@@ -14,6 +14,7 @@ import {
   Move,
   SkipBack,
   Play,
+  Pause,
   SkipForward,
   Volume1,
   Volume2,
@@ -449,21 +450,28 @@ function KeyboardSession({
       </div>
 
       <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-0.5" aria-label="Navigation keys">
-        <NavigationKey label={fnActive ? "Print Screen" : "Escape"} onPress={() => navigate(fnActive ? "PrintScreen" : "Escape")}>{fnActive ? "PrtSc" : "Esc"}</NavigationKey>
-        <NavigationKey label={fnActive ? "Page up" : "Home"} onPress={() => navigate(fnActive ? "PageUp" : "Home")}>{fnActive ? "PgUp" : "Home"}</NavigationKey>
-        <NavigationKey label={fnActive ? "Page down" : "End"} onPress={() => navigate(fnActive ? "PageDown" : "End")}>{fnActive ? "PgDn" : "End"}</NavigationKey>
-        {[
-          { key: "ArrowLeft", label: "Arrow left", Icon: ArrowLeft, fnKey: "MediaTrackPrevious", fnLabel: "Previous track", FnIcon: SkipBack },
-          { key: "ArrowUp", label: "Arrow up", Icon: ArrowUp, fnKey: "AudioVolumeUp", fnLabel: "Volume up", FnIcon: Volume2 },
-          { key: "ArrowDown", label: "Arrow down", Icon: ArrowDown, fnKey: "AudioVolumeDown", fnLabel: "Volume down", FnIcon: Volume1 },
-          { key: "ArrowRight", label: "Arrow right", Icon: ArrowRight, fnKey: "MediaTrackNext", fnLabel: "Next track", FnIcon: SkipForward },
-        ].map(({ key, label, Icon, fnKey, fnLabel, FnIcon }) => <NavigationKey key={key} label={fnActive ? fnLabel : label} onPress={() => navigate(fnActive ? fnKey : key)}>
-          {fnActive ? <FnIcon className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+        {(fnActive ? [
+          { key: "PrintScreen", label: "Print Screen", text: "PrtSc" },
+          { key: "PageUp", label: "Page up", text: "PgUp" },
+          { key: "PageDown", label: "Page down", text: "PgDn" },
+          { key: "AudioVolumeMute", label: "Mute", Icon: VolumeX },
+          { key: "AudioVolumeDown", label: "Volume down", Icon: Volume1 },
+          { key: "AudioVolumeUp", label: "Volume up", Icon: Volume2 },
+          { key: "MediaTrackPrevious", label: "Previous track", Icon: SkipBack },
+          { key: "MediaPlayPause", label: "Play/pause", text: <span className="flex items-center" aria-hidden="true"><Play className="h-3 w-3" /><Pause className="h-3 w-3" /></span> },
+          { key: "MediaTrackNext", label: "Next track", Icon: SkipForward },
+        ] : [
+          { key: "Escape", label: "Escape", text: "Esc" },
+          { key: "Home", label: "Home", text: "Home" },
+          { key: "End", label: "End", text: "End" },
+          { key: "ArrowLeft", label: "Arrow left", Icon: ArrowLeft },
+          { key: "ArrowUp", label: "Arrow up", Icon: ArrowUp },
+          { key: "ArrowDown", label: "Arrow down", Icon: ArrowDown },
+          { key: "ArrowRight", label: "Arrow right", Icon: ArrowRight },
+          { key: "Delete", label: "Delete", Icon: Delete },
+        ]).map(({ key, label, text, Icon }) => <NavigationKey key={key} label={label} onPress={() => navigate(key)}>
+          {Icon ? <Icon className={`h-4 w-4 ${key === "Delete" ? "rotate-180" : ""}`} /> : text}
         </NavigationKey>)}
-        <NavigationKey label={fnActive ? "Play/pause" : "Delete"} onPress={() => navigate(fnActive ? "MediaPlayPause" : "Delete")}>
-          {fnActive ? <Play className="h-4 w-4" /> : <Delete className="h-4 w-4 rotate-180" />}
-        </NavigationKey>
-        {fnActive && <NavigationKey label="Mute" onPress={() => navigate("AudioVolumeMute")}><VolumeX className="h-4 w-4" /></NavigationKey>}
 
       </div>
 

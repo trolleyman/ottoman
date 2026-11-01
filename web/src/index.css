@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Keep the exposed viewport and iOS overscroll area the same solid app color. */
+html { background: #09090b; }
+
 /*
  * Custom volume slider used by the audio sinks (0–150%). The native track is
  * made transparent so the decorative zone/fill layers rendered behind the
@@ -114,7 +117,7 @@
 
 .custom-keyboard-shell[data-keyboard-theme="light"] .custom-keyboard-key { color: #18181b; }
 
-.pc-remote { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; gap: 16px; padding: max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+.pc-remote { height: 100dvh; overflow: hidden; overscroll-behavior-y: none; display: flex; flex-direction: column; gap: 16px; padding: max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
 .remote-workspace { display: flex; flex: 1; min-height: 0; }
 .remote-pad { min-height: 0; min-width: 0; flex: 1; display: flex; }
 .remote-volume-slider { writing-mode: vertical-lr; direction: rtl; width: 24px; height: 100%; touch-action: none; }

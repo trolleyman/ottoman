@@ -206,6 +206,8 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const controls = page.getByLabel("Keyboard controls", { exact: true });
   assert((await suggestions.boundingBox())!.y < (await controls.boundingBox())!.y, "Suggestions default to above Ctrl");
   await page.getByRole("button", { name: "Function keys", exact: true }).click();
+  const fnOrder = await page.getByLabel("Navigation keys", { exact: true }).getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));
+  assert(JSON.stringify(fnOrder) === JSON.stringify(["Print Screen", "Page up", "Page down", "Mute", "Volume down", "Volume up", "Previous track", "Play/pause", "Next track"]), "Fn must group paging, volume and media controls in the requested order");
   for (const [label, keyName] of [
     ["Previous track", "MediaTrackPrevious"], ["Play/pause", "MediaPlayPause"], ["Next track", "MediaTrackNext"],
     ["Volume down", "AudioVolumeDown"], ["Mute", "AudioVolumeMute"], ["Volume up", "AudioVolumeUp"],
