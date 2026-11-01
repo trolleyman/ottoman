@@ -3,6 +3,27 @@
 /* Keep the exposed viewport and iOS overscroll area the same solid app color. */
 html { background: #09090b; }
 
+/* iOS Home Screen apps can blur the page header even with an opaque status
+ * bar. WebKit detects a fixed top edge with a background as an app-drawn edge.
+ * Clipping this empty element's background to text keeps it from painting over
+ * content. Keep it outside the React root so navigation cannot remove the edge.
+ * Device-tested approach: https://tips.ojapp.app/en/ios-27-pwa-top-blur-workaround-2/
+ */
+.standalone-top-edge { display: none; }
+@media (display-mode: standalone) {
+  .standalone-top-edge {
+    display: block;
+    position: fixed;
+    inset: 0 0 auto;
+    height: 11px;
+    z-index: 100;
+    pointer-events: none;
+    background-color: #09090b;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+}
+
 /*
  * Custom volume slider used by the audio sinks (0–150%). The native track is
  * made transparent so the decorative zone/fill layers rendered behind the
