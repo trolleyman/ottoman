@@ -12,10 +12,8 @@ import {
   CornerDownLeft,
   Delete,
   Move,
-  MoreHorizontal,
   SkipBack,
   Play,
-  Pause,
   SkipForward,
   Volume1,
   Volume2,
@@ -95,7 +93,7 @@ function KeyboardSession({
   );
   const [emojiSearching, setEmojiSearching] = useState(false);
   const [symbolSearching, setSymbolSearching] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [fnActive, setFnActive] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [symbolQuery, setSymbolQuery] = useState("");
@@ -347,131 +345,13 @@ function KeyboardSession({
   const wordChoices = sensitiveInput || modifiers.some((modifier) => modifier !== Modifier.SHIFT) ? []
     : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : [];
 
-  return (
-    <div ref={keyboardTouchRef} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
-      <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
-        <ModifierButton
-          modifier={Modifier.CTRL}
-          label="Control"
-          text="Ctrl"
-          selected={modifiers}
-          onToggle={onToggleModifier}
-        >
-          <ChevronUp className="h-4 w-4" />
-        </ModifierButton>
-        {applePlatform ? (
-          <>
-            <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} onToggle={onToggleModifier}>
-              <Option className="h-4 w-4" />
-            </ModifierButton>
-            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
-              <Command className="h-4 w-4" />
-            </ModifierButton>
-          </>
-        ) : (
-          <>
-            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
-              {remoteOS === "windows" && <WindowsIcon className="h-[17px] w-[17px]" />}
-            </ModifierButton>
-            <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
-              <Option className="h-4 w-4" />
-            </ModifierButton>
-          </>
-        )}
-        <div className="relative shrink-0">
-          <ActionKey type="button" aria-label="More keyboard actions" aria-expanded={moreOpen} aria-controls="keyboard-extra-actions"
-            onPress={() => setMoreOpen((open) => !open)}
-            className="custom-keyboard-utility flex h-9 w-9 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400">
-            <MoreHorizontal className="h-4 w-4" />
-          </ActionKey>
-          {moreOpen && <div id="keyboard-extra-actions" role="group" aria-label="Additional keyboard keys" className="absolute bottom-full right-0 z-[80] mb-2 flex w-64 flex-col gap-1 rounded-xl border border-zinc-700 bg-zinc-900 p-2 shadow-2xl">
-            <div className="grid grid-cols-3 gap-1">
-              {[{ key: "PrintScreen", label: "Print Screen" }, { key: "Insert", label: "Insert" }].map(({ key, label }) => (
-                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{label}</ActionKey>
-              ))}
-              <ActionKey type="button" aria-label="Type backtick" onPress={() => { type("`", true); haptic(settings.haptics); setMoreOpen(false); }} className="keyboard-extra-key">Backtick</ActionKey>
-              {[
-                { key: "MediaTrackPrevious", label: "Previous track", Icon: SkipBack },
-                { key: "MediaPlayPause", label: "Play/pause", Icon: Play },
-                { key: "MediaTrackNext", label: "Next track", Icon: SkipForward },
-                { key: "AudioVolumeDown", label: "Volume down", Icon: Volume1 },
-                { key: "AudioVolumeMute", label: "Mute", Icon: VolumeX },
-                { key: "AudioVolumeUp", label: "Volume up", Icon: Volume2 },
-              ].map(({ key, label, Icon }) => (
-                <ActionKey key={key} type="button" aria-label={label} title={label} onPress={() => navigate(key)} className="keyboard-extra-key"><Icon aria-hidden="true" className="h-4 w-4" />{key === "MediaPlayPause" && <Pause aria-hidden="true" className="h-4 w-4" />}</ActionKey>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              {[{ key: "PageUp", label: "Page up" }, { key: "PageDown", label: "Page down" }].map(({ key, label }) => (
-                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{label}</ActionKey>
-              ))}
-            </div>
-            <div className="grid grid-cols-3 gap-1">
-              {Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
-                <ActionKey key={key} type="button" onPress={() => { navigate(key); setMoreOpen(false); }} className="keyboard-extra-key">{key}</ActionKey>
-              ))}
-            </div>
-          </div>}
-
-        </div>
-        <ActionKey
-          type="button"
-          aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
-          title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
-          aria-pressed={settingsOpen}
-          onPress={() => setSettingsOpen((current) => !current)}
-          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
-            settingsOpen
-              ? "border-blue-400/60 bg-blue-500 text-white"
-              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-          }`}
-        >
-          {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-        </ActionKey>
-        <ActionKey
-          type="button"
-          aria-label="Close keyboard"
-          title="Close keyboard"
-          onPress={() => {
-            setSettingsOpen(false);
-            onClose();
-          }}
-          className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
-        >
-          <X className="h-4 w-4" />
-        </ActionKey>
-      </div>
-
-      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-0.5" aria-label="Navigation keys">
-        <NavigationKey label="Escape" onPress={() => navigate("Escape")}>Esc</NavigationKey>
-        <NavigationKey label="Home" onPress={() => navigate("Home")}>Home</NavigationKey>
-        <NavigationKey label="End" onPress={() => navigate("End")}>End</NavigationKey>
-        <NavigationKey label="Arrow left" onPress={() => navigate("ArrowLeft")}>
-          <ArrowLeft className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow up" onPress={() => navigate("ArrowUp")}>
-          <ArrowUp className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow down" onPress={() => navigate("ArrowDown")}>
-          <ArrowDown className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Arrow right" onPress={() => navigate("ArrowRight")}>
-          <ArrowRight className="h-4 w-4" />
-        </NavigationKey>
-        <NavigationKey label="Delete" onPress={() => navigate("Delete")}>
-          <Delete className="h-4 w-4 rotate-180" />
-        </NavigationKey>
-      </div>
-
-      <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-0 px-1.5 sm:px-2 ${settings.tallerKeys ? "h-[300px] sm:h-[322px]" : "h-[252px] sm:h-[274px]"}`}>
-        {settingsOpen ? (
-          <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
-            onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
-            usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
-        ) : (
-          <>
-        <div className="mb-1 flex h-8 shrink-0 items-center gap-1" aria-label={mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
-          {mode === "letters" ? (
+  const suggestionBar = (
+        <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
+          {fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
+            // This handler reads gesture refs only when the key is pressed.
+            // eslint-disable-next-line react-hooks/refs
+            <ActionKey key={key} type="button" onPress={() => { navigate(key); }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center rounded border border-white/10 text-[10px] sm:text-xs">{key}</ActionKey>
+          )) : mode === "letters" ? (
             wordChoices.map((word) => (
               <ActionKey type="button" key={word}
                 aria-pressed={selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase()}
@@ -501,6 +381,100 @@ function KeyboardSession({
             </ActionKey>
           </>}
         </div>
+  );
+
+  return (
+    <div ref={keyboardTouchRef} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border remote-keyboard" : "fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
+      {settings.suggestionsAboveControls && !settingsOpen && <div className="mx-auto max-w-3xl px-2 pt-1.5">{suggestionBar}</div>}
+      <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
+        <ModifierButton
+          modifier={Modifier.CTRL}
+          label="Control"
+          text="Ctrl"
+          selected={modifiers}
+          onToggle={onToggleModifier}
+        >
+          <ChevronUp className="h-4 w-4" />
+        </ModifierButton>
+        {applePlatform ? (
+          <>
+            <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} onToggle={onToggleModifier}>
+              <Option className="h-4 w-4" />
+            </ModifierButton>
+            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
+              <Command className="h-4 w-4" />
+            </ModifierButton>
+          </>
+        ) : (
+          <>
+            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
+              {remoteOS === "windows" && <WindowsIcon className="h-[17px] w-[17px]" />}
+            </ModifierButton>
+            <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
+              <Option className="h-4 w-4" />
+            </ModifierButton>
+          </>
+        )}
+        <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
+          onPress={() => { haptic(settings.haptics); setFnActive((active) => !active); }}
+          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
+          Fn
+        </ActionKey>
+        <ActionKey
+          type="button"
+          aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
+          title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
+          aria-pressed={settingsOpen}
+          onPress={() => setSettingsOpen((current) => !current)}
+          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
+            settingsOpen
+              ? "border-blue-400/60 bg-blue-500 text-white"
+              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+          }`}
+        >
+          {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
+        </ActionKey>
+        <ActionKey
+          type="button"
+          aria-label="Close keyboard"
+          title="Close keyboard"
+          onPress={() => {
+            setSettingsOpen(false);
+            onClose();
+          }}
+          className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </ActionKey>
+      </div>
+
+      <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-0.5" aria-label="Navigation keys">
+        <NavigationKey label={fnActive ? "Print Screen" : "Escape"} onPress={() => navigate(fnActive ? "PrintScreen" : "Escape")}>{fnActive ? "PrtSc" : "Esc"}</NavigationKey>
+        <NavigationKey label={fnActive ? "Page up" : "Home"} onPress={() => navigate(fnActive ? "PageUp" : "Home")}>{fnActive ? "PgUp" : "Home"}</NavigationKey>
+        <NavigationKey label={fnActive ? "Page down" : "End"} onPress={() => navigate(fnActive ? "PageDown" : "End")}>{fnActive ? "PgDn" : "End"}</NavigationKey>
+        {[
+          { key: "ArrowLeft", label: "Arrow left", Icon: ArrowLeft, fnKey: "MediaTrackPrevious", fnLabel: "Previous track", FnIcon: SkipBack },
+          { key: "ArrowUp", label: "Arrow up", Icon: ArrowUp, fnKey: "AudioVolumeUp", fnLabel: "Volume up", FnIcon: Volume2 },
+          { key: "ArrowDown", label: "Arrow down", Icon: ArrowDown, fnKey: "AudioVolumeDown", fnLabel: "Volume down", FnIcon: Volume1 },
+          { key: "ArrowRight", label: "Arrow right", Icon: ArrowRight, fnKey: "MediaTrackNext", fnLabel: "Next track", FnIcon: SkipForward },
+        ].map(({ key, label, Icon, fnKey, fnLabel, FnIcon }) => <NavigationKey key={key} label={fnActive ? fnLabel : label} onPress={() => navigate(fnActive ? fnKey : key)}>
+          {fnActive ? <FnIcon className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+        </NavigationKey>)}
+        <NavigationKey label={fnActive ? "Play/pause" : "Delete"} onPress={() => navigate(fnActive ? "MediaPlayPause" : "Delete")}>
+          {fnActive ? <Play className="h-4 w-4" /> : <Delete className="h-4 w-4 rotate-180" />}
+        </NavigationKey>
+        {fnActive && <NavigationKey label="Mute" onPress={() => navigate("AudioVolumeMute")}><VolumeX className="h-4 w-4" /></NavigationKey>}
+
+      </div>
+
+      <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-0 px-1.5 sm:px-2 ${settings.tallerKeys ? (settings.suggestionsAboveControls ? "h-[264px] sm:h-[286px]" : "h-[300px] sm:h-[322px]") : (settings.suggestionsAboveControls ? "h-[216px] sm:h-[238px]" : "h-[252px] sm:h-[274px]")}`}>
+        {settingsOpen ? (
+          <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
+            onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
+            usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
+        ) : (
+          <>
+        {!settings.suggestionsAboveControls && suggestionBar}
         {mode === "emoji" && !emojiSearching ? (
           <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSelect={selectEmoji} /></Suspense>
         ) : (

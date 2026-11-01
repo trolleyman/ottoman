@@ -179,7 +179,7 @@ async function main() {
         await openKeyboard.scrollIntoViewIfNeeded()
         await openKeyboard.focus()
         if (shot.keyboard === 'more') {
-          await page.getByRole('button', { name: 'More keyboard actions', exact: true }).click()
+          await page.getByRole('button', { name: 'Function keys', exact: true }).click()
         } else if (shot.keyboard === 'super-hold') {
           const key = page.getByRole('button', { name: 'Windows', exact: true })
           const box = await key.boundingBox()

@@ -22,6 +22,11 @@ export default function App() {
 
   const { textContext, connected, connecting, cursorPos, cursorSupported, send } = useTrackpadWebSocket(!!authed, refreshKey);
 
+  useEffect(() => {
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifest) manifest.href = window.location.pathname === "/remote" ? "/remote.webmanifest" : "/site.webmanifest";
+  }, []);
+
   // Check auth on mount
   useEffect(() => {
     void checkAuth();

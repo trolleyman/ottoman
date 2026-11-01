@@ -37,6 +37,13 @@ describe("trackpad preferences", () => {
     expect(parseSettings({ mirrorFocusedText: "true" }).mirrorFocusedText).toBe(false);
   });
 
+  test("defaults suggestions above Ctrl and preserves an explicit placement", () => {
+    expect(loadSettings().suggestionsAboveControls).toBe(true);
+    savePreference("ottoman-trackpad-settings", { suggestionsAboveControls: false });
+    expect(loadSettings().suggestionsAboveControls).toBe(false);
+    expect(parseSettings({ suggestionsAboveControls: "false" }).suggestionsAboveControls).toBe(true);
+  });
+
   test("saves taller keys as an opt-in boolean preference", () => {
     expect(loadSettings().tallerKeys).toBe(false);
     savePreference("ottoman-trackpad-settings", { tallerKeys: true });

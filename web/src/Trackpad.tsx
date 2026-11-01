@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Eraser,
@@ -34,6 +35,7 @@ function combineModifiers(...groups: Modifier[][]): Modifier[] {
 }
 
 function TouchArea({
+  sideControls,
   docked = false,
   textContext,
   connected,
@@ -46,6 +48,7 @@ function TouchArea({
   connected: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
+  sideControls?: React.ReactNode;
   docked?: boolean;
   settings: TrackpadSettings;
   onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
@@ -817,7 +820,9 @@ function TouchArea({
 
   return (
     <div className={docked ? "remote-input flex min-h-0 flex-1 flex-col gap-2" : "w-full md:max-w-sm md:shrink-0 flex flex-col gap-2"}>
-      <div className={docked ? "relative min-h-28 flex-1" : "relative"}>
+      <div className={docked ? "flex min-h-28 flex-1 gap-2" : "contents"}>
+      {sideControls}
+      <div className={docked ? "relative min-w-0 flex-1" : "relative"}>
         <div
           ref={trackpadRef}
           tabIndex={0}
@@ -942,6 +947,7 @@ function TouchArea({
           />
         )}
       </div>
+      </div>
       <div className={docked ? "shrink-0" : "relative"}>
         <CustomKeyboard
           docked={docked}
@@ -1023,6 +1029,8 @@ function TouchArea({
 
 export function Trackpad({
   mode = "dashboard",
+  settingsContainer,
+  sideControls,
   textContext,
   connected,
   connecting,
@@ -1036,6 +1044,8 @@ export function Trackpad({
   cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean;
   mode?: "dashboard" | "remote";
+  settingsContainer?: HTMLElement | null;
+  sideControls?: React.ReactNode;
   send: (msg: TrackpadMessage) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
@@ -1064,17 +1074,16 @@ export function Trackpad({
     }
   }, [showSettings]);
 
-  return (
-    <section className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : undefined}>
-      <div className={`flex items-center justify-between ${mode === "remote" ? "mb-2" : "mb-4"}`}>
-        <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
+  const controls = (
+      <div className={`flex items-center justify-between ${mode === "remote" ? "" : "mb-4"}`}>
+        {mode !== "remote" && <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
           {"Trackpad"}
           <span
             className={`inline-block w-2 h-2 rounded-full ${
               connected ? "bg-green-400" : "bg-red-400"
             }`}
           />
-        </h2>
+        </h2>}
         <div className="relative" ref={settingsRef}>
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -1132,9 +1141,15 @@ export function Trackpad({
           )}
         </div>
       </div>
+  );
+
+  return (
+    <section className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : undefined}>
+      {mode === "remote" ? settingsContainer && createPortal(controls, settingsContainer) : controls}
       <div className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : "flex flex-col-reverse md:flex-row gap-6 sm:items-start"}>
         <TouchArea
           key={connected ? "connected" : "disconnected"}
+          sideControls={sideControls}
           docked={mode === "remote"}
           textContext={textContext}
           connected={connected}

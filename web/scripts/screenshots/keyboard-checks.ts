@@ -51,7 +51,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
 
   const navBox = await page.getByLabel("Navigation keys", { exact: true }).boundingBox();
   const suggestionBox = await page.getByLabel("Word suggestions", { exact: true }).boundingBox();
-  assert(navBox && suggestionBox && suggestionBox.y - navBox.y - navBox.height >= 5.9, "Suggestions must have a visible gap above the navigation row");
+  assert(navBox && suggestionBox && suggestionBox.y + suggestionBox.height < navBox.y, "Suggestions must appear above the control and navigation rows");
 
   const beforeRollover = textMessages().length;
   await page.evaluate(() => {
@@ -140,7 +140,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.waitForTimeout(60);
   const numberHoldMessages = textMessages().slice(beforeNumberHold);
   assert(numberHoldMessages.length === 1 && numberHoldMessages[0].message.type === "text" && numberHoldMessages[0].message.text === "£", "Held 3 must send only sterling");
-  for (const [letter, symbol] of [["q", "`"], ["o", "#"], ["p", "~"], ["z", "|"], ["x", "\\"], ["m", "/"]])
+  for (const [letter, symbol] of [["q", "`"], ["r", "<"], ["t", ">"], ["y", "~"], ["u", "×"], ["p", "#"], ["z", "|"], ["x", "\\"], ["m", "/"]])
     assert(await key(letter).getAttribute("aria-label") === `${letter}, hold for ${symbol}`, `British ${letter} must expose ${symbol}`);
   assert(await key("e").getAttribute("aria-label") === "e, hold for €", "E must expose euro");
 
@@ -158,18 +158,18 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   assert(textMessages().length === beforeCancel, "Cancelled press must not emit a delayed character");
 
   await checkKeyboardTouchDefaults(page);
-  const heldI = await centre("i");
+  const heldEquals = await centre("o");
   const beforeTouchHold = textMessages().length;
   const holdTouch = await page.context().newCDPSession(page);
   try {
-    await holdTouch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...heldI, id: 1 }] });
+    await holdTouch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...heldEquals, id: 1 }] });
     await page.waitForTimeout(550);
-    assert(await page.locator('[data-key-preview="alternate"]').textContent() === "=", "A real held touch on I must keep the equals popup");
+    assert(await page.locator('[data-key-preview="alternate"]').textContent() === "=", "A real held touch on O must keep the equals popup");
     await holdTouch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   } finally { await holdTouch.detach(); }
   await page.waitForTimeout(60);
   const touchHoldText = textMessages().slice(beforeTouchHold);
-  assert(touchHoldText.length === 1 && touchHoldText[0].message.type === "text" && touchHoldText[0].message.text === "=", "Held I must type equals exactly once with native touch defaults suppressed");
+  assert(touchHoldText.length === 1 && touchHoldText[0].message.type === "text" && touchHoldText[0].message.text === "=", "Held O must type equals exactly once with native touch defaults suppressed");
 
   const beforeClear = sent.length;
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
@@ -202,33 +202,33 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.mouse.down();
   assert(await page.locator('[data-key-preview="action"]').textContent() === "Home", "Navigation keys must show a press preview");
   await page.mouse.up();
-  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
-  const beforeBacktick = textMessages().length;
-  await page.getByRole("button", { name: "Type backtick", exact: true }).click();
-  await page.waitForTimeout(60);
-  assert(textMessages().slice(beforeBacktick).some(({ message }) => message.type === "text" && message.text === "`"), "The extra-key menu must type backtick");
-  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
+  const suggestions = page.getByLabel("Word suggestions", { exact: true });
+  const controls = page.getByLabel("Keyboard controls", { exact: true });
+  assert((await suggestions.boundingBox())!.y < (await controls.boundingBox())!.y, "Suggestions default to above Ctrl");
+  await page.getByRole("button", { name: "Function keys", exact: true }).click();
   for (const [label, keyName] of [
     ["Previous track", "MediaTrackPrevious"], ["Play/pause", "MediaPlayPause"], ["Next track", "MediaTrackNext"],
     ["Volume down", "AudioVolumeDown"], ["Mute", "AudioVolumeMute"], ["Volume up", "AudioVolumeUp"],
+    ["Page up", "PageUp"], ["Page down", "PageDown"], ["Print Screen", "PrintScreen"],
+    ...Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, `F${i + 1}`]),
   ]) {
     const before = sent.length;
-    await page.getByRole("group", { name: "Additional keyboard keys" }).getByRole("button", { name: label, exact: true }).click();
+    await page.getByRole("button", { name: label, exact: true }).click();
     await page.waitForTimeout(30);
     const events = sent.slice(before).map(({ message }) => message);
     assert(events.some(message => message.type === "keydown" && message.key === keyName) &&
       events.some(message => message.type === "keyup" && message.key === keyName), `${label} must send a complete key press`);
-    assert(await page.getByLabel("Additional keyboard keys", { exact: true }).isVisible(), "Media controls must stay available for repeated presses");
+    assert(await page.getByRole("button", { name: "Function keys", exact: true }).getAttribute("aria-pressed") === "true", "Fn remains enabled for repeated presses");
   }
-  const beforeInsert = sent.length;
-  await page.getByRole("button", { name: "Insert", exact: true }).click();
-  await page.waitForTimeout(30);
-  assert(sent.slice(beforeInsert).some(({ message }) => message.type === "keydown" && message.key === "Insert"), "More keys must send Insert");
-  await page.getByRole("button", { name: "More keyboard actions", exact: true }).click();
-  const beforePrint = sent.length;
-  await page.getByRole("button", { name: /Print screen/i }).click();
-  await page.waitForTimeout(60);
-  assert(sent.slice(beforePrint).some(({ message }) => message.type === "keydown" && message.key === "PrintScreen"), "More keys must send PrintScreen");
+  await page.getByRole("button", { name: "Function keys", exact: true }).click();
+  assert(await home.isVisible(), "Fn must restore navigation keys");
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Suggestions above Ctrl row", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  assert((await suggestions.boundingBox())!.y > (await controls.boundingBox())!.y, "Suggestion placement preference must move the bar below navigation");
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Suggestions above Ctrl row", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
 
   // Every symbol should occupy exactly its hinted letter's rectangle.
   const rectangles = await page.locator("[data-letter]").evaluateAll((elements) => elements.map((element) => {

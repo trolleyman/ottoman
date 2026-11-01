@@ -126,6 +126,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
             <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
               {([
                 ["Mirror focused text", "mirrorFocusedText"],
+                ["Suggestions above Ctrl row", "suggestionsAboveControls"],
                 ["Number row", "numberRow"],
                 ["Taller keys", "tallerKeys"],
                 ["Long-press symbols", "symbolHints"],

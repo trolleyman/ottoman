@@ -115,15 +115,14 @@
 .custom-keyboard-shell[data-keyboard-theme="light"] .custom-keyboard-key { color: #18181b; }
 
 .pc-remote { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; gap: 16px; padding: max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
-.remote-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 24px; flex: 1; min-height: 0; }
-.remote-pad { min-height: 0; display: flex; }
-.remote-audio { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.remote-workspace { display: flex; flex: 1; min-height: 0; }
+.remote-pad { min-height: 0; min-width: 0; flex: 1; display: flex; }
+.remote-volume-slider { writing-mode: vertical-lr; direction: rtl; width: 24px; height: 100%; touch-action: none; }
 .remote-keyboard { width: 100%; }
+select { color-scheme: dark; }
+.custom-keyboard-shell[data-keyboard-theme="light"] select { color-scheme: light; }
 @media (max-width: 767px) {
   .pc-remote { gap: 10px; padding: max(10px, env(safe-area-inset-top)) 10px max(4px, env(safe-area-inset-bottom)); }
-  .remote-workspace { display: flex; flex-direction: column-reverse; gap: 12px; }
-  .remote-pad { flex: 1; }
-  .remote-audio { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
 @media (max-height: 540px) {
   .pc-remote { overflow-y: auto; }

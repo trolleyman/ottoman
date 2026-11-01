@@ -15,7 +15,7 @@ describe("keyboard layout", () => {
     const { numberRow, letterRows, symbolRows } = keyboardRows("en-GB");
     expect(numberRow.map(({ alt }) => alt).join("")).toBe('!"£$%^&*()');
     expect(letterRows.map(row => row.map(({ alt }) => alt).join(""))).toEqual([
-      "`¬€•<>+=#~", "-_:;[]{}@", "|\\.,?'/",
+      "`¬€<>~×+=#", "-_:;[]{}@", "|\\.,?'/",
     ]);
     const hints = [...numberRow, ...letterRows.flat()].map(({ alt }) => alt);
     expect(new Set(hints).size).toBe(hints.length);

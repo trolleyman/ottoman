@@ -18,7 +18,7 @@ export function keyboardRows(layout: KeyboardLayout) {
   // British number holds stay fixed; letter holds follow the chosen symbol grid.
   // Empty hints deliberately leave an unused cell in the matching symbol grid.
   const hints: (string | undefined)[][] = layout === "en-GB" ? [
-    Array.from("`¬€•<>+=#~"),
+    Array.from("`¬€<>~×+=#"),
     Array.from("-_:;[]{}@"),
     Array.from("|\\.,?'/"),
   ] : [
