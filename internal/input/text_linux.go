@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -76,6 +77,11 @@ func (k *UinputKeyboard) TypeText(text string) error {
 	for _, r := range text {
 		code, mods, ok := textKey(r, k.layout)
 		if !ok {
+			// GNOME/IBus Unicode entry also works for characters with no key
+			// in the active layout. Release Ctrl/Shift before the hex digits.
+			if err := k.typeUnicode(r); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := k.emitCode(code, mods, 1); err != nil {
@@ -86,4 +92,28 @@ func (k *UinputKeyboard) TypeText(text string) error {
 		}
 	}
 	return nil
+}
+
+// typeUnicode uses the desktop input method, without touching the clipboard.
+func (k *UinputKeyboard) typeUnicode(r rune) error {
+	code, _, _ := textKey('u', k.layout)
+	if err := k.emitCode(code, []string{"ctrl", "shift"}, 1); err != nil {
+		return err
+	}
+	if err := k.emitCode(code, []string{"ctrl", "shift"}, 0); err != nil {
+		return err
+	}
+	for _, digit := range strconv.FormatInt(int64(r), 16) {
+		code, mods, _ := textKey(digit, k.layout)
+		if err := k.emitCode(code, mods, 1); err != nil {
+			return err
+		}
+		if err := k.emitCode(code, mods, 0); err != nil {
+			return err
+		}
+	}
+	if err := k.emitKey("Enter", nil, 1); err != nil {
+		return err
+	}
+	return k.emitKey("Enter", nil, 0)
 }

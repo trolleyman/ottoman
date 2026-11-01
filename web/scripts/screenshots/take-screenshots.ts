@@ -164,6 +164,18 @@ async function main() {
       let heldSpace = false
       let heldKey = false
       if (shot.remote) {
+        if (await page.getByRole('heading', { name: 'Trackpad', exact: true }).count()) throw new Error('Remote page must not repeat the trackpad heading')
+        await page.locator('header').getByRole('button', { name: 'Trackpad settings', exact: true }).waitFor()
+        await page.waitForFunction(() => document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href.endsWith('/remote.webmanifest'))
+        const volume = page.getByRole('slider', { name: 'TV volume', exact: true })
+        await volume.waitFor()
+        const audio = await page.getByLabel('Remote audio', { exact: true }).boundingBox()
+        const pad = await page.getByLabel(/Trackpad\. Tap to click/).boundingBox()
+        if (!audio || !pad || audio.x + audio.width > pad.x || audio.height <= audio.width) throw new Error('Volume must be vertical and left of the trackpad')
+        await page.getByRole('button', { name: 'Audio output: TV. Switch output', exact: true }).click()
+        await page.getByRole('slider', { name: 'PC volume', exact: true }).waitFor()
+        await page.getByRole('button', { name: 'Audio output: PC. Switch output', exact: true }).click()
+        await volume.waitFor()
         await page.getByLabel(/Trackpad\. Tap to click/).focus()
         for (const letter of ["h", "e"]) await page.locator(`[data-letter="${letter}"]`).click()
         await page.getByLabel("Word suggestions").getByRole("button").first().waitFor()

@@ -292,3 +292,62 @@ func TestChromeAccessibilityActivationAndFocusedWindowRecovery(t *testing.T) {
 		t.Fatal("window focus prevented later editable-field discovery")
 	}
 }
+
+type fakeRichText struct {
+	fakeAccessible
+}
+
+func (*fakeRichText) GetLinkIndex(offset int32) (int32, *dbus.Error) { return offset / 2, nil }
+func (*fakeRichText) GetLink(index int32) (reference, *dbus.Error) {
+	if index == 0 {
+		return reference{"org.ottoman.Test", "/link1"}, nil
+	}
+	return reference{"org.ottoman.Test", "/link2"}, nil
+}
+
+type fakeTextLink struct{ target reference }
+
+func (f *fakeTextLink) GetObject(int32) (reference, *dbus.Error) { return f.target, nil }
+
+func TestNativeRichEditorPreview(t *testing.T) {
+	server, ctx, _ := privateTextBus(t)
+	root := &fakeAccessible{root: true}
+	editor := &fakeRichText{fakeAccessible: fakeAccessible{value: "\ufffc\n\ufffc", start: 2, end: 2}}
+	first := &fakeAccessible{value: "Hello", start: 5, end: 5}
+	second := &fakeAccessible{value: "world × €", start: 2, end: 2}
+	exportTextObject(t, server, root, "/org/a11y/atspi/accessible/root", accessible)
+	exportTextObject(t, server, root, "/org/a11y/atspi/registry", "org.a11y.atspi.Registry")
+	for path, object := range map[dbus.ObjectPath]interface{}{"/field": editor, "/first": first, "/second": second} {
+		for _, iface := range []string{accessible, textInterface, "org.freedesktop.DBus.Properties"} {
+			exportTextObject(t, server, object, path, iface)
+		}
+	}
+	exportTextObject(t, server, editor, "/field", "org.a11y.atspi.Hypertext")
+	exportTextObject(t, server, &fakeTextLink{reference{"org.ottoman.Test", "/first"}}, "/link1", "org.a11y.atspi.Hyperlink")
+	exportTextObject(t, server, &fakeTextLink{reference{"org.ottoman.Test", "/second"}}, "/link2", "org.a11y.atspi.Hyperlink")
+	backend, err := Native(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	snapshot, err := backend.Snapshot(ctx, 128)
+	if err != nil || !snapshot.Available || snapshot.Value != "Hello\nworld × €" || snapshot.Start != 8 || snapshot.End != 8 || snapshot.Editable {
+		t.Fatalf("rich editor was not expanded safely: %#v, %v", snapshot, err)
+	}
+	if err := backend.Replace(ctx, snapshot, Edit{Start: 0, End: 5, Text: "changed"}); err == nil {
+		t.Fatal("expanded preview offsets must never be written to the editor")
+	}
+	second.mu.Lock()
+	second.role = 40
+	reads := second.reads
+	second.mu.Unlock()
+	snapshot, _ = backend.Snapshot(ctx, 128)
+	if snapshot.Available || snapshot.Value != "" {
+		t.Fatal("protected embedded text was exposed")
+	}
+	second.mu.Lock()
+	defer second.mu.Unlock()
+	if second.reads != reads {
+		t.Fatal("read a protected embedded field")
+	}
+}

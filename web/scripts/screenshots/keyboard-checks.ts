@@ -213,7 +213,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     ...Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, `F${i + 1}`]),
   ]) {
     const before = sent.length;
-    await page.getByRole("button", { name: label, exact: true }).click();
+    await page.locator(".custom-keyboard-shell").getByRole("button", { name: label, exact: true }).click();
     await page.waitForTimeout(30);
     const events = sent.slice(before).map(({ message }) => message);
     assert(events.some(message => message.type === "keydown" && message.key === keyName) &&

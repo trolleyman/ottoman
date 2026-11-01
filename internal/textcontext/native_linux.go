@@ -5,6 +5,7 @@ package textcontext
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -217,6 +218,15 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	if err = a.object(r).CallWithContext(ctx, textInterface+".GetText", 0, int32(low), int32(high)).Store(&value); err != nil {
 		return Snapshot{}, err
 	}
+	if strings.ContainsRune(value, '\ufffc') {
+		value, start, end, err = a.expandRichText(ctx, r, value, low, start, end, window, 0)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		// Expanded offsets belong to the preview, not EditableText. Injected
+		// keystrokes preserve the editor's formatting and native selection.
+		writable = false
+	}
 	// Recheck privacy/focus after the read. Events racing this snapshot are handled next tick.
 	now, err := a.states(ctx, r)
 	if err != nil || !state(now, 12) || a.locked(ctx) {
@@ -226,7 +236,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 }
 func (a *atspi) Replace(ctx context.Context, expected Snapshot, e Edit) error {
 	current, err := a.Snapshot(ctx, a.window)
-	if err != nil || current != expected {
+	if err != nil || current != expected || !current.Editable {
 		return ErrUnavailable
 	}
 	obj := a.object(a.focused)
@@ -265,4 +275,87 @@ func (a *atspi) Replace(ctx context.Context, expected Snapshot, e Edit) error {
 		}
 	}
 	return call(textInterface+".SetCaretOffset", int32(e.Start+len([]rune(e.Text))))
+}
+
+// Chromium exposes contenteditable paragraphs as embedded Hypertext objects.
+// Read only those objects referenced by the focused text, with a shared bound
+// on output size and recursion. Never replace the editor's formatted contents.
+func (a *atspi) expandRichText(ctx context.Context, r reference, value string, low, start, end, limit, depth int) (string, int, int, error) {
+	if depth > 16 || ctx.Err() != nil {
+		return "", 0, 0, ErrUnavailable
+	}
+	var result []rune
+	mappedStart, mappedEnd := start-low, end-low
+	source := []rune(value)
+	processed := 0
+	for i, ch := range source {
+		if len(result) >= limit {
+			break
+		}
+		processed = i + 1
+		piece := []rune{ch}
+		childStart, childEnd := 0, 0
+		if ch == '\ufffc' {
+			var index int32
+			if err := a.object(r).CallWithContext(ctx, "org.a11y.atspi.Hypertext.GetLinkIndex", 0, int32(low+i)).Store(&index); err != nil || index < 0 {
+				return "", 0, 0, ErrUnavailable
+			}
+			var link reference
+			if err := a.object(r).CallWithContext(ctx, "org.a11y.atspi.Hypertext.GetLink", 0, index).Store(&link); err != nil {
+				return "", 0, 0, err
+			}
+			var child reference
+			if err := a.object(link).CallWithContext(ctx, "org.a11y.atspi.Hyperlink.GetObject", 0, int32(0)).Store(&child); err != nil {
+				return "", 0, 0, err
+			}
+			var role uint32
+			if err := a.object(child).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role); err != nil || role == 40 {
+				return "", 0, 0, ErrUnavailable
+			}
+			count, err := a.property(ctx, child, "CharacterCount")
+			if err != nil || count < 0 {
+				return "", 0, 0, ErrUnavailable
+			}
+			count = min(count, limit-len(result))
+			var text string
+			if err := a.object(child).CallWithContext(ctx, textInterface+".GetText", 0, int32(0), int32(count)).Store(&text); err != nil {
+				return "", 0, 0, err
+			}
+			caret, err := a.property(ctx, child, "CaretOffset")
+			if err == nil {
+				childStart, childEnd = max(0, min(count, caret)), max(0, min(count, caret))
+			}
+			var selections int32
+			if a.object(child).CallWithContext(ctx, textInterface+".GetNSelections", 0).Store(&selections) == nil && selections > 0 {
+				var x, y int32
+				if a.object(child).CallWithContext(ctx, textInterface+".GetSelection", 0, int32(0)).Store(&x, &y) == nil {
+					childStart, childEnd = int(x), int(y)
+				}
+			}
+			if strings.ContainsRune(text, '\ufffc') {
+				text, childStart, childEnd, err = a.expandRichText(ctx, child, text, 0, childStart, childEnd, limit-len(result), depth+1)
+				if err != nil {
+					return "", 0, 0, err
+				}
+			}
+			piece = []rune(text)
+		}
+		if start-low == i {
+			mappedStart = len(result) + childStart
+		}
+		if end-low == i {
+			mappedEnd = len(result) + childEnd
+		}
+		result = append(result, piece...)
+		if start-low == i+1 {
+			mappedStart = len(result)
+		}
+		if end-low == i+1 {
+			mappedEnd = len(result)
+		}
+	}
+	if start-low > processed || end-low > processed || mappedStart < 0 || mappedEnd < mappedStart || mappedEnd > len(result) || len(result) > limit {
+		return "", 0, 0, ErrUnavailable
+	}
+	return string(result), low + mappedStart, low + mappedEnd, nil
 }
