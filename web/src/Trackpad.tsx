@@ -871,15 +871,18 @@ function TouchArea({
             </div>
           )}
         </div>
+        {connected && <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-md border border-white/5 bg-zinc-950/80 px-2 py-1 text-[10px] text-zinc-400">
+          <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
+            title={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
+            data-native-text-status className="flex items-center gap-1.5">
+            <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${!settings.mirrorFocusedText ? "bg-zinc-500" : remote?.password || remote?.protected ? "bg-amber-400" : remote?.available ? "bg-emerald-400" : "bg-zinc-500"}`} />
+            Text preview{!settings.mirrorFocusedText && " off"}
+          </span>
+          {!settings.mirrorFocusedText && <button type="button" aria-label="Enable focused text mirroring" onClick={() => onSettingsChange({ mirrorFocusedText: true })} className="text-blue-400 hover:text-blue-300">Enable</button>}
+        </div>}
         {connected && (preview || remote?.available || remote?.password) && draftVisible && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
             <div className="flex items-center justify-end gap-2">
-              {settings.mirrorFocusedText && (
-                <span role="status" aria-label={textMirroringStatus(connected, remote)} title={textMirroringStatus(connected, remote)}
-                  data-native-text-status className="pointer-events-auto flex h-7 items-center px-1">
-                  <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${remote?.password ? "bg-amber-400" : remote?.available ? "bg-emerald-400" : "bg-zinc-500"}`} />
-                </span>
-              )}
               <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
                 className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             </div>

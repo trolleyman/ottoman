@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { followAppLink, usePathname } from "./navigation";
 import { OttomanWithLogo } from "./OttomanWithLogo";
 import { LoginForm } from "./LoginForm";
 import { RemotePage } from "./RemotePage";
@@ -12,6 +13,7 @@ import { Layouts } from "./Layouts";
 import { useStore } from "./store";
 
 export default function App() {
+  const pathname = usePathname();
   const authed = useStore((s) => s.authed);
   const checkAuth = useStore((s) => s.checkAuth);
   const refreshAll = useStore((s) => s.refreshAll);
@@ -24,8 +26,8 @@ export default function App() {
 
   useEffect(() => {
     const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-    if (manifest) manifest.href = window.location.pathname === "/remote" ? "/remote.webmanifest" : "/site.webmanifest";
-  }, []);
+    if (manifest) manifest.href = pathname === "/remote" ? "/remote.webmanifest" : "/site.webmanifest";
+  }, [pathname]);
 
   // Check auth on mount
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function App() {
     return <LoginForm />;
   }
 
-  if (window.location.pathname === "/remote") return <RemotePage textContext={textContext} connected={connected} connecting={connecting} cursorPos={cursorPos} cursorSupported={cursorSupported} send={send} />;
+  if (pathname === "/remote") return <RemotePage textContext={textContext} connected={connected} connecting={connecting} cursorPos={cursorPos} cursorSupported={cursorSupported} send={send} />;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 overflow-x-hidden">
@@ -66,7 +68,7 @@ export default function App() {
             <p className="text-zinc-500 italic text-sm">Display Management</p>
           </OttomanWithLogo>
           <nav aria-label="Dashboard actions" className="flex flex-wrap items-center gap-x-5 gap-y-3 self-end whitespace-nowrap sm:shrink-0">
-            <a href="/remote" className="text-xs text-blue-400 hover:text-blue-300">PC remote</a>
+            <a href="/remote" onClick={followAppLink} className="text-xs text-blue-400 hover:text-blue-300">PC remote</a>
             <button
               onClick={() => void refreshAll(false)}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"

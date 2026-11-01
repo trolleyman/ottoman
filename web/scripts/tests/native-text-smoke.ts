@@ -55,6 +55,8 @@ try {
   await page.addInitScript(() => localStorage.setItem('ottoman-trackpad-settings', JSON.stringify({
     mirrorFocusedText: true, customKeyboard: false,
   })));
+  let connections = 0;
+  page.on('websocket', () => { connections++; });
   await page.goto(base);
   await installTestFont(page);
   const input = page.getByLabel('Type on the remote computer with the device keyboard');
@@ -63,6 +65,7 @@ try {
   await page.waitForFunction(() => document.querySelector('textarea')?.value === 'Ottoman simulated text');
   await page.getByLabel(/Trackpad\. Tap to click/).focus();
   await page.waitForFunction(() => document.activeElement?.tagName === "TEXTAREA");
+  if (!await page.getByRole('status', { name: 'Desktop text: connected', exact: true }).isVisible()) throw Error('Native-text status must be visible before typing');
   console.log("Checking native typing");
   await input.press('End');
   await input.pressSequentially(' xyz', { delay: 5 });
@@ -135,6 +138,25 @@ try {
   await page.getByRole('switch', { name: 'Mirror focused text' }).click();
   await page.getByRole('button', { name: 'Device', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
+  await page.getByRole('status', { name: 'Desktop text: mirroring is off', exact: true }).waitFor();
+  console.log("Checking navigation without a reload or a new connection");
+  await page.evaluate(() => { (window as Window & { navigationMarker?: string }).navigationMarker = 'same-document'; });
+  const connectionsBefore = connections;
+  await page.getByRole('link', { name: 'PC remote', exact: true }).click();
+  await page.waitForURL('**/remote');
+  await page.locator('.pc-remote').waitFor();
+  if (!await page.locator('link[rel="manifest"]').getAttribute('href').then(href => href?.endsWith('/remote.webmanifest'))) throw Error('Remote manifest did not follow navigation');
+  await page.getByRole('button', { name: 'Enable focused text mirroring', exact: true }).click();
+  await page.getByRole('status', { name: 'Desktop text: connected', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Back to dashboard', exact: true }).click();
+  await page.waitForURL(base + '/');
+  await page.getByRole('link', { name: 'PC remote', exact: true }).waitFor();
+  await page.goBack();
+  await page.locator('.pc-remote').waitFor();
+  await page.goForward();
+  await page.getByRole('link', { name: 'PC remote', exact: true }).waitFor();
+  if (connections !== connectionsBefore || !await page.evaluate(() => (window as Window & { navigationMarker?: string }).navigationMarker === 'same-document')) throw Error('Switching views reloaded the app or reconnected the socket');
+  console.log('PASS: text status is visible before typing, opt-in works, and navigation/back/forward preserve the page and connection');
   if (errors.length) throw Error(errors.join('\n'));
   await checkAddressBar(browser, base);
   console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');

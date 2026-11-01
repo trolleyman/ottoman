@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, VolumeX } from "lucide-react";
+import { followAppLink } from "./navigation";
 import { Trackpad } from "./Trackpad";
 import { useStore } from "./store";
 import { useCoalescedSlider } from "./useCoalescedSlider";
@@ -43,7 +44,7 @@ export function RemotePage(props: {
   const output = outputs[outputIndex];
   return <main className="pc-remote bg-zinc-950 text-zinc-100">
     <header className="flex shrink-0 items-center gap-3 border-b border-white/8 pb-3">
-      <a href="/" aria-label="Back to dashboard" className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /></a>
+      <a href="/" onClick={followAppLink} aria-label="Back to dashboard" className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /></a>
       <div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-sm font-semibold"><Monitor className="h-4 w-4 text-blue-400" />PC remote</div><div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-500"><span className={`h-1.5 w-1.5 rounded-full ${props.connected ? "bg-emerald-400" : "bg-red-400"}`} />{agentInfo?.hostname || "Computer"} · {props.connected ? "Connected" : "Disconnected"}</div></div>
       {layouts.length > 0 && <div className="relative"><select aria-label="Display layout" value={currentLayout ?? ""} onChange={(event) => void switchLayout(event.target.value)} className="max-w-28 appearance-none rounded-lg border border-white/10 bg-zinc-900 py-2 pl-2 pr-7 text-xs text-zinc-100"><option value="" disabled>Layout</option>{layouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-300" /></div>}
       <button type="button" aria-label={!document.fullscreenEnabled ? "Open without address bar" : fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => {
