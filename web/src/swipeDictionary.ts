@@ -7,3 +7,6 @@ import { createSwipeDecoder } from "./swipeTyping";
 export const decodeSwipe = createSwipeDecoder([...COMMON_CONTRACTIONS, ...words]);
 
 export const predictWords = createWordPredictor(words);
+
+import { createAutocorrect } from "./keyboardEditing";
+export const correctWord = createAutocorrect(words);

@@ -4,7 +4,8 @@
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["bun", "node"],
+    "types": ["bun", "node", "vite/client"],
+    "jsx": "react-jsx",
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",

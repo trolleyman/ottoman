@@ -123,38 +123,29 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                 Device
               </ActionKey>
             </div>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
-              {([
-                ["Mirror focused text", "mirrorFocusedText"],
-                ["Suggestions above Ctrl row", "suggestionsAboveControls"],
-                ["Number row", "numberRow"],
-                ["Taller keys", "tallerKeys"],
-                ["Long-press symbols", "symbolHints"],
-                ["Double-space period", "doubleSpacePeriod"],
-                ["Key haptics", "haptics"],
-                ["Period beside space", "periodKey"],
-                ["Comma beside space", "commaKey"],
-                ["Swipe typing", "swipeTyping"],
-              ] as const).map(([label, key]) => (
-                <div
-                  key={key}
-                  className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300"
-                >
-                  {label}
-                  <SettingSwitch
-                    label={label}
-                    checked={settings[key]}
-                    disabled={key === "haptics" && !supportsHaptics()}
-                    onChange={(checked) => onSettingsChange({ [key]: checked })}
-                  />
-                </div>
-              ))}
-            </div>
+            {([
+              ["Typing", [["Autocorrect", "autocorrect"], ["Double-space period", "doubleSpacePeriod"], ["Swipe typing", "swipeTyping"]]],
+              ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Navigate by preview lines", "previewNavigation"]]],
+              ["Key layout", [["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
+              ["Prediction & feedback", [["Adaptive key sizes", "adaptiveKeys"], ["Debug key sizes", "debugKeySizes"], ["Key haptics", "haptics"]]],
+            ] as const).map(([title, fields]) => <fieldset key={title} className="mb-3 shrink-0">
+              <legend className="mb-2 text-xs font-semibold text-zinc-400">{title}</legend>
+              <div className="grid shrink-0 grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
+                {fields.map(([label, key]) => <div key={key} className="custom-keyboard-utility flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/5 bg-zinc-800/70 px-3 text-xs text-zinc-300">
+                  {label}<SettingSwitch label={label} checked={settings[key]} disabled={key === "haptics" && !supportsHaptics()} onChange={checked => onSettingsChange({ [key]: checked })} />
+                </div>)}
+              </div>
+            </fieldset>)}
+            <label className="mb-3 flex shrink-0 items-center justify-between gap-3 text-xs text-zinc-300">Space cursor sensitivity
+              <input aria-label="Space cursor sensitivity" type="range" min={0.5} max={5} step={0.25} value={settings.spaceCursorSensitivity} onChange={event => onSettingsChange({ spaceCursorSensitivity: Number(event.target.value) })} className="w-28 accent-blue-400" />
+              <output>{settings.spaceCursorSensitivity}×</output>
+            </label>
+            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Modifiers: tap for the next key, double-tap to lock, or hold while typing. Preview navigation follows the lines shown above the keyboard. Adaptive sizing widens predicted next letters; debug shows each key’s size multiplier.</p>
             {!supportsHaptics() && <p className="mt-2 text-[11px] leading-4 text-zinc-400">This browser does not support key vibration. Press previews and scroll feedback stay enabled. The device keyboard uses your phone’s keyboard feedback settings.</p>}
             <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-              Timing
+              Gesture timing
             </div>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
+            <div className="grid shrink-0 grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-x-4">
               {KEYBOARD_TIMINGS.map(({ key, label, min, max, step }) => (
                 <TimingField key={key} label={label} value={settings[key]} min={min} max={max} step={step}
                   onChange={(value) => onSettingsChange({ [key]: value })} />

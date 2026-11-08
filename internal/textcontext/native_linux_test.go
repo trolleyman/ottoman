@@ -340,6 +340,24 @@ func TestNativeRichEditorPreview(t *testing.T) {
 	if err != nil || !snapshot.Available || snapshot.Value != "Hello\nworld × €" || snapshot.Start != 8 || snapshot.End != 8 || snapshot.Editable {
 		t.Fatalf("rich editor was not expanded safely: %#v, %v", snapshot, err)
 	}
+	// Parent selection covers the embedded object, but only a prefix of the
+	// final paragraph is actually selected in the rich editor.
+	editor.mu.Lock()
+	editor.start, editor.end = 0, 3
+	editor.mu.Unlock()
+	second.mu.Lock()
+	second.start, second.end = 0, 3
+	second.mu.Unlock()
+	snapshot, err = backend.Snapshot(ctx, 128)
+	if err != nil || snapshot.Start != 0 || snapshot.End != 9 {
+		t.Fatalf("rich selection extended beyond child endpoint: %#v, %v", snapshot, err)
+	}
+	editor.mu.Lock()
+	editor.start, editor.end = 2, 2
+	editor.mu.Unlock()
+	second.mu.Lock()
+	second.start, second.end = 2, 2
+	second.mu.Unlock()
 	// Chrome may omit parent separators for adjacent embedded paragraphs.
 	editor.mu.Lock()
 	editor.value, editor.start, editor.end = "\ufffc\ufffc", 1, 1
@@ -363,6 +381,22 @@ func TestNativeRichEditorPreview(t *testing.T) {
 	snapshot, err = backend.Snapshot(ctx, 128)
 	if err != nil || snapshot.Value != "\n\nworld × €" || snapshot.Start != 4 {
 		t.Fatalf("consecutive empty paragraphs lost: %#v, %v", snapshot, err)
+	}
+	// A terminal newline within an empty paragraph is a layout marker,
+	// not a second blank line in addition to the parent's paragraph boundary.
+	first.mu.Lock()
+	first.value, first.start, first.end = "hello\n", 6, 6
+	first.mu.Unlock()
+	second.mu.Lock()
+	second.value, second.start, second.end = "\n", 0, 0
+	second.mu.Unlock()
+	editor.mu.Lock()
+	editor.value, editor.start, editor.end = "\ufffc\ufffc", 1, 1
+	editor.links = map[int32]int32{0: 0, 1: 1}
+	editor.mu.Unlock()
+	snapshot, err = backend.Snapshot(ctx, 128)
+	if err != nil || snapshot.Value != "hello\n" || snapshot.Start != 6 || snapshot.End != 6 {
+		t.Fatalf("terminal paragraph newline duplicated: %#v, %v", snapshot, err)
 	}
 	if err := backend.Replace(ctx, snapshot, Edit{Start: 0, End: 5, Text: "changed"}); err == nil {
 		t.Fatal("expanded preview offsets must never be written to the editor")

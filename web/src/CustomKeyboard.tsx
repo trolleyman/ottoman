@@ -28,6 +28,7 @@ import {
 import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
 import { keyboardRows, resolveKeyboardLayout } from "./keyboardData";
+import { nextKeyWeights } from "./keyboardEditing";
 import { currentWord as getCurrentWord, matchWordCase } from "./wordPrediction";
 import { searchSymbols } from "./symbolData";
 import { CaretText } from "./CaretText";
@@ -62,7 +63,9 @@ function KeyboardSession({
   usingCustomKeyboard,
   settingsPageOpen = false,
   modifiers,
-  onToggleModifier,
+  lockedModifiers,
+  onModifierDown,
+  onModifierUp,
   onSuperPress,
 }: {
   connected: boolean;
@@ -72,8 +75,8 @@ function KeyboardSession({
   remoteOS: string;
   textContext: number;
   settings: KeyboardSettings;
-  onText: (text: string, shifted?: boolean) => void;
-  onReplaceText: (previous: string, next: string) => void;
+  onText: (text: string, shifted?: boolean, suggested?: boolean) => void;
+  onReplaceText: (previous: string, next: string, suggested?: boolean) => void;
   onBackspace: () => void;
   onEnter: (shifted: boolean) => void;
   onTab: () => void;
@@ -85,13 +88,13 @@ function KeyboardSession({
   usingCustomKeyboard: boolean;
   settingsPageOpen?: boolean;
   modifiers: Modifier[];
-  onToggleModifier: (modifier: Modifier) => void;
+  lockedModifiers: Modifier[];
+  onModifierDown: (modifier: Modifier) => void;
+  onModifierUp: (modifier: Modifier, cancelled?: boolean) => void;
   onSuperPress: () => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
-  const [shift, setShift] = useState<ShiftState>(() =>
-    modifiers.includes(Modifier.SHIFT) ? "once" : "off",
-  );
+  const shift: ShiftState = lockedModifiers.includes(Modifier.SHIFT) ? "locked" : modifiers.includes(Modifier.SHIFT) ? "once" : "off";
   const [emojiSearching, setEmojiSearching] = useState(false);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [fnActive, setFnActive] = useState(false);
@@ -99,7 +102,6 @@ function KeyboardSession({
   const [emojiQuery, setEmojiQuery] = useState("");
   const [symbolQuery, setSymbolQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
-  const lastShiftTap = useRef(-Infinity);
   const backspaceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceRepeat = useRef<ReturnType<typeof setTimeout> | null>(null);
   // iOS can start its selection magnifier despite pointerdown prevention and
@@ -143,21 +145,18 @@ function KeyboardSession({
     if (mode === "emoji") void import("./emojiData").then(setEmojiData);
   }, [mode]);
   const currentWord = getCurrentWord(textBeforeCursor);
+  const corrector = useRef<((word: string) => string) | null>(null);
   const [predictor, setPredictor] = useState<((prefix: string) => string[]) | null>(null);
   useEffect(() => {
     let disposed = false;
     void import("./swipeDictionary").then((module) => {
-      if (!disposed) setPredictor(() => module.predictWords);
+      if (!disposed) { setPredictor(() => module.predictWords); corrector.current = module.correctWord; }
     }).catch(() => {});
     return () => { disposed = true; };
   }, []);
   const [selectedWord, setSelectedWord] = useState({ word: "", context: textContext });
-  const pendingSwipeSpace = useRef({ context: textContext, pending: false });
-  const takeWordPrefix = () => {
-    const prefix = pendingSwipeSpace.current.context === textContext && pendingSwipeSpace.current.pending ? " " : "";
-    pendingSwipeSpace.current = { context: textContext, pending: false };
-    return prefix;
-  };
+  // Accepted words insert their separator immediately. Keep it in replacements
+  // so choosing another swipe candidate replaces the complete accepted word.
   const swipeShift = useRef<ShiftState>("off");
   const swipe = useSwipeTyping(
     !sensitiveInput && settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
@@ -166,16 +165,11 @@ function KeyboardSession({
     (word, previous) => {
       if (!previous) swipeShift.current = shift;
       const format = (value: string) => swipeShift.current === "locked" ? value.toUpperCase() : swipeShift.current === "once" ? value[0].toUpperCase() + value.slice(1) : matchWordCase(value, "");
-      if (previous) onReplaceText(format(previous), format(word));
+      if (previous) onReplaceText(format(previous) + " ", format(word) + " ", true);
       else {
-        onText(takeWordPrefix() + format(word));
-        if (shift === "once") {
-          setShift("off");
-          if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
-        }
+        onText(format(word) + " ", false, true);
       }
       setSelectedWord({ word: format(word), context: textContext });
-      pendingSwipeSpace.current = { context: textContext, pending: true };
       haptic(settings.haptics);
     },
   );
@@ -200,30 +194,15 @@ function KeyboardSession({
     }
     const shifted = !wasLongPress && (mode === "letters" || symbolSearching) && shift !== "off";
     const next = shifted ? value.toUpperCase() : value;
-    const prefix = /^[a-z0-9]/i.test(next) ? takeWordPrefix() : "";
-    if (/\s/.test(next)) pendingSwipeSpace.current.pending = false;
-    onText(prefix + next, shifted);
-    if (shift === "once") {
-      setShift("off");
-      if (modifiers.includes(Modifier.SHIFT)) onToggleModifier(Modifier.SHIFT);
+    if (settings.autocorrect && !sensitiveInput && !modifiers.some(modifier => modifier !== Modifier.SHIFT) && /^[\s.,!?;:]$/.test(next) && currentWord) {
+      const corrected = corrector.current?.(currentWord) ?? currentWord;
+      if (corrected !== currentWord) { onReplaceText(currentWord, corrected + next); return; }
     }
-  };
-
-  const toggleShift = () => {
-    const now = performance.now();
-    const next: ShiftState = now - lastShiftTap.current < settings.shiftDoubleTapMs
-      ? "locked"
-      : shift === "off" ? "once" : "off";
-    setShift(next);
-    if (modifiers.includes(Modifier.SHIFT) !== (next !== "off"))
-      onToggleModifier(Modifier.SHIFT);
-    lastShiftTap.current = now;
-    haptic(settings.haptics);
+    onText(next, shifted);
   };
 
   const beginBackspace = () => {
     swipe.clear();
-    pendingSwipeSpace.current.pending = false;
     endBackspace();
     haptic(settings.haptics);
     const erase = () => {
@@ -274,14 +253,14 @@ function KeyboardSession({
     }
     // One vertical step changes an entire line; horizontal steps change one
     // character. Give horizontal motion the finer resolution.
-    const horizontalStep = 12;
-    const verticalStep = 30;
+    const horizontalStep = 12 / settings.spaceCursorSensitivity;
+    const verticalStep = 30 / settings.spaceCursorSensitivity;
     const dx = event.clientX - spaceLast.current.x;
     const dy = event.clientY - spaceLast.current.y;
     const horizontalSteps = Math.trunc(dx / horizontalStep);
     const verticalSteps = Math.trunc(dy / verticalStep);
     const emit = (key: string, count: number) => {
-      for (let i = 0; i < Math.min(Math.abs(count), 6); i++) onNavigate(key);
+      for (let i = 0; i < Math.min(Math.abs(count), 40); i++) onNavigate(key);
     };
     if (horizontalSteps !== 0 && Math.abs(dx) / horizontalStep >= Math.abs(dy) / verticalStep) {
       emit(horizontalSteps > 0 ? "ArrowRight" : "ArrowLeft", horizontalSteps);
@@ -314,7 +293,6 @@ function KeyboardSession({
 
   const navigate = (key: string) => {
     swipe.clear();
-    pendingSwipeSpace.current.pending = false;
     haptic(settings.haptics);
     onNavigate(key);
   };
@@ -343,30 +321,30 @@ function KeyboardSession({
     savePreference("ottoman-recent-emoji", next);
   };
 
+  const keyWeights = settings.adaptiveKeys && !sensitiveInput && mode === "letters" && !modifiers.some(modifier => modifier !== Modifier.SHIFT) ? nextKeyWeights(currentWord, predictor?.(currentWord) ?? []) : {};
+
+  const acceptedWord = selectedWord.context === textContext && textBeforeCursor.endsWith(selectedWord.word + " ") ? selectedWord.word : "";
   const wordChoices = sensitiveInput || modifiers.some((modifier) => modifier !== Modifier.SHIFT) ? []
-    : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : [];
+    : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : acceptedWord ? [acceptedWord] : [];
 
   const suggestionBar = (
         <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
           {fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
-            // This handler reads gesture refs only when the key is pressed.
-            // eslint-disable-next-line react-hooks/refs
             <ActionKey key={key} type="button" onPress={() => { navigate(key); }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center rounded border border-white/10 text-[10px] sm:text-xs">{key}</ActionKey>
           )) : mode === "letters" ? (
             wordChoices.map((word) => (
               <ActionKey type="button" key={word}
-                aria-pressed={selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase()}
+                aria-pressed={selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && (currentWord || acceptedWord).toLowerCase() === word.toLowerCase()}
                 onPress={() => {
                 setSelectedWord({ word: matchWordCase(word, currentWord), context: textContext });
                 if (swipe.candidates.length) swipe.select(word);
-                else {
-                  if (word !== currentWord) onReplaceText(currentWord, matchWordCase(word, currentWord));
+                else if (!acceptedWord) {
+                  onReplaceText(currentWord, matchWordCase(word, currentWord) + " ", true);
                   swipe.clear();
-                  pendingSwipeSpace.current = { context: textContext, pending: true };
                 }
                 haptic(settings.haptics);
               }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/5 bg-white/[0.02] px-2 text-sm text-zinc-300 hover:bg-white/5 aria-pressed:border-blue-400/60 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-200">
-                {selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && currentWord.toLowerCase() === word.toLowerCase() && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                {selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && (currentWord || acceptedWord).toLowerCase() === word.toLowerCase() && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
                 <span className="truncate">{matchWordCase(word, currentWord)}</span>
               </ActionKey>
             ))
@@ -394,29 +372,30 @@ function KeyboardSession({
           label="Control"
           text="Ctrl"
           selected={modifiers}
-          onToggle={onToggleModifier}
+          locked={lockedModifiers.includes(Modifier.CTRL)} onDown={onModifierDown} onUp={onModifierUp}
         >
           <ChevronUp className="h-4 w-4" />
         </ModifierButton>
         {applePlatform ? (
           <>
-            <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.ALT} label="Option" text="Option" selected={modifiers} locked={lockedModifiers.includes(Modifier.ALT)} onDown={onModifierDown} onUp={onModifierUp}>
               <Option className="h-4 w-4" />
             </ModifierButton>
-            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
+            <ModifierButton modifier={Modifier.META} label="Command" text="Cmd" selected={modifiers} locked={lockedModifiers.includes(Modifier.META)} onDown={onModifierDown} onUp={onModifierUp}>
               <Command className="h-4 w-4" />
             </ModifierButton>
           </>
         ) : (
           <>
-            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} onToggle={onToggleModifier} onHold={() => { haptic(settings.haptics, 16); onSuperPress(); }} holdDelayMs={settings.longPressDelayMs}>
+            <ModifierButton modifier={Modifier.META} label={remoteOS === "windows" ? "Windows" : "Super"} text={remoteOS === "windows" ? "Win" : "Super"} selected={modifiers} locked={lockedModifiers.includes(Modifier.META)} onDown={onModifierDown} onUp={onModifierUp}>
               {remoteOS === "windows" && <WindowsIcon className="h-[17px] w-[17px]" />}
             </ModifierButton>
-            <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} onToggle={onToggleModifier}>
+            <ModifierButton modifier={Modifier.ALT} label="Alt" text="Alt" selected={modifiers} locked={lockedModifiers.includes(Modifier.ALT)} onDown={onModifierDown} onUp={onModifierUp}>
               <Option className="h-4 w-4" />
             </ModifierButton>
           </>
         )}
+        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility h-9 rounded-md border border-zinc-800 px-2 text-xs text-zinc-400">⌘</ActionKey>
         <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
           onPress={() => { haptic(settings.haptics); setFnActive((active) => !active); }}
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
@@ -508,9 +487,9 @@ function KeyboardSession({
               >
                 {index === 2 && mode === "symbols" && !symbolSearching && <div className="keyboard-cell min-w-[52px] flex-[1.4] border border-transparent" />}
                 {index === 2 && (mode === "letters" || symbolSearching) && (
-                  <UtilityKey label="Shift" active={shift !== "off"} wide onPress={toggleShift}>
+                  <ModifierButton modifier={Modifier.SHIFT} label="Shift" text="" selected={modifiers} locked={shift === "locked"} wide onDown={onModifierDown} onUp={onModifierUp}>
                     <ArrowBigUp className={`h-5 w-5 ${shift === "locked" ? "fill-current" : ""}`} />
-                  </UtilityKey>
+                  </ModifierButton>
                 )}
                 {index === 2 && mode === "emoji" && emojiSearching && (
                   <div className="keyboard-cell custom-keyboard-utility flex min-w-[52px] flex-[1.4] items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-500">
@@ -521,6 +500,7 @@ function KeyboardSession({
                   <Key
                     key={definition.key}
                     definition={definition}
+                    weight={keyWeights[definition.key] ?? 1}
                     label={(mode === "letters" || symbolSearching) && shift !== "off" ? definition.key.toUpperCase() : undefined}
                     settings={settings}
                     onType={type}
@@ -615,8 +595,7 @@ function KeyboardSession({
             preview={<CornerDownLeft className="h-5 w-5" />}
             onPress={() => {
               swipe.clear();
-              pendingSwipeSpace.current.pending = false;
-              if (emojiSearching && matchingEmoji[0]) selectEmoji(matchingEmoji[0][0]);
+                        if (emojiSearching && matchingEmoji[0]) selectEmoji(matchingEmoji[0][0]);
               else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
             }}

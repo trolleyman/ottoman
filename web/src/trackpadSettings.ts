@@ -1,4 +1,9 @@
 export interface KeyboardSettings {
+  autocorrect: boolean;
+  adaptiveKeys: boolean;
+  debugKeySizes: boolean;
+  previewNavigation: boolean;
+  spaceCursorSensitivity: number;
   mirrorFocusedText: boolean;
   keyboardLayout: "en-GB" | "en-US" | "auto";
   keyboardTheme: "dark" | "light" | "system";
@@ -28,6 +33,11 @@ export interface TrackpadSettings extends KeyboardSettings {
 }
 
 export const DEFAULT_SETTINGS: TrackpadSettings = {
+  autocorrect: false,
+  adaptiveKeys: false,
+  debugKeySizes: false,
+  previewNavigation: true,
+  spaceCursorSensitivity: 2,
   mirrorFocusedText: false,
   keyboardLayout: "en-GB",
   keyboardTheme: "dark",
@@ -58,7 +68,7 @@ export const KEYBOARD_TIMINGS = [
   { key: "spaceHoldDelayMs", label: "Space cursor hold", min: 150, max: 1000, step: 25 },
   { key: "backspaceRepeatDelayMs", label: "Backspace repeat", min: 150, max: 1000, step: 25 },
   { key: "backspaceRepeatIntervalMs", label: "Repeat interval", min: 25, max: 250, step: 5 },
-  { key: "shiftDoubleTapMs", label: "Shift double-tap", min: 200, max: 800, step: 25 },
+  { key: "shiftDoubleTapMs", label: "Modifier double-tap", min: 200, max: 800, step: 25 },
 ] as const;
 
 export const TRACKPAD_RANGES = [
@@ -74,10 +84,10 @@ export function parseSettings(value: unknown): TrackpadSettings {
   const settings = { ...DEFAULT_SETTINGS };
   if (!value || typeof value !== "object" || Array.isArray(value)) return settings;
   const saved = value as Record<string, unknown>;
-  for (const key of ["suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "commaKey", "swipeTyping"] as const) {
+  for (const key of ["autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "commaKey", "swipeTyping"] as const) {
     if (typeof saved[key] === "boolean") settings[key] = saved[key];
   }
-  for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES]) {
+  for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES, { key: "spaceCursorSensitivity", min: 0.5, max: 5 } as const]) {
     const next = saved[key];
     if (typeof next === "number" && Number.isFinite(next)) {
       settings[key] = Math.min(max, Math.max(min, next));

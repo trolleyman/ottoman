@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 import { checkKeyboardTouchDefaults } from "../tests/keyboard-touch-checks";
-import type { TrackpadMessage } from "../../src/api";
+import { Modifier, type TrackpadMessage } from "../../src/api";
 
 export interface SentMessage { message: TrackpadMessage; time: number }
 function assert(condition: unknown, message: string): asserts condition {
@@ -93,27 +93,16 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await superKey.click();
   assert(await superKey.getAttribute("aria-pressed") === "true", "Tapping Super must select the modifier");
   await superKey.click();
-  assert(await superKey.getAttribute("aria-pressed") === "false", "Tapping Super again must clear the modifier");
-  assert(sent.length === beforeSuperTap, "Super taps must not send a standalone key press");
-  const superBox = await superKey.boundingBox();
-  assert(superBox, "Missing Super key");
-  const beforeSuperHold = sent.length;
-  await page.mouse.move(superBox.x + superBox.width / 2, superBox.y + superBox.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(60);
-  assert(await page.locator('[data-key-preview="action"]').count() === 0 && sent.length === beforeSuperHold, "Super hold must wait before its popup and key press");
-  await page.waitForTimeout(450);
-  assert(await page.locator('[data-key-preview="action"]').textContent() === "Win", "Held Super must show its popup");
-  await page.mouse.up();
-  const superEvents = sent.slice(beforeSuperHold).map(({ message }) => message).filter(message => message.type === "keydown" || message.type === "keyup");
-  assert(superEvents.length === 2 && superEvents[0].key === "Meta" && superEvents[0].type === "keydown" && superEvents[1].key === "Meta" && superEvents[1].type === "keyup" && superEvents.every(event => event.modifiers.length === 0), "Super hold must send exactly one standalone key press");
-  assert(await superKey.getAttribute("aria-pressed") === "false", "Releasing a Super hold must not toggle the modifier");
-  const beforeSuperCancel = sent.length;
-  await page.mouse.down();
-  await superKey.dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse", isPrimary: true });
-  await page.mouse.up();
-  await page.waitForTimeout(450);
-  assert(sent.length === beforeSuperCancel, "Cancelling a Super hold must stop its timer");
+  assert(await superKey.getAttribute("data-modifier-locked") === "true", "Double tapping Super must lock it");
+  assert(sent.length === beforeSuperTap, "Modifier taps must not send a standalone key press");
+  await page.waitForTimeout(400);
+  await superKey.click();
+  assert(await superKey.getAttribute("aria-pressed") === "false", "Tapping a locked modifier must clear it");
+  const beforeShortcut = sent.length;
+  await superKey.click();
+  await key("a").click();
+  assert(sent.slice(beforeShortcut).some(({ message }) => message.type === "keydown" && message.key === "a" && message.modifiers.includes(Modifier.META)), "One-shot Super must apply to the next key");
+  assert(await superKey.getAttribute("aria-pressed") === "false", "One-shot Super must clear after a shortcut");
   await key("q").scrollIntoViewIfNeeded();
   const start = await centre("q");
   await page.mouse.move(start.x, start.y);
@@ -191,7 +180,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   const beforeContraction = textMessages().length;
   await bar.getByRole("button", { name: "don't", exact: true }).click();
   await page.waitForTimeout(60);
-  assert(textMessages().slice(beforeContraction).some(({ message }) => message.type === "text" && message.text === "don't"), "A contraction suggestion must insert its apostrophe");
+  assert(textMessages().slice(beforeContraction).some(({ message }) => message.type === "text" && message.text === "don't "), "A contraction suggestion must insert its apostrophe");
   assert(await bar.getByRole("button", { name: "don't", exact: true }).getAttribute("aria-pressed") === "true", "Chosen contraction must remain highlighted");
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
 
@@ -283,7 +272,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.mouse.up();
   await page.waitForTimeout(100);
   const swiped = textMessages().slice(beforeSwipe);
-  assert(swiped.length === 1 && swiped[0].message.type === "text" && swiped[0].message.text?.toLowerCase() === "hello", `Swipe must emit one decoded word without the initial letter: ${JSON.stringify(swiped)}`);
+  assert(swiped.length === 1 && swiped[0].message.type === "text" && swiped[0].message.text?.toLowerCase() === "hello ", `Swipe must emit one decoded word without the initial letter: ${JSON.stringify(swiped)}`);
   await page.getByRole("button", { name: "hello", exact: true }).waitFor();
 
   const alternatives = await page.getByLabel("Word suggestions").getByRole("button").allTextContents();
@@ -292,8 +281,8 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     await page.getByLabel("Word suggestions").getByRole("button", { name: alternatives[1], exact: true }).click();
     await page.waitForTimeout(60);
     const correction = sent.slice(beforeCorrection);
-    assert(correction.filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 5, "Alternative word must replace only the original word");
-    assert(correction.some(({ message }) => message.type === "text" && message.text === alternatives[1]), "Chosen alternative must be inserted");
+    assert(correction.filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 6, "Alternative word must replace only the original word");
+    assert(correction.some(({ message }) => message.type === "text" && message.text === alternatives[1] + " "), "Chosen alternative must be inserted");
   }
   const touchPath = await Promise.all(Array.from("world").map(centre));
   const beforeTouchSwipe = textMessages().length;
@@ -310,7 +299,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await page.waitForTimeout(100);
     const touchWords = textMessages().slice(beforeTouchSwipe);
-    assert(touchWords.length === 1 && touchWords[0].message.type === "text" && touchWords[0].message.text === " world", `Touch swipe must emit exactly one decoded word: ${JSON.stringify(touchWords)}`);
+    assert(touchWords.length === 1 && touchWords[0].message.type === "text" && touchWords[0].message.text === "world ", `Touch swipe must emit exactly one decoded word: ${JSON.stringify(touchWords)}`);
   } finally { await touch.detach(); }
 
   await page.getByRole("button", { name: "Comma", exact: true }).evaluate((element) => {

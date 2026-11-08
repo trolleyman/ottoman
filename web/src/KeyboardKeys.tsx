@@ -56,46 +56,32 @@ export function WindowsIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export function ModifierButton({
-  modifier,
-  label,
-  text,
-  selected,
-  onToggle,
-  onHold,
-  holdDelayMs,
-  children,
-}: {
-  modifier: Modifier;
-  label: string;
-  text: string;
-  selected: Modifier[];
-  onToggle: (modifier: Modifier) => void;
-  onHold?: () => void;
-  holdDelayMs?: number;
-  children: React.ReactNode;
+export function ModifierButton({ modifier, label, text, selected, locked = false, onDown, onUp, children, wide = false }: {
+  modifier: Modifier; label: string; text: string; selected: Modifier[]; locked?: boolean;
+  onDown: (modifier: Modifier) => void; onUp: (modifier: Modifier, cancelled?: boolean) => void;
+  children: React.ReactNode; wide?: boolean;
 }) {
+  const pointer = useRef<number | null>(null);
   const active = selected.includes(modifier);
-  return (
-    <ActionKey
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      onPress={() => onToggle(modifier)}
-      onHold={onHold}
-      holdDelayMs={holdDelayMs}
-      preview={onHold ? <span className="flex items-center gap-2">{children}{text}</span> : undefined}
-      className={`flex h-9 min-w-10 flex-1 items-center justify-center gap-2 rounded-md border px-1 transition-colors ${
-        active
-          ? "border-blue-400/60 bg-blue-500 text-white shadow-[0_0_0_2px_rgba(59,130,246,.16)]"
-          : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-      }`}
-    >
-      {children}
-      <span className="text-[10px] font-semibold tracking-wide">{text}</span>
-    </ActionKey>
-  );
+  const release = (cancelled = false) => {
+    if (pointer.current === null) return;
+    pointer.current = null;
+    onUp(modifier, cancelled);
+  };
+  return <button type="button" aria-label={label} title={`${label}: tap once, double-tap to lock, or hold`}
+    aria-pressed={active} data-modifier-locked={locked || undefined}
+    className={`relative touch-none select-none flex ${wide ? "keyboard-cell min-w-[52px] flex-[1.4]" : "h-9 min-w-10 flex-1"} items-center justify-center gap-1 rounded-md border px-1 ${active ? "border-blue-400/60 bg-blue-500 text-white" : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400"}`}
+    onPointerDown={event => {
+      if (event.button !== 0 || pointer.current !== null) return;
+      event.preventDefault(); pointer.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId); onDown(modifier);
+    }}
+    onPointerUp={event => { if (event.pointerId === pointer.current) release(); }}
+    onPointerCancel={() => release(true)} onLostPointerCapture={() => release(true)}
+    onClick={event => { if (event.detail === 0) { onDown(modifier); onUp(modifier); } }}>
+    {children}{text && <span className="text-[10px] font-semibold">{text}</span>}
+    {locked && <span className="absolute bottom-1 h-0.5 w-3 rounded bg-current" />}
+  </button>;
 }
 
 export function Key({
@@ -105,8 +91,10 @@ export function Key({
   onType,
   swipeActive = false,
   suppressTap,
+  weight = 1,
 }: {
   definition: KeyDefinition;
+  weight?: number;
   label?: string;
   settings: KeyboardSettings;
   onType: (value: string, wasLongPress: boolean) => void;
@@ -165,7 +153,8 @@ export function Key({
       type="button"
       data-letter={/^[a-z]$/.test(definition.key) ? definition.key : undefined}
       className={`custom-keyboard-key relative flex min-w-0 flex-1 touch-none select-none items-center justify-center border-0 bg-transparent p-0 text-[clamp(15px,4.5vw,20px)] font-medium text-white ${pressed && !swipeActive ? "z-30" : ""}`}
-      style={definition.grow ? { flexGrow: definition.grow } : undefined}
+      style={{ flexGrow: (definition.grow ?? 1) * weight }}
+      data-key-weight={weight}
       aria-label={definition.alt ? `${definition.key}, hold for ${definition.alt}` : definition.key}
       onPointerDown={start}
       onPointerUp={finish}
@@ -182,6 +171,7 @@ export function Key({
     >
       <span aria-hidden="true" className={`key-face absolute inset-[2px] rounded-md border border-white/10 bg-zinc-600/95 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] ${pressed && !swipeActive ? "ring-2 ring-blue-400/60" : ""}`} />
       <span className="relative">{label ?? definition.key}</span>
+      {settings.debugKeySizes && <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 border border-amber-400/70 text-left text-[8px] text-amber-300">{weight.toFixed(2)}×</span>}
       {settings.symbolHints && definition.alt && (
         <span className="custom-keyboard-hint absolute right-1.5 top-1 text-[9px] font-semibold text-zinc-300/55">
           {definition.alt}

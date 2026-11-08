@@ -296,6 +296,7 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 		processed = i + 1
 		piece := []rune{ch}
 		childStart, childEnd := 0, 0
+		childSelected := false
 		if ch == '\ufffc' {
 			var index int32
 			if err := a.object(r).CallWithContext(ctx, "org.a11y.atspi.Hypertext.GetLinkIndex", 0, int32(low+i)).Store(&index); err != nil || index < 0 {
@@ -338,6 +339,7 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 				var x, y int32
 				if a.object(child).CallWithContext(ctx, textInterface+".GetSelection", 0, int32(0)).Store(&x, &y) == nil {
 					childStart, childEnd = int(x), int(y)
+					childSelected = childStart != childEnd
 				}
 			}
 			if strings.ContainsRune(text, '\ufffc') {
@@ -346,15 +348,29 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 					return "", 0, 0, err
 				}
 			}
+			// Paragraph objects sometimes include their own terminal layout
+			// newline (including an otherwise empty last paragraph). The parent
+			// supplies the paragraph boundary, so retain only interior newlines.
+			if role == 73 {
+				text = strings.TrimSuffix(text, "\n")
+				childStart = min(childStart, len([]rune(text)))
+				childEnd = min(childEnd, len([]rune(text)))
+			}
 			piece = []rune(text)
 		} else {
 			previousParagraph = false
 		}
 		if start-low == i {
-			mappedStart = len(result) + childStart
+			mappedStart = len(result)
+			if start == end || childSelected {
+				mappedStart += childStart
+			}
 		}
 		if end-low == i {
-			mappedEnd = len(result) + childEnd
+			mappedEnd = len(result)
+			if start == end || childSelected {
+				mappedEnd += childEnd
+			}
 		}
 		result = append(result, piece...)
 		if start-low == i+1 {
@@ -362,6 +378,11 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 		}
 		if end-low == i+1 {
 			mappedEnd = len(result)
+			// Chromium can mark an embedded object selected in the parent
+			// while its child contains the exact, shorter selection endpoint.
+			if childSelected {
+				mappedEnd = len(result) - len(piece) + childEnd
+			}
 		}
 	}
 	if start-low > processed || end-low > processed || mappedStart < 0 || mappedEnd < mappedStart || mappedEnd > len(result) || len(result) > limit {

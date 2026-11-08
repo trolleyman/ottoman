@@ -11,6 +11,8 @@ import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
 import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
+import { KeyboardModifiers, spaceEdit } from "./keyboardEditing";
+import { previewHit, previewMove } from "./previewNavigation";
 import { CaretText } from "./CaretText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
@@ -105,8 +107,21 @@ function TouchArea({
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardSettingsOpen, setKeyboardSettingsOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
+  const modifierState = useRef(new KeyboardModifiers());
+  const [lockedModifiers, setLockedModifiers] = useState<Modifier[]>([]);
+  const syncModifiers = useCallback(() => {
+    setActiveModifiers(modifierState.current.active);
+    setLockedModifiers([...modifierState.current.states].filter(([, state]) => state === "locked").map(([key]) => key));
+  }, []);
+  const consumeModifiers = useCallback(() => { modifierState.current.consume(); syncModifiers(); }, [syncModifiers]);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const navigationAnchor = useRef<number | null>(null);
+  const navigationX = useRef<number | undefined>(undefined);
+  const typingMemory = useRef<{ field?: string; period: number | null; suppress: boolean; space: number | null }>({ period: null, suppress: false, space: null });
+  const tapClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
+  const [draftSelection, setDraftSelection] = useState<[number, number] | null>(null);
   const [draftVisible, setDraftVisible] = useState(false);
   const draftRef = useRef("");
   const remoteCursor = useRef(0);
@@ -119,6 +134,7 @@ function TouchArea({
   const twoFingerLastY = useRef(0);
   const twoFingerStartTime = useRef(0);
   const twoFingerMoved = useRef(false);
+  const scrollPrimed = useRef(false);
 
   // Where the previous single-finger gesture ended, and whether that gesture was
   // one that a following quick touch should turn into a click-and-drag (a genuine
@@ -174,8 +190,9 @@ function TouchArea({
     (key: string, modifiers: Modifier[] = []) => {
       send({ type: "keydown", key, modifiers });
       send({ type: "keyup", key, modifiers });
+      consumeModifiers();
     },
-    [send],
+    [send, consumeModifiers],
   );
 
   const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
@@ -186,6 +203,7 @@ function TouchArea({
     remoteCursor.current = 0;
     setDraft("");
     setDraftCursor(0);
+    setDraftSelection(null);
   }, []);
   const remoteOS = useStore((state) => state.agentInfo?.os ?? "");
 
@@ -198,14 +216,20 @@ function TouchArea({
     return () => cancelAnimationFrame(frame);
   }, [keyboardOpen, docked]);
 
-  const toggleModifier = useCallback((modifier: Modifier) => {
-    if (modifier !== Modifier.SHIFT) dismissDraft();
-    setActiveModifiers((current) =>
-      current.includes(modifier)
-        ? current.filter((item) => item !== modifier)
-        : [...current, modifier],
-    );
-  }, [dismissDraft]);
+  useEffect(() => {
+    const releaseHeld = () => {
+      for (const key of modifierState.current.held.keys()) modifierState.current.release(key, 0, 0, true);
+      syncModifiers();
+    };
+    window.addEventListener("blur", releaseHeld);
+    return () => window.removeEventListener("blur", releaseHeld);
+  }, [syncModifiers]);
+
+  const beginModifier = (modifier: Modifier) => { modifierState.current.press(modifier); syncModifiers(); };
+  const endModifier = (modifier: Modifier, cancelled = false) => {
+    modifierState.current.release(modifier, performance.now(), settings.shiftDoubleTapMs, cancelled);
+    syncModifiers();
+  };
 
   const moveRemoteCursor = useCallback(
     (target: number) => {
@@ -224,6 +248,7 @@ function TouchArea({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft("");
     setDraftCursor(0);
+    setDraftSelection(null);
     setCompositionValue(null);
     setTypingContext((value) => value + 1);
   }, [connected, settings.mirrorFocusedText, textContext?.fieldId, textContext?.protected, textContext?.password]);
@@ -319,70 +344,151 @@ function TouchArea({
     [moveRemoteCursor, replaceRemote, showDraftIndicator],
   );
 
-  const appendText = useCallback(
-    (value: string, shifted = false) => {
-      const before = draftRef.current;
-      const commandModifiers = activeModifiers.filter(
-        (modifier) => modifier !== Modifier.SHIFT,
-      );
-      if (commandModifiers.length > 0 && characterCount(value) === 1) {
-        const shortcutModifiers = combineModifiers(
-          activeModifiers,
-          shifted ? [Modifier.SHIFT] : [],
-        );
-        sendKeyPress(value.toLocaleLowerCase(), shortcutModifiers);
-        return;
-      }
-      const view = remoteModel.current!.view;
-      if (view?.editable && settings.doubleSpacePeriod && value === " " && view.selectionStart === view.selectionEnd) {
-        const beforeCaret = Array.from(view.value).slice(0, view.selectionStart - view.windowStart).join("");
-        if (/\S $/.test(beforeCaret) && replaceRemote(view.selectionStart - 1, view.selectionEnd, ". ")) return;
-      }
-      if (insertRemote(value)) return;
-      if (
-        settings.doubleSpacePeriod &&
-        value === " " &&
-        /\S $/.test(before)
-      ) {
-        sendKeyPress("Backspace");
-        send({ type: "text", text: ". " });
-        const next = `${before.slice(0, -1)}. `;
-        draftRef.current = next;
-        remoteCursor.current = Math.max(0, remoteCursor.current - 1) + 2;
-        setDraft(next);
-        setDraftCursor(next.length);
-        showDraftIndicator();
-        return;
-      }
+  const editFallback = useCallback((start: number, end: number, text: string) => {
+    const chars = Array.from(draftRef.current);
+    if (draftSelection) { sendKeyPress("ArrowRight"); remoteCursor.current = Math.max(...draftSelection); }
+    moveRemoteCursor(end);
+    for (let i = start; i < end; i++) sendKeyPress("Backspace");
+    if (text) send({ type: "text", text });
+    const next = chars.slice(0, start).join("") + text + chars.slice(end).join("");
+    draftRef.current = next;
+    remoteCursor.current = start + characterCount(text);
+    setDraft(next);
+    setDraftCursor(utf16Offset(next, remoteCursor.current));
+    setDraftSelection(null);
+    showDraftIndicator();
+  }, [moveRemoteCursor, sendKeyPress, send, showDraftIndicator, draftSelection]);
 
-      send({ type: "text", text: value });
-      const next = before + value;
-      draftRef.current = next;
-      remoteCursor.current += characterCount(value);
-      setDraft(next);
-      setDraftCursor(next.length);
-      showDraftIndicator();
-    },
-    [activeModifiers, insertRemote, replaceRemote, send, sendKeyPress, settings.doubleSpacePeriod, showDraftIndicator],
-  );
+  const updateNativePreview = useCallback((start: number, end: number, text: string) => {
+    const view = remoteModel.current!.view;
+    if (!view?.available || view.editable || view.password || view.protected) return;
+    const chars = Array.from(view.value);
+    const value = chars.slice(0, start - view.windowStart).join("") + text + chars.slice(end - view.windowStart).join("");
+    const caret = start + characterCount(text);
+    remoteModel.current!.view = { ...view, value, selectionStart: caret, selectionEnd: caret };
+    setRemote(remoteModel.current!.view);
+  }, []);
+
+  const appendText = useCallback((value: string, shifted = false, suggested = false) => {
+    const modifiers = modifierState.current.active;
+    if (modifiers.some(modifier => modifier !== Modifier.SHIFT) && characterCount(value) === 1) {
+      sendKeyPress(value.toLocaleLowerCase(), combineModifiers(modifiers, shifted ? [Modifier.SHIFT] : []));
+      return;
+    }
+    const view = remoteModel.current!.view;
+    const memory = typingMemory.current;
+    if (memory.field !== view?.fieldId) Object.assign(memory, { field: view?.fieldId, period: null, suppress: false, space: null });
+    const position = view?.available ? view.selectionStart : draftSelection ? Math.min(...draftSelection) : remoteCursor.current;
+    const end = view?.available ? view.selectionEnd : draftSelection ? Math.max(...draftSelection) : position;
+    const before = Array.from(view?.available ? view.value : draftRef.current).slice(0, position - (view?.available ? view.windowStart : 0)).join("");
+    const edit = spaceEdit(before, value, settings.doubleSpacePeriod && position === end, memory.suppress, memory.space === position);
+    if (edit.text === ". " && value === " " && edit.remove) memory.period = position - 1;
+    if (/\S/.test(value)) memory.suppress = false;
+    memory.space = suggested ? position - edit.remove + characterCount(edit.text) : null;
+    if (!replaceRemote(position - edit.remove, end, edit.text)) {
+      if (view?.available) {
+        // Rich editors expose a preview but require native keystrokes.
+        for (let i = 0; i < edit.remove; i++) sendKeyPress("Backspace");
+        send({ type: "text", text: edit.text });
+        updateNativePreview(position - edit.remove, end, edit.text);
+      } else editFallback(position - edit.remove, end, edit.text);
+    }
+    navigationAnchor.current = null;
+    navigationX.current = undefined;
+    consumeModifiers();
+    showDraftIndicator();
+  }, [sendKeyPress, settings.doubleSpacePeriod, replaceRemote, send, editFallback, consumeModifiers, showDraftIndicator, draftSelection, updateNativePreview]);
 
   const backspace = useCallback(() => {
     const view = remoteModel.current!.view;
-    if (view?.available && view.editable && activeModifiers.length === 0) {
-      replaceRemote(view.selectionStart === view.selectionEnd ? view.windowStart + previousCharacterOffset(view.value, view.selectionStart - view.windowStart) : view.selectionStart, view.selectionEnd, "");
-      return;
+    const modifiers = modifierState.current.active;
+    const position = view?.available ? view.selectionStart : remoteCursor.current;
+    const memory = typingMemory.current;
+    if (memory.period === position - 1 && Array.from(view?.available ? view.value : draftRef.current)[position - 1 - (view?.available ? view.windowStart : 0)] === ".") { memory.suppress = true; memory.period = null; }
+    memory.space = null;
+    if (view?.available && view.editable && modifiers.length === 0) {
+      replaceRemote(view.selectionStart === view.selectionEnd ? view.windowStart + previousCharacterOffset(view.value, position - view.windowStart) : position, view.selectionEnd, "");
+    } else if (!view?.available && modifiers.length === 0) {
+      editFallback(draftSelection ? Math.min(...draftSelection) : previousCharacterOffset(draftRef.current, position), draftSelection ? Math.max(...draftSelection) : position, "");
+    } else {
+      sendKeyPress("Backspace", modifiers);
+      if (view?.available && !modifiers.some(modifier => modifier !== Modifier.SHIFT)) updateNativePreview(view.selectionStart === view.selectionEnd ? view.windowStart + previousCharacterOffset(view.value, position - view.windowStart) : position, view.selectionEnd, "");
     }
-    sendKeyPress("Backspace", activeModifiers);
-    if (activeModifiers.some((modifier) => modifier !== Modifier.SHIFT)) return;
-    const characters = Array.from(draftRef.current);
-    characters.pop();
-    const next = characters.join("");
-    draftRef.current = next;
-    remoteCursor.current = Math.max(0, remoteCursor.current - 1);
-    setDraft(next);
-    setDraftCursor(next.length);
+    navigationAnchor.current = null;
+  }, [replaceRemote, editFallback, sendKeyPress, draftSelection, updateNativePreview]);
+
+  const selectPreview = (offset: number, extend = false) => {
+    const view = remoteModel.current!.view;
+    if (view?.password || view?.protected) return false;
+    if (view?.available) {
+      const target = view.windowStart + codePointOffset(view.value, offset);
+      if (view.editable) {
+        const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
+        navigationAnchor.current = extend ? anchor : null;
+        return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
+      }
+      // Expanded rich text cannot be edited with accessibility offsets; native
+      // horizontal steps still correspond to characters in the preview.
+      const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
+      const current = extend && navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd;
+      if (!extend && view.selectionStart !== view.selectionEnd) sendKeyPress("ArrowRight");
+      const delta = target - current;
+      for (let i = 0; i < Math.abs(delta); i++) sendKeyPress(delta < 0 ? "ArrowLeft" : "ArrowRight", extend ? [Modifier.SHIFT] : []);
+      navigationAnchor.current = extend ? anchor : null;
+      remoteModel.current!.view = { ...view, selectionStart: Math.min(anchor, target), selectionEnd: Math.max(anchor, target) };
+      setRemote(remoteModel.current!.view);
+      return true;
+    }
+    const target = codePointOffset(draftRef.current, offset);
+    if (extend) {
+      const anchor = navigationAnchor.current ?? remoteCursor.current;
+      navigationAnchor.current = anchor;
+      const delta = target - remoteCursor.current;
+      for (let i = 0; i < Math.abs(delta); i++) sendKeyPress(delta < 0 ? "ArrowLeft" : "ArrowRight", [Modifier.SHIFT]);
+      remoteCursor.current = target;
+      setDraftSelection([anchor, target]);
+    } else {
+      if (draftSelection) { sendKeyPress("ArrowRight"); remoteCursor.current = Math.max(...draftSelection); }
+      moveRemoteCursor(target);
+      navigationAnchor.current = null;
+      setDraftSelection(null);
+    }
+    setDraftCursor(offset);
+    return true;
+  };
+
+  const navigate = (key: string) => {
+    const view = remoteModel.current!.view;
+    const modifiers = modifierState.current.active;
+    if (settings.previewNavigation && previewRef.current && !view?.password && !view?.protected &&
+      !modifiers.some(modifier => modifier !== Modifier.SHIFT) && /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(key)) {
+      const value = view?.available ? view.value : draftRef.current;
+      const extending = modifiers.includes(Modifier.SHIFT);
+      const anchor = navigationAnchor.current;
+      if (!extending && (key === "ArrowLeft" || key === "ArrowRight")) {
+        const selected = view?.available ? [view.selectionStart, view.selectionEnd] : draftSelection;
+        if (selected && selected[0] !== selected[1]) {
+          selectPreview(utf16Offset(value, (key === "ArrowLeft" ? Math.min(...selected) : Math.max(...selected)) - (view?.available ? view.windowStart : 0)));
+          consumeModifiers(); return;
+        }
+      }
+      const position = view?.available ? (extending && anchor === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart : remoteCursor.current;
+      const result = previewMove(previewRef.current, utf16Offset(value, position), key, navigationX.current);
+      if (result) {
+        navigationX.current = result.x;
+        if (selectPreview(result.offset, extending)) { consumeModifiers(); showDraftIndicator(); return; }
+      }
+    }
+    navigationAnchor.current = null;
+    navigationX.current = undefined;
+    sendKeyPress(key, modifiers);
     showDraftIndicator();
-  }, [activeModifiers, replaceRemote, sendKeyPress, showDraftIndicator]);
+  };
+
+  useEffect(() => () => {
+    if (tapClickTimer.current) clearTimeout(tapClickTimer.current);
+    if (isDragging.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
+  }, [send]);
 
   const activateKeyboard = () => {
     if (settings.customKeyboard) setKeyboardOpen(true);
@@ -405,9 +511,11 @@ function TouchArea({
 
     // Two-finger scroll detection
     if (e.touches.length === 2) {
+      if (isDragging.current) { send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers }); isDragging.current = false; }
       twoFingerRef.current = true;
       twoFingerStartTime.current = performance.now();
       twoFingerMoved.current = false;
+      scrollPrimed.current = false;
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       twoFingerLastX.current = midX;
@@ -428,7 +536,7 @@ function TouchArea({
     lastCursorTime.current = performance.now();
 
     // Check for double-tap-drag start. Only start a drag when the previous
-    // gesture was a genuine tap (or an active drag we're continuing) AND this
+    // gesture was a genuine tap AND this
     // touch lands close to where that gesture ended. This prevents a cursor move
     // followed by another quick move from being misread as a click-and-drag —
     // that sequence should just keep moving the cursor.
@@ -440,10 +548,13 @@ function TouchArea({
       : Infinity;
 
     if (
+      tapClickTimer.current !== null &&
       lastGestureAllowsDrag.current &&
       touchStartTime.current - lastTouchEndTime.current < 300 &&
       dist < 40
     ) {
+      clearTimeout(tapClickTimer.current);
+      tapClickTimer.current = null;
       isDragging.current = true;
       send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
     }
@@ -465,6 +576,16 @@ function TouchArea({
       if (e.touches.length !== 2) return;
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      // Finger placement can shift the initial midpoint before both contacts
+      // settle. Start deltas at the first move, avoiding a spurious first jump.
+      if (!scrollPrimed.current) {
+        scrollPrimed.current = true;
+        twoFingerLastX.current = midX;
+        twoFingerLastY.current = midY;
+        lastScrollTime.current = now;
+        twoFingerMoved.current = true;
+        return;
+      }
       const dx = (midX - twoFingerLastX.current) * settings.scrollSensitivity;
       const dy = (midY - twoFingerLastY.current) * settings.scrollSensitivity;
       twoFingerLastX.current = midX;
@@ -547,7 +668,7 @@ function TouchArea({
 
           const step = () => {
             const t = performance.now();
-            const dt = t - lastT;
+            const dt = Math.min(32, t - lastT);
             lastT = t;
 
             // Apply friction to velocity
@@ -583,8 +704,14 @@ function TouchArea({
     if (isDragging.current) {
       send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
       isDragging.current = false;
-      // A drag can be continued: lifting and quickly re-touching resumes it.
-      lastGestureAllowsDrag.current = true;
+      // A stationary second tap is an actual double click. A moved/held second
+      // contact is one continuous press, so window headers remain draggable.
+      const touch = e.changedTouches[0];
+      if (touchStartPos.current && now - touchStartTime.current < 200 &&
+        Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) < 10) {
+        send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+      }
+      lastGestureAllowsDrag.current = false;
     } else {
       // Cursor inertia
       const { x: vx, y: vy } = cursorVelocity.current;
@@ -629,7 +756,12 @@ function TouchArea({
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 10) {
-          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+          // Defer the first click just long enough to distinguish another tap
+          // from tap-and-drag. Dragging then starts with a single mouse-down.
+          tapClickTimer.current = setTimeout(() => {
+            tapClickTimer.current = null;
+            send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+          }, 300);
           wasTap = true;
         }
       }
@@ -815,8 +947,8 @@ function TouchArea({
 
 
   const preview = textPreview(remote, draft);
-  const previewCursor = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftCursor;
-  const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftCursor;
+  const previewCursor = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.min(...draftSelection)) : draftCursor;
+  const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.max(...draftSelection)) : draftCursor;
 
   return (
     <div className={docked ? "remote-input flex min-h-0 flex-1 flex-col gap-2" : "w-full md:max-w-sm md:shrink-0 flex flex-col gap-2"}>
@@ -853,6 +985,14 @@ function TouchArea({
           onTouchStart={connected ? onTouchStart : undefined}
           onTouchMove={connected ? onTouchMove : undefined}
           onTouchEnd={connected ? onTouchEnd : undefined}
+          onTouchCancel={() => {
+            if (tapClickTimer.current) clearTimeout(tapClickTimer.current);
+            tapClickTimer.current = null;
+            if (isDragging.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
+            isDragging.current = false;
+            lastGestureAllowsDrag.current = false;
+            lastTouchRef.current = null;
+          }}
           onPointerDown={connected ? onPointerDown : undefined}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -886,8 +1026,16 @@ function TouchArea({
               <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
                 className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="flex min-h-0 flex-col justify-end overflow-hidden rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
-              <div className="shrink-0" aria-live="polite" aria-atomic="true"
+            <div data-preview-scroll className="pointer-events-auto min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
+              <div ref={previewRef} className="shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
+                onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
+                onPointerUp={(event) => {
+                  const start = touchStartPos.current;
+                  touchStartPos.current = null;
+                  if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+                  const offset = previewHit(event.currentTarget, event.clientX, event.clientY);
+                  if (offset !== undefined) { navigationX.current = undefined; selectPreview(offset); showDraftIndicator(); }
+                }}
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
                 data-password-preview={remote?.password || undefined}>
                 <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} hideCaret={!!remote?.password}
@@ -963,24 +1111,24 @@ function TouchArea({
           sensitiveInput={!!(remote?.protected || remote?.password)}
           settings={settings}
           onText={appendText}
-          onReplaceText={(previous, next) => {
+          onReplaceText={(previous, next, suggested = false) => {
             const view = remoteModel.current!.view;
-            if (view?.available) {
-              const beforeCaret = Array.from(view.value).slice(0, view.selectionStart - view.windowStart).join("");
-              if (view.selectionStart !== view.selectionEnd || !beforeCaret.endsWith(previous)) return;
-              if (view.editable) {
-                replaceRemote(view.selectionStart - characterCount(previous), view.selectionEnd, next);
-                return;
-              }
+            const position = view?.available ? view.selectionStart : remoteCursor.current;
+            const value = view?.available ? view.value : draftRef.current;
+            const beforeCaret = Array.from(value).slice(0, position - (view?.available ? view.windowStart : 0)).join("");
+            if (!beforeCaret.endsWith(previous) || (view?.available && view.selectionStart !== view.selectionEnd)) return;
+            if (!replaceRemote(position - characterCount(previous), position, next)) {
+              if (!view?.available) editFallback(position - characterCount(previous), position, next);
+              else { for (let i = 0; i < characterCount(previous); i++) sendKeyPress("Backspace"); send({ type: "text", text: next }); updateNativePreview(position - characterCount(previous), position, next); }
             }
-            for (let index = 0; index < characterCount(previous); index++) sendKeyPress("Backspace");
-            draftRef.current = draftRef.current.slice(0, -previous.length);
-            remoteCursor.current = Math.max(0, remoteCursor.current - characterCount(previous));
-            appendText(next);
+            typingMemory.current.space = suggested ? position - characterCount(previous) + characterCount(next) : null;
+            typingMemory.current.suppress = false;
+            consumeModifiers();
           }}
           onBackspace={backspace}
           onEnter={(shifted) => {
-            if (activeModifiers.length === 0 && remoteModel.current!.view?.multiline && insertRemote("\n")) return;
+            if (!remoteModel.current!.view?.available && activeModifiers.length === 0) { appendText("\n"); return; }
+            if (activeModifiers.length === 0 && remoteModel.current!.view?.multiline && insertRemote("\n")) { consumeModifiers(); return; }
             const modifiers = combineModifiers(
               activeModifiers,
               shifted ? [Modifier.SHIFT] : [],
@@ -995,16 +1143,9 @@ function TouchArea({
             showDraftIndicator();
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
-          onNavigate={(key) => {
-            // Navigation keeps the mirrored field relevant. Hiding it on every
-            // drag step makes it flash as desktop caret notifications arrive.
-            if (remoteModel.current!.view?.available) {
-              setTypingContext((value) => value + 1);
-              showDraftIndicator();
-            } else dismissDraft();
-            sendKeyPress(key, activeModifiers);
-          }}
+          onNavigate={navigate}
           onClose={() => {
+            modifierState.current = new KeyboardModifiers(); syncModifiers();
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);
           }}
@@ -1019,7 +1160,9 @@ function TouchArea({
           usingCustomKeyboard={settings.customKeyboard}
           settingsPageOpen={keyboardSettingsOpen}
           modifiers={activeModifiers}
-          onToggleModifier={toggleModifier}
+          lockedModifiers={lockedModifiers}
+          onModifierDown={beginModifier}
+          onModifierUp={endModifier}
           onSuperPress={() => { dismissDraft(); sendKeyPress("Meta"); }}
         />
       </div>

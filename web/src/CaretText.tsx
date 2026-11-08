@@ -17,7 +17,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
   const inlineEnd = !/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\u{10800}-\u{10fff}\u{1e800}-\u{1eeff}]/u.test(value);
   const root = useRef<HTMLDivElement>(null);
   const text = useRef<HTMLSpanElement>(null);
-  const endAnchor = useRef<HTMLSpanElement>(null);
+
   const [geometry, setGeometry] = useState<{ caret: Box; selection: Box[] } | null>(null);
   useLayoutEffect(() => {
     const container = root.current!;
@@ -35,7 +35,9 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       const range = document.createRange();
       range.setStart(node, end);
       range.collapse(true);
-      const caret = box(end === value.length && inlineEnd ? endAnchor.current!.getBoundingClientRect() : range.getBoundingClientRect());
+      let caretRect = range.getBoundingClientRect();
+      if (!caretRect.height) { range.setEnd(node, Math.min(end + 1, node.textContent!.length)); caretRect = range.getBoundingClientRect(); }
+      const caret = box(caretRect);
       range.setStart(node, start);
       range.setEnd(node, end);
       const selection = start === end ? [] : Array.from(range.getClientRects(), box);
@@ -47,6 +49,12 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       }
       // Search follows the end of a long query without squeezing the caret.
       if (variant === "search") container.scrollLeft = Math.max(0, caret.left - container.clientWidth + 2);
+      const viewport = container.closest<HTMLElement>("[data-preview-scroll]");
+      if (viewport && !hideCaret) {
+        const visible = viewport.getBoundingClientRect();
+        if (caretRect.bottom > visible.bottom) viewport.scrollTop += caretRect.bottom - visible.bottom + 4;
+        else if (caretRect.top < visible.top) viewport.scrollTop -= visible.top - caretRect.top + 4;
+      }
       setGeometry({ caret, selection });
     };
     // DOM measurements must precede paint so the overlay never trails typing.
@@ -62,19 +70,18 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       observer.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
-  }, [value, cursor, selectionEnd, variant, inlineEnd]);
+  }, [value, cursor, selectionEnd, variant, inlineEnd, hideCaret]);
 
-  const atEnd = inlineEnd && cursor === value.length && selectionEnd === cursor;
   const caret = !hideCaret && cursor === selectionEnd && <span key={`${value}:${cursor}`} aria-hidden="true"
     data-preview-caret={variant === "preview" || undefined} data-search-caret={variant === "search" || undefined}
     className="keyboard-caret pointer-events-none absolute z-20 w-px bg-blue-300"
-    style={atEnd ? { left: 0, top: 0, height: "100%" } : geometry ? { left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height } : { display: "none" }} />;
+    style={geometry ? { left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height } : { display: "none" }} />;
 
   return <div ref={root} className={`relative ${className}`}>
     {/* Keep the text uninterrupted. The empty inline anchor follows its real
         rendered end even when mobile font metrics change after measurement. */}
-    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endAnchor} aria-hidden="true" className="relative">{atEnd && caret}</span>
+    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span>
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
-    {!atEnd && caret}
+    {caret}
   </div>;
 }
