@@ -18,6 +18,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
   const inlineEnd = !/[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff\u{10800}-\u{10fff}\u{1e800}-\u{1eeff}]/u.test(value);
   const root = useRef<HTMLDivElement>(null);
   const text = useRef<HTMLSpanElement>(null);
+  const endMarker = useRef<HTMLSpanElement>(null);
 
   const [geometry, setGeometry] = useState<{ caret: Box; selection: Box[] } | null>(null);
   useLayoutEffect(() => {
@@ -38,23 +39,15 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       range.collapse(true);
       let caretRect = range.getBoundingClientRect();
       if (!caretRect.height) { range.setEnd(node, Math.min(end + 1, node.textContent!.length)); caretRect = range.getBoundingClientRect(); }
-      // A collapsed range immediately before the sentinel can be placed inside
-      // the last glyph by browser text shaping. Measure the final grapheme's
-      // trailing edge for non-whitespace LTR text instead.
-      if (inlineEnd && end === value.length && /\S$/u.test(value)) {
-        const last = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)).at(-1)!;
-        range.setStart(node, last.index);
-        range.setEnd(node, end);
-        const rect = Array.from(range.getClientRects()).at(-1);
-        if (rect?.height) caretRect = new DOMRect(rect.right, rect.top, 0, rect.height);
-      }
+      // Use the browser's real inline layout at the end, rather than a text
+      // range edge: WebKit can report the latter inside the final glyph.
+      if (inlineEnd && end === value.length) caretRect = endMarker.current!.getBoundingClientRect();
       const caret = box(caretRect);
       range.setStart(node, start);
       range.setEnd(node, end);
       const selection = start === end ? [] : Array.from(range.getClientRects(), box);
       const last = selection.at(-1);
-      // WebKit rounds range endpoints differently from inline text layout.
-      // At the end, use the real inline anchor for a complete final highlight.
+      // Align a final selection highlight with the measured inline endpoint.
       if (last && inlineEnd && end === value.length && Math.abs(last.top - caret.top) < 1 && caret.left >= last.left) {
         last.width = caret.left - last.left;
       }
@@ -98,7 +91,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
 
   return <div ref={root} data-cursor-dragging={dragging || undefined} className={`relative ${className}`}>
     {/* One uninterrupted text run keeps wrapping stable as the caret moves. */}
-    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span>
+    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" style={{ display: "inline-block", width: 0, height: "1em", verticalAlign: "text-bottom" }} />
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
     {caret}
   </div>;
