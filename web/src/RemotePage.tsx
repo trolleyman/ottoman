@@ -6,9 +6,9 @@ import { useStore } from "./store";
 import { useCoalescedSlider } from "./useCoalescedSlider";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "./api";
 
-function RemoteVolume({ label, value, muted, onVolume, onMute, onTarget, brightness = false, onMode }: {
+function RemoteVolume({ label, value, onVolume, onTarget, brightness = false, onMode }: {
   brightness?: boolean; onMode?: () => void;
-  onTarget?: () => void; label: string; value: number; muted: boolean; onVolume: (value: number) => Promise<void>; onMute: () => void;
+  onTarget?: () => void; label: string; value: number; onVolume: (value: number) => Promise<void>;
 }) {
   const slider = useCoalescedSlider(value, onVolume);
   return <aside className="remote-volume flex w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-white/8 bg-white/3 py-2" aria-label={brightness ? "Remote brightness" : "Remote audio"}>
@@ -16,7 +16,6 @@ function RemoteVolume({ label, value, muted, onVolume, onMute, onTarget, brightn
     <span className="text-[10px] tabular-nums text-zinc-500">{slider.value}%</span>
     <input type="range" aria-label={`${label} ${brightness ? "brightness" : "volume"}`} min={0} max={100} value={slider.value} {...slider.dragProps} onChange={(event) => slider.set(Number(event.target.value))} className="remote-volume-slider min-h-0 flex-1 accent-blue-400" />
     {onMode && <button type="button" onClick={onMode} aria-label={brightness ? "Switch to volume" : "Switch to brightness"} className="p-2 text-zinc-300 hover:text-white">{brightness ? <Sun className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}</button>}
-    {!brightness && <button type="button" aria-label={`${muted ? "Unmute" : "Mute"} ${label}`} onClick={onMute} className="p-2 text-[10px] text-zinc-400 hover:text-white">{muted ? "Unmute" : "Mute"}</button>}
   </aside>;
 }
 
@@ -25,7 +24,7 @@ export function RemotePage(props: {
   connected: boolean; connecting: boolean; cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean; send: (message: TrackpadMessage) => void;
 }) {
-  const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, monitors, setSinkVolume, setSinkMute, setMonitorVolume, setMonitorMute, setMonitorBrightness } = useStore();
+  const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, monitors, setSinkVolume, setMonitorVolume, setMonitorBrightness } = useStore();
   const [settingsContainer, setSettingsContainer] = useState<HTMLDivElement | null>(null);
   const [brightnessMode, setBrightnessMode] = useState(false);
   const [brightnessTarget, setBrightnessTarget] = useState("");
@@ -41,8 +40,8 @@ export function RemotePage(props: {
   const sink = audioSinks.find((item) => item.default);
   const tvs = monitors.filter((item) => item.capabilities?.volume && item.tv_state?.paired);
   const outputs = [
-    ...tvs.map((tv, index) => ({ id: tv.edid, label: tvs.length > 1 ? `TV ${index + 1}` : "TV", value: tv.tv_state!.volume, muted: tv.tv_state!.muted, onVolume: (value: number) => setMonitorVolume(tv.edid, value), onMute: () => void setMonitorMute(tv.edid, !tv.tv_state!.muted) })),
-    ...(sink ? [{ id: sink.name, label: "PC", value: Math.round(sink.volume * 100), muted: sink.muted, onVolume: (value: number) => setSinkVolume(sink.name, value / 100), onMute: () => void setSinkMute(sink.name, !sink.muted) }] : []),
+    ...tvs.map((tv, index) => ({ id: tv.edid, label: tvs.length > 1 ? `TV ${index + 1}` : "TV", value: tv.tv_state!.volume, onVolume: (value: number) => setMonitorVolume(tv.edid, value) })),
+    ...(sink ? [{ id: sink.name, label: "PC", value: Math.round(sink.volume * 100), onVolume: (value: number) => setSinkVolume(sink.name, value / 100) }] : []),
   ];
   const outputIndex = Math.max(0, outputs.findIndex((item) => item.id === audioTarget));
   const audioOutput = outputs[outputIndex];
@@ -50,7 +49,7 @@ export function RemotePage(props: {
   const displayIndex = Math.max(0, displays.findIndex(item => item.edid === brightnessTarget));
   const display = displays[displayIndex];
   const isBrightness = !!display && (brightnessMode || !audioOutput);
-  const output = isBrightness ? { id: display.edid + "-brightness", label: displays.length > 1 ? `D${displayIndex + 1}` : "Screen", value: display.brightness != null && display.brightness >= 0 ? Math.min(100, display.brightness) : 50, muted: false, onVolume: (value: number) => setMonitorBrightness(display.edid, value), onMute: () => {} } : audioOutput;
+  const output = isBrightness ? { id: display.edid + "-brightness", label: displays.length > 1 ? `D${displayIndex + 1}` : "Screen", value: display.brightness != null && display.brightness >= 0 ? Math.min(100, display.brightness) : 50, onVolume: (value: number) => setMonitorBrightness(display.edid, value) } : audioOutput;
   return <main className="pc-remote bg-zinc-950 text-zinc-100">
     <header className="flex shrink-0 items-center gap-3 border-b border-white/8 pb-3">
       <a href="/" onClick={followAppLink} aria-label="Back to dashboard" className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /></a>
