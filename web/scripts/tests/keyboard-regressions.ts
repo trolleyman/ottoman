@@ -1,4 +1,5 @@
 import { createServer } from "vite";
+import { checkSettingsPreview } from "./settings-preview-checks";
 import { checkArrowRepeat } from "./arrow-repeat-checks";
 import { checkPredictionAndCursor } from "./prediction-cursor-checks";
 import { chromium } from "playwright";
@@ -207,6 +208,7 @@ try {
   await page.waitForTimeout(350);
   const passThroughMessages = await fixture("log") as { type: string; selectionOnly?: boolean }[];
   assert(passThroughMessages.some(message => message.type === "mousedown") && passThroughMessages.some(message => message.type === "mouseup") && !passThroughMessages.some(message => message.type === "textedit" && message.selectionOnly), "A tap over the default read-only preview must click the trackpad without moving the text caret");
+  await checkSettingsPreview(page, reset);
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   console.log("PASS: navigation, period undo, suggestion spacing, blank lines, settings preview, autocorrect, adaptive keys, held Shift, selection, scrolling, brightness, single/double taps and dragging");
 } finally { await browser.close(); await server.close(); }

@@ -374,7 +374,7 @@ function KeyboardSession({
   // The remote page owns its safe-area inset; a floating keyboard owns its own.
   return (
     <div ref={keyboardTouchRef} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border pb-2 remote-keyboard" : "pb-[max(8px,env(safe-area-inset-bottom))] fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
-      {settings.suggestionsAboveControls && !settingsOpen && <div className="mx-auto max-w-3xl px-2 pt-1.5">{suggestionBar}</div>}
+      {settings.suggestionsAboveControls && <div className="mx-auto max-w-3xl px-2 pt-1.5">{suggestionBar}</div>}
       <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
           modifier={Modifier.CTRL}
@@ -404,7 +404,7 @@ function KeyboardSession({
             </ModifierButton>
           </>
         )}
-        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility h-9 rounded-md border border-zinc-800 px-2 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
+        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
           onPress={() => { haptic(settings.haptics); setFnActive((active) => !active); }}
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
@@ -465,13 +465,13 @@ function KeyboardSession({
       </div>
 
       <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-0 px-1.5 sm:px-2 ${settings.tallerKeys ? (settings.suggestionsAboveControls ? "h-[264px] sm:h-[286px]" : "h-[300px] sm:h-[322px]") : (settings.suggestionsAboveControls ? "h-[216px] sm:h-[238px]" : "h-[252px] sm:h-[274px]")}`}>
+        {!settings.suggestionsAboveControls && suggestionBar}
         {settingsOpen ? (
           <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
             onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
             usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
         ) : (
           <>
-        {!settings.suggestionsAboveControls && suggestionBar}
         {mode === "emoji" && !emojiSearching ? (
           <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSelect={selectEmoji} /></Suspense>
         ) : (
