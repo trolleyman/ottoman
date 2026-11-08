@@ -122,8 +122,8 @@ Accepted suggestions and swipe words insert a trailing space. Punctuation remove
 erase icon above the preview clears its local display without deleting remote text.
 Hold **Q** for backtick in the British layout; symbol mode uses the same key positions.
 **Fn** exposes function, paging and media keys. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. A separate launcher button opens the desktop launcher.
-Enable **Taller keys** in keyboard settings for larger vertical touch targets.
-**Adaptive key sizes** optionally widens predicted next letters; **Debug key sizes** shows their boundaries and multipliers. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
+Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **?123** page.
+**Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It scales keys and their touch targets in both dimensions around fixed centers, capped at 20% growth; **Debug key sizes** shows their boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
 
 To drag a window, tap then touch again and move. A single tap waits 300 ms to distinguish it from this gesture; two stationary taps still double-click.
 
@@ -159,8 +159,7 @@ does not restart GDM or log out your desktop session.
 ## Focused text on the trackpad
 
 Open the trackpad keyboard settings and enable **Mirror focused text** to show
-an accessible desktop field's text, caret, and selection on the phone. The
-preview scrolls and accepts taps to position the caret. Spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Opening keyboard settings keeps the preview visible. Both Ottoman and Device keyboards can replace the
+an accessible desktop field's text, caret, and selection on the phone. Preview interaction is off by default, so touches pass through to the trackpad. Enable **Interact with text preview** to scroll inside it or tap to position the caret. The status dot sits beside the clear eraser button. Spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Holding and dragging space shows a smooth blue floating caret while the actual insertion position appears gray; releasing space restores the regular caret. Opening keyboard settings keeps the preview visible. Both Ottoman and Device keyboards can replace the
 native selection; local desktop edits and caret moves update the preview.
 Mirroring is off by default and uses the existing authenticated WebSocket.
 

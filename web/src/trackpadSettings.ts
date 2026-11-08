@@ -4,9 +4,11 @@ export interface KeyboardSettings {
   debugKeySizes: boolean;
   previewNavigation: boolean;
   spaceCursorSensitivity: number;
+  interactivePreview: boolean;
   mirrorFocusedText: boolean;
   keyboardLayout: "en-GB" | "en-US" | "auto";
   keyboardTheme: "dark" | "light" | "system";
+  tabKey: boolean;
   periodKey: boolean;
   commaKey: boolean;
   swipeTyping: boolean;
@@ -38,9 +40,11 @@ export const DEFAULT_SETTINGS: TrackpadSettings = {
   debugKeySizes: false,
   previewNavigation: true,
   spaceCursorSensitivity: 2,
+  interactivePreview: false,
   mirrorFocusedText: false,
   keyboardLayout: "en-GB",
   keyboardTheme: "dark",
+  tabKey: true,
   periodKey: true,
   commaKey: true,
   swipeTyping: true,
@@ -84,7 +88,7 @@ export function parseSettings(value: unknown): TrackpadSettings {
   const settings = { ...DEFAULT_SETTINGS };
   if (!value || typeof value !== "object" || Array.isArray(value)) return settings;
   const saved = value as Record<string, unknown>;
-  for (const key of ["autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "commaKey", "swipeTyping"] as const) {
+  for (const key of ["tabKey", "interactivePreview", "autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "periodKey", "commaKey", "swipeTyping"] as const) {
     if (typeof saved[key] === "boolean") settings[key] = saved[key];
   }
   for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES, { key: "spaceCursorSensitivity", min: 0.5, max: 5 } as const]) {

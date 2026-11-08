@@ -1014,6 +1014,16 @@ function TouchArea({
   const previewCursor = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionStart - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.min(...draftSelection)) : draftCursor;
   const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.max(...draftSelection)) : draftCursor;
 
+  const hasPreview = !!(preview || remote?.available || remote?.password) && draftVisible;
+  const previewStatus = <>
+    {!settings.mirrorFocusedText && <button type="button" aria-label="Enable focused text mirroring" onClick={() => onSettingsChange({ mirrorFocusedText: true })} className="pointer-events-auto rounded-md bg-zinc-950/80 px-2 py-1 text-[10px] text-blue-400">Enable preview</button>}
+    <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
+      title={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
+      data-native-text-status className="pointer-events-auto flex h-7 w-5 shrink-0 items-center justify-center">
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${!settings.mirrorFocusedText ? "bg-zinc-500" : remote?.password || remote?.protected ? "bg-amber-400" : remote?.available ? "bg-emerald-400" : "bg-zinc-500"}`} />
+    </span>
+  </>;
+
   return (
     <div className={docked ? "remote-input flex min-h-0 flex-1 flex-col gap-2" : "w-full md:max-w-sm md:shrink-0 flex flex-col gap-2"}>
       <div className={docked ? "flex min-h-28 flex-1 gap-2" : "contents"}>
@@ -1075,22 +1085,15 @@ function TouchArea({
             </div>
           )}
         </div>
-        {connected && <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-md border border-white/5 bg-zinc-950/80 px-2 py-1 text-[10px] text-zinc-400">
-          <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
-            title={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
-            data-native-text-status className="flex items-center gap-1.5">
-            <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${!settings.mirrorFocusedText ? "bg-zinc-500" : remote?.password || remote?.protected ? "bg-amber-400" : remote?.available ? "bg-emerald-400" : "bg-zinc-500"}`} />
-            Text preview{!settings.mirrorFocusedText && " off"}
-          </span>
-          {!settings.mirrorFocusedText && <button type="button" aria-label="Enable focused text mirroring" onClick={() => onSettingsChange({ mirrorFocusedText: true })} className="text-blue-400 hover:text-blue-300">Enable</button>}
-        </div>}
-        {connected && (preview || remote?.available || remote?.password) && draftVisible && (
+        {connected && !hasPreview && <div className="absolute bottom-3 right-16 z-20 flex items-center gap-1">{previewStatus}</div>}
+        {connected && hasPreview && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-1">
+              {previewStatus}
               <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
                 className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             </div>
-            <div data-preview-scroll className="pointer-events-auto min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
+            <div data-preview-scroll data-preview-interactive={settings.interactivePreview} className={`${settings.interactivePreview ? "pointer-events-auto" : "pointer-events-none"} min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md`}>
               <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
                 onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
                 onPointerUp={(event) => {

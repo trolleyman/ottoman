@@ -125,8 +125,8 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
             </div>
             {([
               ["Typing", [["Autocorrect", "autocorrect"], ["Double-space period", "doubleSpacePeriod"], ["Swipe typing", "swipeTyping"]]],
-              ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Navigate by preview lines", "previewNavigation"]]],
-              ["Key layout", [["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
+              ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Interact with text preview", "interactivePreview"], ["Navigate by preview lines", "previewNavigation"]]],
+              ["Key layout", [["Tab beside space", "tabKey"], ["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
               ["Prediction & feedback", [["Adaptive key sizes", "adaptiveKeys"], ["Debug key sizes", "debugKeySizes"], ["Key haptics", "haptics"]]],
             ] as const).map(([title, fields]) => <fieldset key={title} className="mb-3 shrink-0">
               <legend className="mb-2 text-xs font-semibold text-zinc-400">{title}</legend>
@@ -140,7 +140,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
               <input aria-label="Space cursor sensitivity" type="range" min={0.5} max={5} step={0.25} value={settings.spaceCursorSensitivity} onChange={event => onSettingsChange({ spaceCursorSensitivity: Number(event.target.value) })} className="w-28 accent-blue-400" />
               <output>{settings.spaceCursorSensitivity}×</output>
             </label>
-            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Modifiers: tap for the next key, double-tap to lock, or hold while typing. Preview navigation follows the lines shown above the keyboard. Adaptive sizing widens predicted next letters; debug shows each key’s size multiplier.</p>
+            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Turning off Tab beside space moves Tab to Shift’s position on the ?123 page. Preview interaction enables tapping and scrolling inside the preview; with it off, touches control the trackpad beneath. Modifiers: tap for the next key, double-tap to lock, or hold while typing. Preview navigation follows the lines shown above the keyboard. Adaptive sizing scales predicted next keys around fixed centers; debug shows each key’s actual size multiplier.</p>
             {!supportsHaptics() && <p className="mt-2 text-[11px] leading-4 text-zinc-400">This browser does not support key vibration. Press previews and scroll feedback stay enabled. The device keyboard uses your phone’s keyboard feedback settings.</p>}
             <div className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
               Gesture timing
