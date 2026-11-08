@@ -178,9 +178,9 @@ export function Key({
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
+      <span data-key-visual className="pointer-events-none absolute inset-0 flex items-center justify-center" style={{ transform: settings.debugKeySizes || scale === 1 ? undefined : `scale(${1 / scale})`, transformOrigin: "center" }}>
       <span aria-hidden="true" className={`key-face absolute inset-[2px] rounded-md border border-white/10 bg-zinc-600/95 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] ${pressed && !swipeActive ? "ring-2 ring-blue-400/60" : ""}`} />
       <span className="relative">{label ?? definition.key}</span>
-      {settings.debugKeySizes && <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 border border-amber-400/70 text-left text-[8px] text-amber-300">{scale.toFixed(2)}×</span>}
       {settings.symbolHints && definition.alt && (
         <span className="custom-keyboard-hint absolute right-1.5 top-1 text-[9px] font-semibold text-zinc-300/55">
           {definition.alt}
@@ -193,6 +193,8 @@ export function Key({
           <span className="absolute -bottom-1.5 h-3 w-3 rotate-45 rounded-sm bg-inherit" />
         </span>
       )}
+      </span>
+      {settings.debugKeySizes && <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 border border-amber-400/70 text-left text-[8px] text-amber-300">{scale.toFixed(2)}×</span>}
     </button>
   );
 }

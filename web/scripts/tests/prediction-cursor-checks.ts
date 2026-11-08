@@ -29,22 +29,39 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const normal = await rectangles();
   for (let i = 0; i < normal.length; i++) assert(Math.abs(normal[i].x - enlarged[i].x) < 0.1 && Math.abs(normal[i].y - enlarged[i].y) < 0.1, "Predictions must not move any key center");
+  const normalFaces = await page.locator("[data-letter] .key-face").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number }));
   const original = normal.find(point => point.letter === grown.letter)!;
   assert(grown.width > original.width && grown.height > original.height, "Keys must grow in both dimensions");
   assert(Math.abs(grown.width / original.width - grown.height / original.height) < 0.01, "Key growth must use the same scale horizontally and vertically");
   await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
   await page.getByRole("switch", { name: "Adaptive key sizes", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Debug key sizes", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  const quietFaces = await page.locator("[data-letter] .key-face").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number }));
+  for (let index = 0; index < normalFaces.length; index++) for (const axis of ["x", "y", "width", "height"] as const) {
+    assert(Math.abs(normalFaces[index][axis] - quietFaces[index][axis]) < 0.1, "With debug off, adaptive sizing must not change any visible key face");
+  }
+  assert(Number(await key(grown.letter!).getAttribute("data-key-scale")) > 1, "Invisible adaptive touch targets must remain enlarged");
+  await page.screenshot({ path: "/tmp/adaptive-hit-targets-normal@2x.png" });
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await page.getByRole("switch", { name: "Debug key sizes", exact: true }).click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  const debugFace = await key(grown.letter!).locator(".key-face").boundingBox();
+  const baselineFace = normalFaces[normal.findIndex(point => point.letter === grown.letter)];
+  assert(debugFace!.width > baselineFace.width && debugFace!.height > baselineFace.height, "Debug mode must expose the enlarged key area visually");
+  await page.screenshot({ path: "/tmp/adaptive-hit-targets-debug@2x.png" });
   await reset("HEL");
   assert(Number(await key(grown.letter!).getAttribute("data-key-scale")) > 1, "Uppercase prefixes must still enlarge predicted letters");
   const shift = page.getByRole("button", { name: "Shift", exact: true });
   const controlStyle = await page.getByRole("button", { name: "Function keys", exact: true }).evaluate(element => ({ background: getComputedStyle(element).backgroundColor, text: getComputedStyle(element).color, border: getComputedStyle(element).borderColor }));
-  for (const button of [page.getByRole("button", { name: "Control", exact: true }), page.getByRole("button", { name: /^(Super|Windows|Command)$/ }), page.getByRole("button", { name: /^(Alt|Option)$/ })]) {
+  for (const button of [page.getByRole("button", { name: "Control", exact: true }), page.getByRole("button", { name: /^(Super|Windows|Command)$/ }), page.getByRole("button", { name: /^(Alt|Option)$/ }), page.getByRole("button", { name: "Open desktop launcher", exact: true })]) {
     const color = await button.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, text: getComputedStyle(element).color, border: getComputedStyle(element).borderColor }));
-    assert(JSON.stringify(color) === JSON.stringify(controlStyle), "Ctrl, Super/Windows and Alt must match Fn styling");
+    assert(JSON.stringify(color) === JSON.stringify(controlStyle), "Ctrl, Super/Windows, Alt and the standalone launcher must match Fn styling");
   }
   await shift.click();
-  assert(await key(grown.letter!).locator(":scope > span.relative").textContent() === grown.letter!.toUpperCase(), "Shift must show the uppercase predicted letter");
+  assert(await key(grown.letter!).locator("[data-key-visual] > span.relative").textContent() === grown.letter!.toUpperCase(), "Shift must show the uppercase predicted letter");
   await key(grown.letter!).click();
 
   for (const value of ["word", "office", "W", "hello\nword", "emoji 👍", "é", "word.", "word ", "word\n"]) {
@@ -58,9 +75,9 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
       range.setEnd(node, value.length + (value.endsWith("\n") ? 1 : 0));
       const rect = range.getBoundingClientRect();
       const caret = element.querySelector("[data-preview-caret]")!.getBoundingClientRect();
-      return Math.abs(caret.left - (value.endsWith("\n") ? rect.left : rect.right));
+      return { x: Math.abs(caret.left - (value.endsWith("\n") ? rect.left : rect.right)), y: Math.abs(caret.top - rect.top), height: Math.abs(caret.height - rect.height) };
     });
-    assert(distance < 1, `End caret must follow the final character: ${JSON.stringify(value)}, distance ${distance}`);
+    assert(distance.x < 1 && distance.y < 1 && distance.height < 1, `End caret must match the glyph edge, height and baseline: ${JSON.stringify({ value, distance })}`);
   }
   await reset("abcdefghij", 0);
   await page.evaluate("window.savedCaret = document.querySelector('[data-preview-caret]')");

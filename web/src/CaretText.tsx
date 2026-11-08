@@ -41,7 +41,19 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       if (!caretRect.height) { range.setEnd(node, Math.min(end + 1, node.textContent!.length)); caretRect = range.getBoundingClientRect(); }
       // Use the browser's real inline layout at the end, rather than a text
       // range edge: WebKit can report the latter inside the final glyph.
-      if (inlineEnd && end === value.length) caretRect = endMarker.current!.getBoundingClientRect();
+      if (inlineEnd && end === value.length) {
+        // The marker supplies only x. Its inline-box metrics are not the font's
+        // glyph metrics and must never determine caret height or baseline.
+        let vertical = caretRect;
+        if (value && !value.endsWith("\n")) {
+          const last = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)).at(-1)!;
+          range.setStart(node, last.index); range.setEnd(node, end);
+          const glyph = Array.from(range.getClientRects()).at(-1);
+          if (glyph?.height) vertical = glyph;
+        }
+        const marker = endMarker.current!.getBoundingClientRect();
+        caretRect = new DOMRect(marker.left, vertical.top, 0, vertical.height);
+      }
       const caret = box(caretRect);
       range.setStart(node, start);
       range.setEnd(node, end);
@@ -91,7 +103,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
 
   return <div ref={root} data-cursor-dragging={dragging || undefined} className={`relative ${className}`}>
     {/* One uninterrupted text run keeps wrapping stable as the caret moves. */}
-    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" style={{ display: "inline-block", width: 0, height: "1em", verticalAlign: "text-bottom" }} />
+    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" style={{ display: "inline-block", width: 0, height: 0 }} />
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
     {caret}
   </div>;
