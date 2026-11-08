@@ -29,7 +29,7 @@ import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
 import { keyboardRows, resolveKeyboardLayout } from "./keyboardData";
 import { nextKeyWeights } from "./keyboardEditing";
-import { currentWord as getCurrentWord, matchWordCase } from "./wordPrediction";
+import { currentWord as getCurrentWord, matchWordCase, predictCommonWords } from "./wordPrediction";
 import { searchSymbols } from "./symbolData";
 import { CaretText } from "./CaretText";
 import { useSwipeTyping } from "./useSwipeTyping";
@@ -331,7 +331,7 @@ function KeyboardSession({
   };
 
   const canPredict = !sensitiveInput && !modifiers.some(modifier => modifier !== Modifier.SHIFT);
-  const predictions = useMemo(() => canPredict ? predictor?.(predictionText) ?? [] : [], [canPredict, predictor, predictionText]);
+  const predictions = useMemo(() => canPredict ? (predictor ?? predictCommonWords)(predictionText) : [], [canPredict, predictor, predictionText]);
   const keyWeights = settings.adaptiveKeys && !sensitiveInput && mode === "letters" && !modifiers.some(modifier => modifier !== Modifier.SHIFT) ? nextKeyWeights(currentWord, predictions) : {};
 
   const acceptedWord = selectedWord.context === textContext && textBeforeCursor.endsWith(selectedWord.word + " ") ? selectedWord.word : "";

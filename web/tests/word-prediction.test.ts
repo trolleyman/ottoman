@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { createWordPredictor, currentWord, matchWordCase } from "../src/wordPrediction";
+import { createAutocorrect } from "../src/keyboardEditing";
+import { createWordPredictor, currentWord, matchWordCase, predictCommonWords } from "../src/wordPrediction";
 
 describe("word predictions", () => {
   it("keeps frequency order, excludes exact matches and invalid vocabulary", () => {
@@ -49,4 +50,26 @@ it("keeps next-word choices populated after spaces and sentence boundaries", () 
   expect(predict("thank ")[0]).toBe("you");
   expect(predict("unfamiliarword ")).toEqual(["the", "and", "to"]);
   expect(predict("sentence. ")).toEqual(["I", "The", "It"]);
+});
+
+it("completes vocabulary from this field even without an exact phrase match", () => {
+  const predict = createWordPredictor(["other", "often", "only", "the", "key"]);
+  expect(predict("Ottoman connects my devices. I use Ottoman daily. Open Ot")[0]).toBe("Ottoman");
+  expect(predict("Zanzibar is a destination. Later we discussed zan")[0]).toBe("zanzibar");
+  expect(predict("Open Ot")[0]).toBe("Other");
+});
+
+it("offers typo corrections only when ordinary completions are exhausted", () => {
+  const words = ["keyboard", "hello", "world"];
+  const predict = createWordPredictor(words, createAutocorrect(words));
+  expect(predict("keynoard")).toEqual(["keyboard"]);
+  expect(predict("Keynoard")).toEqual(["Keyboard"]);
+  expect(predict("hel")[0]).toBe("hello");
+  expect(predict("xyzzy")).toEqual([]);
+});
+
+it("has useful next-word choices before the full dictionary is available", () => {
+  expect(predictCommonWords("")).toEqual(["I", "The", "It"]);
+  expect(predictCommonWords("thank ")[0]).toBe("you");
+  expect(predictCommonWords("unfamiliarword ")).toHaveLength(3);
 });
