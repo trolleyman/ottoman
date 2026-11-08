@@ -172,7 +172,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await bar.getByRole("button").nth(1).click();
   await page.waitForTimeout(60);
   assert(sent.slice(beforeCompletion).filter(({ message }) => message.type === "keydown" && message.key === "Backspace").length === 3, "Completion must replace only the typed prefix");
-  assert(await bar.getByRole("button", { name: completions[1], exact: true }).getAttribute("aria-pressed") === "true", "The inserted suggestion must stay visibly selected");
+  assert(await bar.getByRole("button").count() > 0 && await bar.locator("[aria-pressed], svg").count() === 0, "Accepted words must show next-word suggestions without confirmation indicators");
   assert(await bar.getByRole("button").first().evaluate((element) => getComputedStyle(element).borderStyle) === "solid", "Suggestions must retain a subtle boundary");
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
 
@@ -181,7 +181,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await bar.getByRole("button", { name: "don't", exact: true }).click();
   await page.waitForTimeout(60);
   assert(textMessages().slice(beforeContraction).some(({ message }) => message.type === "text" && message.text === "don't "), "A contraction suggestion must insert its apostrophe");
-  assert(await bar.getByRole("button", { name: "don't", exact: true }).getAttribute("aria-pressed") === "true", "Chosen contraction must remain highlighted");
+  assert(await bar.getByRole("button").count() > 0 && await bar.locator("[aria-pressed], svg").count() === 0, "Accepted contractions must show next-word suggestions without a tick");
   await page.getByRole("button", { name: "Clear preview", exact: true }).click();
 
   const home = page.getByRole("button", { name: "Home", exact: true });

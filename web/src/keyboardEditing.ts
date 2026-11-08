@@ -38,9 +38,8 @@ export function spaceEdit(before: string, value: string, doublePeriod: boolean, 
 
 export function nextKeyWeights(prefix: string, predictions: readonly string[]): Record<string, number> {
   const weights: Record<string, number> = {};
-  if (!prefix) return weights;
   predictions.forEach((word, index) => {
-    if (!word.toLowerCase().startsWith(prefix.toLowerCase())) return;
+    if (!word.toLowerCase().startsWith(prefix.toLowerCase().replaceAll("’", "'"))) return;
     const letter = word[prefix.length]?.toLowerCase();
     if (letter && /^[a-z]$/.test(letter)) weights[letter] = Math.min(1.8, (weights[letter] ?? 1) + 0.6 / (index + 1));
   });

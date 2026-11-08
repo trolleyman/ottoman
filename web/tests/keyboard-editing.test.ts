@@ -52,7 +52,8 @@ test("predicted next letters widen within bounds and options persist", () => {
   const weights = nextKeyWeights("hel", ["hello", "help", "helping"]);
   expect(weights.l).toBeGreaterThan(1);
   expect(weights.p).toBeLessThanOrEqual(1.8);
-  expect(nextKeyWeights("", ["hello"])).toEqual({});
+  expect(nextKeyWeights("", ["hello"]).h).toBeGreaterThan(1);
+  expect(nextKeyWeights("HEL", ["HELLO"]).l).toBeGreaterThan(1);
   expect(parseSettings({}).autocorrect).toBe(false);
   const saved = parseSettings({ autocorrect: true, adaptiveKeys: true, debugKeySizes: true, previewNavigation: false, spaceCursorSensitivity: 100 });
   expect(saved.autocorrect && saved.adaptiveKeys && saved.debugKeySizes).toBe(true);

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowBigUp,
   ArrowDown,
@@ -8,7 +8,6 @@ import {
   ArrowUp,
   ChevronUp,
   Command,
-  Check,
   CornerDownLeft,
   Delete,
   Move,
@@ -322,11 +321,13 @@ function KeyboardSession({
     savePreference("ottoman-recent-emoji", next);
   };
 
-  const keyWeights = settings.adaptiveKeys && !sensitiveInput && mode === "letters" && !modifiers.some(modifier => modifier !== Modifier.SHIFT) ? nextKeyWeights(currentWord, predictor?.(currentWord) ?? []) : {};
+  const canPredict = !sensitiveInput && !modifiers.some(modifier => modifier !== Modifier.SHIFT);
+  const predictions = useMemo(() => canPredict ? predictor?.(textBeforeCursor) ?? [] : [], [canPredict, predictor, textBeforeCursor]);
+  const keyWeights = settings.adaptiveKeys && !sensitiveInput && mode === "letters" && !modifiers.some(modifier => modifier !== Modifier.SHIFT) ? nextKeyWeights(currentWord, predictions) : {};
 
   const acceptedWord = selectedWord.context === textContext && textBeforeCursor.endsWith(selectedWord.word + " ") ? selectedWord.word : "";
   const wordChoices = sensitiveInput || modifiers.some((modifier) => modifier !== Modifier.SHIFT) ? []
-    : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...(predictor?.(currentWord) ?? []).slice(0, 2)] : acceptedWord ? [acceptedWord] : [];
+    : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...predictions.slice(0, 2)] : predictions.length ? predictions : acceptedWord ? [acceptedWord] : [];
 
   const suggestionBar = (
         <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
@@ -335,17 +336,15 @@ function KeyboardSession({
           )) : mode === "letters" ? (
             wordChoices.map((word) => (
               <ActionKey type="button" key={word}
-                aria-pressed={selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && (currentWord || acceptedWord).toLowerCase() === word.toLowerCase()}
                 onPress={() => {
                 setSelectedWord({ word: matchWordCase(word, currentWord), context: textContext });
                 if (swipe.candidates.length) swipe.select(word);
-                else if (!acceptedWord) {
+                else {
                   onReplaceText(currentWord, matchWordCase(word, currentWord) + " ", true);
                   swipe.clear();
                 }
                 haptic(settings.haptics);
-              }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/5 bg-white/[0.02] px-2 text-sm text-zinc-300 hover:bg-white/5 aria-pressed:border-blue-400/60 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-200">
-                {selectedWord.context === textContext && selectedWord.word.toLowerCase() === word.toLowerCase() && (currentWord || acceptedWord).toLowerCase() === word.toLowerCase() && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
+              }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/5 bg-white/[0.02] px-2 text-sm text-zinc-300 hover:bg-white/5">
                 <span className="truncate">{matchWordCase(word, currentWord)}</span>
               </ActionKey>
             ))
