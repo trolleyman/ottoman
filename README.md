@@ -125,7 +125,7 @@ Hold **Q** for backtick in the British layout; symbol mode uses the same key pos
 Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **?123** page.
 **Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It scales keys and their touch targets in both dimensions around fixed centers, capped at 20% growth; **Debug key sizes** shows their boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
 
-To drag a window, tap then touch again and move. A single tap waits 300 ms to distinguish it from this gesture; two stationary taps still double-click.
+Taps and stationary double-taps click immediately. To drag a window, tap then touch again and hold or move. The second press waits until 600 ms after the first tap to avoid the desktop treating it as a header double-click; movement during that guard is buffered.
 
 ## Linux login and lock screens
 
