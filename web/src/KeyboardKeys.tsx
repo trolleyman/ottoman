@@ -5,8 +5,10 @@ import { Modifier } from "./api";
 import type { KeyboardSettings } from "./trackpadSettings";
 import type { KeyDefinition } from "./keyboardData";
 
-export function ActionKey({ onPress, onHold, holdDelayMs = 400, preview, children, className = "", ...props }: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>,
-  "onClick" | "onPointerDown" | "onPointerUp" | "onPointerCancel" | "onLostPointerCapture"> & { onPress: () => void; onHold?: () => void; holdDelayMs?: number; preview?: React.ReactNode }) {
+export function ActionKey({ onPress, onHold, holdDelayMs = 400, repeat = false, preview, children, className = "", ...props }: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "onClick" | "onPointerDown" | "onPointerUp" | "onPointerCancel" | "onLostPointerCapture"> & { onPress: () => void; onHold?: () => void; holdDelayMs?: number; repeat?: boolean; preview?: React.ReactNode }) {
+  const press = useRef(onPress);
+  useEffect(() => { press.current = onPress; }, [onPress]);
   const pointer = useRef<number | null>(null);
   const [pressed, setPressed] = useState(false);
   const [held, setHeld] = useState(false);
@@ -28,7 +30,11 @@ export function ActionKey({ onPress, onHold, holdDelayMs = 400, preview, childre
       pointer.current = event.pointerId;
       setPressed(true);
       event.currentTarget.setPointerCapture(event.pointerId);
-      if (onHold) holdTimer.current = setTimeout(() => {
+      if (repeat) {
+        onPress();
+        const tick = () => { press.current(); holdTimer.current = setTimeout(tick, 60); };
+        holdTimer.current = setTimeout(tick, holdDelayMs);
+      } else if (onHold) holdTimer.current = setTimeout(() => {
         didHold.current = true;
         setHeld(true);
         onHold();
@@ -37,7 +43,7 @@ export function ActionKey({ onPress, onHold, holdDelayMs = 400, preview, childre
     onPointerUp={(event) => {
       if (pointer.current !== event.pointerId) return;
       cancel();
-      if (!didHold.current) onPress();
+      if (!didHold.current && !repeat) onPress();
     }}
     onPointerCancel={cancel}
     onLostPointerCapture={cancel}
@@ -227,10 +233,12 @@ export function NavigationKey({
   label,
   children,
   onPress,
+  repeat = false,
 }: {
   label: string;
   children: React.ReactNode;
   onPress: () => void;
+  repeat?: boolean;
 }) {
   return (
     <ActionKey
@@ -238,6 +246,7 @@ export function NavigationKey({
       aria-label={label}
       preview={children}
       onPress={onPress}
+      repeat={repeat}
       className="custom-keyboard-utility flex h-8 min-w-0 flex-1 touch-none select-none items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] font-semibold text-zinc-400 shadow-sm hover:bg-zinc-800 hover:text-zinc-100 active:translate-y-px"
     >
       {children}

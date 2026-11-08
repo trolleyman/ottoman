@@ -121,7 +121,7 @@ categories share one continuous list with icon shortcuts. Contractions such as
 Accepted suggestions and swipe words insert a trailing space. Punctuation removes that automatic separator. Optional **Autocorrect** (off by default) corrects common one-letter errors when you enter a space or punctuation, including `keynoard` → `keyboard`. The small
 erase icon above the preview clears its local display without deleting remote text.
 Hold **Q** for backtick in the British layout; symbol mode uses the same key positions.
-**Fn** exposes function, paging and media keys. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. A separate launcher button opens the desktop launcher.
+**Fn** exposes function, paging and media keys. Hold an arrow key to repeat navigation; release it to stop. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. A separate launcher button opens the desktop launcher.
 Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **?123** page.
 **Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It scales keys and their touch targets in both dimensions around fixed centers, capped at 20% growth; **Debug key sizes** shows their boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
 

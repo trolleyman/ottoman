@@ -458,7 +458,7 @@ function KeyboardSession({
           { key: "ArrowDown", label: "Arrow down", Icon: ArrowDown },
           { key: "ArrowRight", label: "Arrow right", Icon: ArrowRight },
           { key: "Delete", label: "Delete", Icon: Delete },
-        ]).map(({ key, label, text, Icon }) => <NavigationKey key={key} label={label} onPress={() => navigate(key)}>
+        ]).map(({ key, label, text, Icon }) => <NavigationKey key={key} label={label} repeat={key.startsWith("Arrow")} onPress={() => navigate(key)}>
           {Icon ? <Icon className={`h-4 w-4 ${key === "Delete" ? "rotate-180" : ""}`} /> : text}
         </NavigationKey>)}
 
