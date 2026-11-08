@@ -127,7 +127,7 @@ async function main() {
     await waitForServer(`${base}/health`)
 
     // 5. Capture each shot.
-    browser = await chromium.launch()
+    browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH })
     let n = 0
     for (const shot of SHOTS) {
       n++
@@ -276,7 +276,7 @@ async function main() {
         await openKeyboard.focus()
         await page.getByRole('button', { name: 'Keyboard settings' }).click()
         if (shot.settingsTiming) {
-          await page.getByText('Timing', { exact: true }).scrollIntoViewIfNeeded()
+          await page.getByText('Gesture timing', { exact: true }).scrollIntoViewIfNeeded()
           await page.getByLabel('Space cursor hold milliseconds').fill('500')
           await page.getByLabel(/Trackpad\. Tap to click/).evaluate((element) =>
             element.scrollIntoView({ block: 'start' }),

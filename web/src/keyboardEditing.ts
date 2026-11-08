@@ -13,6 +13,7 @@ export class KeyboardModifiers {
     if (!hold) return;
     this.held.delete(key);
     if (cancelled || hold.used) { this.taps.delete(key); return; }
+    if (hold.previous === "locked") { this.states.delete(key); this.taps.delete(key); return; }
     if (now - (this.taps.get(key) ?? -Infinity) < doubleTapMs) {
       this.states.set(key, "locked");
       this.taps.delete(key);

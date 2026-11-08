@@ -15,6 +15,9 @@ test("all modifiers support one-shot, double-tap lock, hold and cancellation", (
     state.consume(); expect(state.active).toEqual([key]);
     state.press(key); state.release(key, 1800, 350);
     expect(state.active).toEqual([]);
+    state.press(key); state.release(key, 1850, 350);
+    expect(state.states.get(key)).toBe("once");
+    state.consume();
     state.press(key); state.consume(); state.consume();
     expect(state.active).toEqual([key]);
     state.release(key, 2500, 350); expect(state.active).toEqual([]);

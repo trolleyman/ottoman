@@ -110,7 +110,7 @@ Settings are saved to `magefiles/deploy.toml` for future deployments.
 
 Open **PC remote** from the dashboard, or bookmark `/remote`. It keeps the trackpad,
 scroll control and docked keyboard together with separate PC/TV volume controls
-and display layouts. Audio-output selection stays on the dashboard. Use the
+and display layouts. Tap the slider’s volume icon to switch to monitor brightness; tap the output label to choose another output or display. Use the
 fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
 
 Focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
@@ -118,11 +118,14 @@ shows local word completions and swipe alternatives, or searches emoji and symbo
 Search results replace the number row; emoji
 categories share one continuous list with icon shortcuts. Contractions such as
 “don’t” and “isn’t” are supported in completions and swipe alternatives.
-Swipes leave no trailing space; the next word gets a leading separator. The small
+Accepted suggestions and swipe words insert a trailing space. Punctuation removes that automatic separator. Optional **Autocorrect** (off by default) corrects common one-letter errors when you enter a space or punctuation, including `keynoard` → `keyboard`. The small
 erase icon above the preview clears its local display without deleting remote text.
-Hold **V** for backtick; its symbol-mode key is in the same position.
-Print Screen, backtick and other extra keys are in the keyboard's **…** menu.
+Hold **Q** for backtick in the British layout; symbol mode uses the same key positions.
+**Fn** exposes function, paging and media keys. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. A separate launcher button opens the desktop launcher.
 Enable **Taller keys** in keyboard settings for larger vertical touch targets.
+**Adaptive key sizes** optionally widens predicted next letters; **Debug key sizes** shows their boundaries and multipliers. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
+
+To drag a window, tap then touch again and move. A single tap waits 300 ms to distinguish it from this gesture; two stationary taps still double-click.
 
 ## Linux login and lock screens
 
@@ -157,7 +160,7 @@ does not restart GDM or log out your desktop session.
 
 Open the trackpad keyboard settings and enable **Mirror focused text** to show
 an accessible desktop field's text, caret, and selection on the phone. The
-preview stays passive. Both Ottoman and Device keyboards can replace the
+preview scrolls and accepts taps to position the caret. Spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Opening keyboard settings keeps the preview visible. Both Ottoman and Device keyboards can replace the
 native selection; local desktop edits and caret moves update the preview.
 Mirroring is off by default and uses the existing authenticated WebSocket.
 

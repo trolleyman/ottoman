@@ -59,6 +59,9 @@ function TouchArea({
   const [remote, setRemote] = useState<TrackpadMessageTextContext | null>(null);
   const remoteModel = useRef<RemoteText | null>(null);
   if (remoteModel.current == null) { remoteModel.current = new RemoteText(send); }
+  const navigationAnchor = useRef<number | null>(null);
+  const navigationX = useRef<number | undefined>(undefined);
+  const typingMemory = useRef<{ field?: string; period: number | null; suppress: boolean; space: number | null }>({ period: null, suppress: false, space: null });
   const composing = useRef(false);
   const compositionContext = useRef<{fieldId: string; revision: number} | null>(null);
   const [compositionValue, setCompositionValue] = useState<string | null>(null);
@@ -81,6 +84,9 @@ function TouchArea({
       previous.selectionStart !== next.selectionStart || previous.selectionEnd !== next.selectionEnd ||
       previous.windowStart !== next.windowStart || previous.password !== next.password || previous.protected !== next.protected)) {
       setTypingContext((value) => value + 1);
+      navigationAnchor.current = null;
+      navigationX.current = undefined;
+      if (previous.value !== next.value) typingMemory.current.space = null;
     }
     setRemote(next);
   }, [textContext, settings.mirrorFocusedText, connected]);
@@ -115,9 +121,6 @@ function TouchArea({
   }, []);
   const consumeModifiers = useCallback(() => { modifierState.current.consume(); syncModifiers(); }, [syncModifiers]);
   const previewRef = useRef<HTMLDivElement>(null);
-  const navigationAnchor = useRef<number | null>(null);
-  const navigationX = useRef<number | undefined>(undefined);
-  const typingMemory = useRef<{ field?: string; period: number | null; suppress: boolean; space: number | null }>({ period: null, suppress: false, space: null });
   const tapClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
@@ -142,6 +145,7 @@ function TouchArea({
   // moving then quickly moving again keeps moving instead of starting a drag.
   const lastTapEndPos = useRef<{ x: number; y: number } | null>(null);
   const lastGestureAllowsDrag = useRef(false);
+  const gestureMoved = useRef(false);
   const scrollVelocity = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const inertiaFrame = useRef(0);
   const lastScrollTime = useRef(0);
@@ -409,6 +413,7 @@ function TouchArea({
     if (view?.available && view.editable && modifiers.length === 0) {
       replaceRemote(view.selectionStart === view.selectionEnd ? view.windowStart + previousCharacterOffset(view.value, position - view.windowStart) : position, view.selectionEnd, "");
     } else if (!view?.available && modifiers.length === 0) {
+      if (position === 0 && !draftSelection) sendKeyPress("Backspace");
       editFallback(draftSelection ? Math.min(...draftSelection) : previousCharacterOffset(draftRef.current, position), draftSelection ? Math.max(...draftSelection) : position, "");
     } else {
       sendKeyPress("Backspace", modifiers);
@@ -531,6 +536,7 @@ function TouchArea({
 
     twoFingerRef.current = false;
     const touch = e.touches[0];
+    gestureMoved.current = false;
     touchStartTime.current = performance.now();
     cursorVelocity.current = { x: 0, y: 0 };
     lastCursorTime.current = performance.now();
@@ -557,6 +563,12 @@ function TouchArea({
       tapClickTimer.current = null;
       isDragging.current = true;
       send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
+    } else if (tapClickTimer.current) {
+      // Flush a pending tap before starting an unrelated gesture, keeping only
+      // one owned timer and preserving the order of distant clicks.
+      clearTimeout(tapClickTimer.current);
+      tapClickTimer.current = null;
+      send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
     }
 
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
@@ -580,10 +592,10 @@ function TouchArea({
       // settle. Start deltas at the first move, avoiding a spurious first jump.
       if (!scrollPrimed.current) {
         scrollPrimed.current = true;
+        twoFingerMoved.current = Math.hypot(midX - twoFingerLastX.current, midY - twoFingerLastY.current) > 4;
         twoFingerLastX.current = midX;
         twoFingerLastY.current = midY;
         lastScrollTime.current = now;
-        twoFingerMoved.current = true;
         return;
       }
       const dx = (midX - twoFingerLastX.current) * settings.scrollSensitivity;
@@ -618,6 +630,7 @@ function TouchArea({
     }
 
     const touch = e.touches[0];
+    if (touchStartPos.current && Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) >= 10) gestureMoved.current = true;
     if (lastTouchRef.current) {
       const rawDx = touch.clientX - lastTouchRef.current.x;
       const rawDy = touch.clientY - lastTouchRef.current.y;
@@ -707,7 +720,7 @@ function TouchArea({
       // A stationary second tap is an actual double click. A moved/held second
       // contact is one continuous press, so window headers remain draggable.
       const touch = e.changedTouches[0];
-      if (touchStartPos.current && now - touchStartTime.current < 200 &&
+      if (!gestureMoved.current && touchStartPos.current && now - touchStartTime.current < 200 &&
         Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) < 10) {
         send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
       }
@@ -751,7 +764,7 @@ function TouchArea({
       // the next quick touch to become a click-and-drag. A longer or moved
       // gesture was a cursor move, which must not arm a drag.
       let wasTap = false;
-      if (touchStartPos.current && now - touchStartTime.current < 200) {
+      if (!gestureMoved.current && touchStartPos.current && now - touchStartTime.current < 200) {
         const touch = e.changedTouches[0];
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
@@ -1121,6 +1134,7 @@ function TouchArea({
               if (!view?.available) editFallback(position - characterCount(previous), position, next);
               else { for (let i = 0; i < characterCount(previous); i++) sendKeyPress("Backspace"); send({ type: "text", text: next }); updateNativePreview(position - characterCount(previous), position, next); }
             }
+            typingMemory.current.field = view?.fieldId;
             typingMemory.current.space = suggested ? position - characterCount(previous) + characterCount(next) : null;
             typingMemory.current.suppress = false;
             consumeModifiers();

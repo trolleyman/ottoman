@@ -12,6 +12,7 @@ import {
   CornerDownLeft,
   Delete,
   Move,
+  LayoutGrid,
   SkipBack,
   Play,
   Pause,
@@ -395,7 +396,7 @@ function KeyboardSession({
             </ModifierButton>
           </>
         )}
-        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility h-9 rounded-md border border-zinc-800 px-2 text-xs text-zinc-400">⌘</ActionKey>
+        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility h-9 rounded-md border border-zinc-800 px-2 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
           onPress={() => { haptic(settings.haptics); setFnActive((active) => !active); }}
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>

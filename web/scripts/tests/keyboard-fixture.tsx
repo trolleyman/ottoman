@@ -1,12 +1,18 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { Trackpad } from "../../src/Trackpad";
+import { RemotePage } from "../../src/RemotePage";
+import { useStore } from "../../src/store";
 import { DEFAULT_SETTINGS } from "../../src/trackpadSettings";
 import { codePointOffset } from "../../src/remoteText";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "../../src/api";
 import "../../src/index.css";
 
 const initial: TrackpadMessageTextContext = { type: "textcontext", fieldId: "fixture", revision: 1, value: "hello world", selectionStart: 11, selectionEnd: 11, windowStart: 0, available: true, editable: true, multiline: true, password: false, protected: false };
+useStore.setState({
+  monitors: [{ edid: "fixture-screen", port: "DP-1", name: "Screen", manufacturer: "Fixture", brightness: 55, capabilities: { brightness: true, power: true, volume: false } }],
+  audioSinks: [{ id: 1, name: "fixture-audio", description: "Audio", default: true, volume: 0.4, muted: false }],
+  setMonitorBrightness: (edid, brightness) => { useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid ? { ...item, brightness } : item) })); return Promise.resolve(); },
+});
 export function Fixture() {
   const log = useRef<TrackpadMessage[]>([]);
   const [epoch, setEpoch] = useState(0);
@@ -22,11 +28,11 @@ export function Fixture() {
   }, []);
   useEffect(() => { Object.assign(window, { fixture: {
     log: log.current, context,
+    brightness: () => useStore.getState().monitors[0].brightness,
     reset(value: string, cursor = value.length) { log.current.length = 0; setContext(current => ({ ...initial, revision: current.revision + 1, value, selectionStart: codePointOffset(value, cursor), selectionEnd: codePointOffset(value, cursor) })); },
     configure(patch: Partial<typeof DEFAULT_SETTINGS>) { localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ ...DEFAULT_SETTINGS, mirrorFocusedText: true, swipeTyping: false, ...patch })); setEpoch(value => value + 1); },
   } }); }, [context]);
-  return <div className="pc-remote bg-zinc-950 p-2 text-white"><div className="remote-workspace"><div className="remote-pad"><Trackpad key={epoch} mode="remote" connected connecting={false} textContext={context} cursorPos={null} cursorSupported={false} send={send} />
-  </div></div></div>;
+  return <RemotePage key={epoch} connected connecting={false} textContext={context} cursorPos={null} cursorSupported={false} send={send} />;
 }
 
 createRoot(document.getElementById("root")!).render(<Fixture />);

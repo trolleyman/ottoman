@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, VolumeX, Sun } from "lucide-react";
+import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, Sun } from "lucide-react";
 import { followAppLink } from "./navigation";
 import { Trackpad } from "./Trackpad";
 import { useStore } from "./store";
@@ -16,7 +16,7 @@ function RemoteVolume({ label, value, muted, onVolume, onMute, onTarget, brightn
     <span className="text-[10px] tabular-nums text-zinc-500">{slider.value}%</span>
     <input type="range" aria-label={`${label} ${brightness ? "brightness" : "volume"}`} min={0} max={100} value={slider.value} {...slider.dragProps} onChange={(event) => slider.set(Number(event.target.value))} className="remote-volume-slider min-h-0 flex-1 accent-blue-400" />
     {onMode && <button type="button" onClick={onMode} aria-label={brightness ? "Switch to volume" : "Switch to brightness"} className="p-2 text-zinc-300 hover:text-white">{brightness ? <Sun className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}</button>}
-    {!brightness && <button type="button" aria-label={`${muted ? "Unmute" : "Mute"} ${label}`} onClick={onMute} className="p-2 text-zinc-400 hover:text-white">{muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}</button>}
+    {!brightness && <button type="button" aria-label={`${muted ? "Unmute" : "Mute"} ${label}`} onClick={onMute} className="p-2 text-[10px] text-zinc-400 hover:text-white">{muted ? "Unmute" : "Mute"}</button>}
   </aside>;
 }
 
@@ -50,7 +50,7 @@ export function RemotePage(props: {
   const displayIndex = Math.max(0, displays.findIndex(item => item.edid === brightnessTarget));
   const display = displays[displayIndex];
   const isBrightness = !!display && (brightnessMode || !audioOutput);
-  const output = isBrightness ? { id: display.edid + "-brightness", label: displays.length > 1 ? `D${displayIndex + 1}` : "Screen", value: display.brightness ?? 50, muted: false, onVolume: (value: number) => setMonitorBrightness(display.edid, value), onMute: () => {} } : audioOutput;
+  const output = isBrightness ? { id: display.edid + "-brightness", label: displays.length > 1 ? `D${displayIndex + 1}` : "Screen", value: display.brightness != null && display.brightness >= 0 ? Math.min(100, display.brightness) : 50, muted: false, onVolume: (value: number) => setMonitorBrightness(display.edid, value), onMute: () => {} } : audioOutput;
   return <main className="pc-remote bg-zinc-950 text-zinc-100">
     <header className="flex shrink-0 items-center gap-3 border-b border-white/8 pb-3">
       <a href="/" onClick={followAppLink} aria-label="Back to dashboard" className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /></a>

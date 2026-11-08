@@ -47,3 +47,12 @@ dictionary and grouped Unicode emoji data load on demand. Dataset notices ship
 in `public/keyboard-data-licenses.txt`. Native key vibration is used only where
 the browser supports it; iPhone Safari gets visual press/hold/scroll feedback.
 For a launch without Safari's address bar, add Ottoman to the home screen.
+
+Run the focused keyboard browser regressions with `bun run test:keyboard`. This
+uses Vite on an OS-assigned localhost port and a simulated in-browser text field;
+it checks preview navigation, spacing and period undo, held modifiers, adaptive
+keys, autocorrect, tap dragging and volume/brightness switching. Set
+`PLAYWRIGHT_EXECUTABLE_PATH` to use an existing bundled Chromium executable, or
+install the project-local browser as shown above. The fixture closes its server
+and browser after the checks. Preview/settings screenshots are saved under
+`/tmp/keyboard-preview@2x.png` and `/tmp/keyboard-settings@2x.png`.

@@ -70,7 +70,7 @@ export function ModifierButton({ modifier, label, text, selected, locked = false
   };
   return <button type="button" aria-label={label} title={`${label}: tap once, double-tap to lock, or hold`}
     aria-pressed={active} data-modifier-locked={locked || undefined}
-    className={`relative touch-none select-none flex ${wide ? "keyboard-cell min-w-[52px] flex-[1.4]" : "h-9 min-w-10 flex-1"} items-center justify-center gap-1 rounded-md border px-1 ${active ? "border-blue-400/60 bg-blue-500 text-white" : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400"}`}
+    className={`relative touch-none select-none flex ${wide ? "keyboard-cell min-w-[52px] flex-[1.4]" : "h-9 min-w-10 flex-1 px-1"} items-center justify-center gap-1 rounded-md border ${active ? "border-blue-400/60 bg-blue-500 text-white" : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400"}`}
     onPointerDown={event => {
       if (event.button !== 0 || pointer.current !== null) return;
       event.preventDefault(); pointer.current = event.pointerId;
