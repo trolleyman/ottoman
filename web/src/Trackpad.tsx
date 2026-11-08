@@ -12,7 +12,7 @@ import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextCo
 import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "./remoteText";
 import { characterCount, diffText } from "./trackpadText";
 import { KeyboardModifiers, spaceEdit } from "./keyboardEditing";
-import { previewHit, previewMove } from "./previewNavigation";
+import { previewHit, previewMove, previewPositions } from "./previewNavigation";
 import { CaretText } from "./CaretText";
 import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
@@ -62,6 +62,8 @@ function TouchArea({
   const navigationAnchor = useRef<number | null>(null);
   const navigationX = useRef<number | undefined>(undefined);
   const typingMemory = useRef<{ field?: string; period: number | null; suppress: boolean; space: number | null }>({ period: null, suppress: false, space: null });
+  const dragOrigin = useRef<{ x: number; y: number; left: number; top: number; height: number; scaleX: number; scaleY: number } | null>(null);
+  const [cursorDrag, setCursorDrag] = useState<{ left: number; top: number; height: number } | null>(null);
   const composing = useRef(false);
   const compositionContext = useRef<{fieldId: string; revision: number} | null>(null);
   const [compositionValue, setCompositionValue] = useState<string | null>(null);
@@ -201,6 +203,8 @@ function TouchArea({
 
   const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
   const dismissDraft = useCallback(() => {
+    dragOrigin.current = null;
+    setCursorDrag(null);
     setTypingContext((value) => value + 1);
     setDraftVisible(false);
     draftRef.current = "";
@@ -488,6 +492,53 @@ function TouchArea({
     navigationX.current = undefined;
     sendKeyPress(key, modifiers);
     showDraftIndicator();
+  };
+
+  const handleCursorDrag = (phase: "start" | "move" | "end", x: number, y: number) => {
+    const root = previewRef.current;
+    const view = remoteModel.current!.view;
+    if (phase === "end") { dragOrigin.current = null; setCursorDrag(null); return false; }
+    if (!root || view?.password || view?.protected) return false;
+    const bounds = root.getBoundingClientRect();
+    if (phase === "start") {
+      const value = view?.available ? view.value : draftRef.current;
+      const offset = view?.available ? utf16Offset(value, view.selectionEnd - view.windowStart) : utf16Offset(value, remoteCursor.current);
+      const positions = previewPositions(root);
+      const point = positions.find(point => point.offset === offset);
+      if (!point) return false;
+      const caret = root.querySelector<HTMLElement>("[data-preview-caret]")?.getBoundingClientRect();
+      const left = (caret?.left ?? point.x) - bounds.left;
+      const top = (caret?.top ?? point.y) - bounds.top;
+      const height = caret?.height || point.height || 20;
+      const widths = positions.slice(1).flatMap((point, index) => {
+        const previous = positions[index];
+        const width = point.x - previous.x;
+        return Math.abs(point.y - previous.y) < 2 && width > 0 ? [width] : [];
+      });
+      const characterWidth = widths.length ? widths.reduce((a, b) => a + b, 0) / widths.length : 8;
+      dragOrigin.current = { x, y, left, top, height, scaleX: characterWidth * settings.spaceCursorSensitivity / 12, scaleY: 20 * settings.spaceCursorSensitivity / 30 };
+      setCursorDrag({ left, top, height });
+      showDraftIndicator();
+      return settings.previewNavigation;
+    }
+    const origin = dragOrigin.current;
+    if (!origin) return false;
+    const viewport = root.closest<HTMLElement>("[data-preview-scroll]")!.getBoundingClientRect();
+    const left = Math.max(4, Math.min(bounds.width - 4, origin.left + (x - origin.x) * origin.scaleX));
+    const top = Math.max(viewport.top - bounds.top, Math.min(viewport.bottom - bounds.top - origin.height, origin.top + (y - origin.y) * origin.scaleY));
+    setCursorDrag({ left, top, height: origin.height });
+    const modifiers = modifierState.current.active;
+    if (!settings.previewNavigation || modifiers.some(modifier => modifier !== Modifier.SHIFT)) return false;
+    const offset = previewHit(root, bounds.left + left, bounds.top + top + origin.height / 2);
+    if (offset !== undefined) {
+      const value = view?.available ? view.value : draftRef.current;
+      const current = view?.available ? utf16Offset(value, (navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart) : utf16Offset(value, remoteCursor.current);
+      if (offset !== current) {
+        selectPreview(offset, modifiers.includes(Modifier.SHIFT));
+        consumeModifiers();
+      }
+    }
+    return true;
   };
 
   useEffect(() => () => {
@@ -1040,7 +1091,7 @@ function TouchArea({
                 className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             </div>
             <div data-preview-scroll className="pointer-events-auto min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md">
-              <div ref={previewRef} className="shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
+              <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
                 onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
                 onPointerUp={(event) => {
                   const start = touchStartPos.current;
@@ -1052,7 +1103,10 @@ function TouchArea({
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
                 data-password-preview={remote?.password || undefined}>
                 <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} hideCaret={!!remote?.password}
+                  dragging={cursorDrag !== null}
                   variant="preview" className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]" />
+                {cursorDrag && <span aria-hidden="true" data-drag-caret className="pointer-events-none absolute left-0 top-0 z-30 w-0.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,.5)]"
+                  style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} />}
               </div>
             </div>
           </div>
@@ -1158,7 +1212,9 @@ function TouchArea({
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
           onNavigate={navigate}
+          onCursorDrag={handleCursorDrag}
           onClose={() => {
+            dragOrigin.current = null; setCursorDrag(null);
             modifierState.current = new KeyboardModifiers(); syncModifiers();
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);
@@ -1166,6 +1222,7 @@ function TouchArea({
           onSettingsChange={onSettingsChange}
           onUseCustomKeyboard={() => onSettingsChange({ customKeyboard: true })}
           onUseDeviceKeyboard={() => {
+            dragOrigin.current = null; setCursorDrag(null);
             onSettingsChange({ customKeyboard: false });
             setKeyboardOpen(false);
             setKeyboardSettingsOpen(false);

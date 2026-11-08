@@ -56,6 +56,7 @@ function KeyboardSession({
   onEnter,
   onTab,
   onNavigate,
+  onCursorDrag,
   onClose,
   onSettingsChange,
   onUseCustomKeyboard,
@@ -81,6 +82,7 @@ function KeyboardSession({
   onEnter: (shifted: boolean) => void;
   onTab: () => void;
   onNavigate: (key: string) => void;
+  onCursorDrag: (phase: "start" | "move" | "end", x: number, y: number) => boolean;
   onClose: () => void;
   onSettingsChange: (patch: Partial<KeyboardSettings>) => void;
   onUseCustomKeyboard: () => void;
@@ -130,6 +132,7 @@ function KeyboardSession({
   const spaceHeld = useRef(false);
   const spaceLast = useRef({ x: 0, y: 0 });
   const [spaceNavigating, setSpaceNavigating] = useState(false);
+  const [spaceContext, setSpaceContext] = useState("");
   const applePlatform = remoteOS === "darwin";
   const { numberRow, letterRows, symbolRows } = keyboardRows(resolveKeyboardLayout(settings.keyboardLayout, navigator.language));
   const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
@@ -144,7 +147,8 @@ function KeyboardSession({
   useEffect(() => {
     if (mode === "emoji") void import("./emojiData").then(setEmojiData);
   }, [mode]);
-  const currentWord = getCurrentWord(textBeforeCursor);
+  const predictionText = spaceNavigating ? spaceContext : textBeforeCursor;
+  const currentWord = getCurrentWord(predictionText);
   const corrector = useRef<((word: string) => string) | null>(null);
   const [predictor, setPredictor] = useState<((prefix: string) => string[]) | null>(null);
   useEffect(() => {
@@ -241,7 +245,9 @@ function KeyboardSession({
     spaceLast.current = { x: event.clientX, y: event.clientY };
     spaceHoldTimer.current = setTimeout(() => {
       spaceHeld.current = true;
+      setSpaceContext(textBeforeCursor);
       setSpaceNavigating(true);
+      onCursorDrag("start", spaceLast.current.x, spaceLast.current.y);
       haptic(settings.haptics, 16);
     }, settings.spaceHoldDelayMs);
   };
@@ -251,6 +257,7 @@ function KeyboardSession({
       spaceLast.current = { x: event.clientX, y: event.clientY };
       return;
     }
+    if (onCursorDrag("move", event.clientX, event.clientY)) return;
     // One vertical step changes an entire line; horizontal steps change one
     // character. Give horizontal motion the finer resolution.
     const horizontalStep = 12 / settings.spaceCursorSensitivity;
@@ -280,6 +287,7 @@ function KeyboardSession({
       haptic(settings.haptics);
       type(" ");
     }
+    if (spaceHeld.current) onCursorDrag("end", 0, 0);
     spaceHeld.current = false;
     setSpaceNavigating(false);
   };
@@ -287,6 +295,7 @@ function KeyboardSession({
   const cancelSpace = () => {
     if (spaceHoldTimer.current) clearTimeout(spaceHoldTimer.current);
     spaceHoldTimer.current = null;
+    if (spaceHeld.current) onCursorDrag("end", 0, 0);
     spaceHeld.current = false;
     setSpaceNavigating(false);
   };
@@ -322,7 +331,7 @@ function KeyboardSession({
   };
 
   const canPredict = !sensitiveInput && !modifiers.some(modifier => modifier !== Modifier.SHIFT);
-  const predictions = useMemo(() => canPredict ? predictor?.(textBeforeCursor) ?? [] : [], [canPredict, predictor, textBeforeCursor]);
+  const predictions = useMemo(() => canPredict ? predictor?.(predictionText) ?? [] : [], [canPredict, predictor, predictionText]);
   const keyWeights = settings.adaptiveKeys && !sensitiveInput && mode === "letters" && !modifiers.some(modifier => modifier !== Modifier.SHIFT) ? nextKeyWeights(currentWord, predictions) : {};
 
   const acceptedWord = selectedWord.context === textContext && textBeforeCursor.endsWith(selectedWord.word + " ") ? selectedWord.word : "";

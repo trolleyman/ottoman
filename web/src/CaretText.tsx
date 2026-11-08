@@ -4,11 +4,12 @@ type Box = { left: number; top: number; width: number; height: number };
 
 // Keep one uninterrupted text run: inserting an inline caret changes kerning,
 // line wrapping and the space available to letters on either side of it.
-export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = false, variant, className }: {
+export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = false, dragging = false, variant, className }: {
   value: string;
   cursor: number;
   selectionEnd?: number;
   hideCaret?: boolean;
+  dragging?: boolean;
   variant: "preview" | "search";
   className: string;
 }) {
@@ -37,6 +38,16 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       range.collapse(true);
       let caretRect = range.getBoundingClientRect();
       if (!caretRect.height) { range.setEnd(node, Math.min(end + 1, node.textContent!.length)); caretRect = range.getBoundingClientRect(); }
+      // A collapsed range immediately before the sentinel can be placed inside
+      // the last glyph by browser text shaping. Measure the final grapheme's
+      // trailing edge for non-whitespace LTR text instead.
+      if (inlineEnd && end === value.length && /\S$/u.test(value)) {
+        const last = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)).at(-1)!;
+        range.setStart(node, last.index);
+        range.setEnd(node, end);
+        const rect = Array.from(range.getClientRects()).at(-1);
+        if (rect?.height) caretRect = new DOMRect(rect.right, rect.top, 0, rect.height);
+      }
       const caret = box(caretRect);
       range.setStart(node, start);
       range.setEnd(node, end);
@@ -72,14 +83,21 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
     };
   }, [value, cursor, selectionEnd, variant, inlineEnd, hideCaret]);
 
-  const caret = !hideCaret && cursor === selectionEnd && <span key={`${value}:${cursor}`} aria-hidden="true"
+  useLayoutEffect(() => {
+    const container = root.current!;
+    container.dataset.caretMoving = "true";
+    const timer = setTimeout(() => { delete container.dataset.caretMoving; }, 450);
+    return () => clearTimeout(timer);
+  }, [value, cursor, selectionEnd]);
+
+  const caret = !hideCaret && (cursor === selectionEnd || dragging) && <span aria-hidden="true"
     data-preview-caret={variant === "preview" || undefined} data-search-caret={variant === "search" || undefined}
     className="keyboard-caret pointer-events-none absolute z-20 w-px bg-blue-300"
-    style={geometry ? { left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height } : { display: "none" }} />;
+    data-caret-parked={dragging || undefined}
+    style={geometry ? { background: dragging ? "#a1a1aa" : undefined, left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height } : { display: "none" }} />;
 
-  return <div ref={root} className={`relative ${className}`}>
-    {/* Keep the text uninterrupted. The empty inline anchor follows its real
-        rendered end even when mobile font metrics change after measurement. */}
+  return <div ref={root} data-cursor-dragging={dragging || undefined} className={`relative ${className}`}>
+    {/* One uninterrupted text run keeps wrapping stable as the caret moves. */}
     <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span>
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
     {caret}

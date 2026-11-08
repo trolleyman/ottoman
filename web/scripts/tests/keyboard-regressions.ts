@@ -1,4 +1,5 @@
 import { createServer } from "vite";
+import { checkPredictionAndCursor } from "./prediction-cursor-checks";
 import { chromium } from "playwright";
 
 const server = await createServer({ server: { host: "127.0.0.1", port: 0 }, plugins: [{ name: "keyboard-fixture", configureServer(server) {
@@ -56,6 +57,7 @@ try {
   assert(await value() === "keyboard ", "Autocorrect must correct keynoard to keyboard");
   await reset("hel");
   assert(await page.locator('[data-key-weight]').evaluateAll(elements => elements.some(element => Number(element.getAttribute("data-key-weight")) > 1)), "Predictions must enlarge likely next keys");
+  await checkPredictionAndCursor(page, reset);
   const shift = page.getByRole("button", { name: "Shift", exact: true });
   await reset("");
   const pointer = async (locator: ReturnType<typeof key>, type: string, id: number) => locator.evaluate((element, { type, id }) => {
@@ -85,7 +87,8 @@ try {
   await page.mouse.move(spacePoint.x, spacePoint.y); await page.mouse.down();
   await page.waitForTimeout(380);
   await page.mouse.move(spacePoint.x + 24, spacePoint.y, { steps: 4 }); await page.mouse.up();
-  assert(await fixture("context.selectionStart") === 4 && await value() === "abcdefghij", "24px spacebar motion must navigate four characters without inserting a space");
+  const draggedPosition = await fixture("context.selectionStart") as number;
+  assert(draggedPosition >= 3 && draggedPosition <= 5 && await value() === "abcdefghij", `24px spacebar motion must navigate several characters without inserting a space: ${draggedPosition}`);
   await reset("first line\nsecond line\nthird line");
   await shift.click();
   await page.getByRole("button", { name: "Arrow left", exact: true }).click();
