@@ -416,7 +416,7 @@ function KeyboardSession({
         >
           {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
         </ActionKey>
-        <ActionKey
+        {!docked && <ActionKey
           type="button"
           aria-label="Close keyboard"
           title="Close keyboard"
@@ -427,7 +427,7 @@ function KeyboardSession({
           className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
         >
           <X className="h-4 w-4" />
-        </ActionKey>
+        </ActionKey>}
       </div>
 
       <div className="mx-auto flex max-w-3xl gap-1 px-2 pt-0.5" aria-label="Navigation keys">

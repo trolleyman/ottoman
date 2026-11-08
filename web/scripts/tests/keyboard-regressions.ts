@@ -14,7 +14,11 @@ try {
   page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
   await page.addInitScript(() => localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false })));
   await page.goto(`http://127.0.0.1:${address.port}/__keyboard`);
-  await page.getByLabel("Trackpad. Tap to click, move one finger to point, tap two fingers to right click, or move two fingers to scroll.").focus();
+  await page.locator('[data-letter="q"]').waitFor({ state: "visible" });
+  if (await page.getByRole("button", { name: "Close keyboard", exact: true }).count()) throw Error("PC remote must not offer an action to hide its always-visible keyboard");
+  if (await page.getByLabel(/Trackpad\. Tap to click/).evaluate(element => element === document.activeElement)) throw Error("Remote keyboard visibility must not require trackpad focus");
+  await page.getByRole("button", { name: "Switch to brightness", exact: true }).focus();
+  if (!await page.locator('[data-letter="q"]').isVisible()) throw Error("Remote keyboard must stay visible when another control has focus");
   const fixture = (fn: string) => page.evaluate(`window.fixture.${fn}`);
   const reset = async (text: string, cursor = text.length) => { await fixture(`reset(${JSON.stringify(text)}, ${cursor})`); await page.waitForTimeout(50); };
   const assert = (condition: unknown, message: string) => { if (!condition) throw Error(message); };

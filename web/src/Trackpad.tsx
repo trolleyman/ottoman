@@ -1116,7 +1116,7 @@ function TouchArea({
         <CustomKeyboard
           docked={docked}
           key={keyboardSettingsOpen ? "settings" : "keyboard"}
-          open={keyboardOpen}
+          open={docked || keyboardOpen}
           connected={connected}
           remoteOS={remoteOS}
           textContext={typingContext}

@@ -113,7 +113,7 @@ scroll control and docked keyboard together with separate PC/TV volume controls
 and display layouts. Tap the slider’s volume icon to switch to monitor brightness; tap the output label to choose another output or display. Use the
 fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
 
-Focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
+The PC remote keyboard stays visible even when the trackpad is unfocused. On the dashboard, focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
 shows local word completions and swipe alternatives, or searches emoji and symbols.
 Search results replace the number row; emoji
 categories share one continuous list with icon shortcuts. Contractions such as
