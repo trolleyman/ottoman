@@ -123,8 +123,10 @@ function TouchArea({
   }, []);
   const consumeModifiers = useCallback(() => { modifierState.current.consume(); syncModifiers(); }, [syncModifiers]);
   const previewRef = useRef<HTMLDivElement>(null);
-  const tapDragTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingTapDrag = useRef<{ dx: number; dy: number; released: boolean } | null>(null);
+  const tapReleaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doubleClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapMouseDown = useRef(false);
+  const secondTap = useRef(false);
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftSelection, setDraftSelection] = useState<[number, number] | null>(null);
@@ -542,12 +544,25 @@ function TouchArea({
     return true;
   };
 
-  useEffect(() => () => {
-    if (tapDragTimer.current) clearTimeout(tapDragTimer.current);
-    pendingTapDrag.current = null; tapDragTimer.current = null;
-    if (isDragging.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
-    isDragging.current = false;
+  useEffect(() => {
+    const release = () => {
+      if (tapReleaseTimer.current) clearTimeout(tapReleaseTimer.current);
+      if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
+      tapReleaseTimer.current = null; doubleClickTimer.current = null;
+      secondTap.current = false;
+      if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
+      tapMouseDown.current = false; isDragging.current = false;
+    };
+    window.addEventListener("blur", release);
+    return () => { window.removeEventListener("blur", release); release(); };
   }, [send, connected]);
+
+  const releaseTap = () => {
+    if (tapReleaseTimer.current) clearTimeout(tapReleaseTimer.current);
+    tapReleaseTimer.current = null;
+    if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+    tapMouseDown.current = false;
+  };
 
   const activateKeyboard = () => {
     if (settings.customKeyboard) setKeyboardOpen(true);
@@ -555,6 +570,10 @@ function TouchArea({
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
+    if (doubleClickTimer.current) {
+      clearTimeout(doubleClickTimer.current); doubleClickTimer.current = null;
+      send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+    }
     e.preventDefault();
     dismissDraft();
 
@@ -570,9 +589,7 @@ function TouchArea({
 
     // Two-finger scroll detection
     if (e.touches.length === 2) {
-      if (tapDragTimer.current) clearTimeout(tapDragTimer.current);
-      tapDragTimer.current = null; pendingTapDrag.current = null;
-      if (isDragging.current) { send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers }); isDragging.current = false; }
+      releaseTap(); secondTap.current = false; isDragging.current = false;
       twoFingerRef.current = true;
       twoFingerStartTime.current = performance.now();
       twoFingerMoved.current = false;
@@ -609,30 +626,14 @@ function TouchArea({
         )
       : Infinity;
 
-    if (
-      lastGestureAllowsDrag.current &&
-      touchStartTime.current - lastTouchEndTime.current < 300 &&
-      dist < 40
-    ) {
-      if (tapDragTimer.current) clearTimeout(tapDragTimer.current);
-      const pending = { dx: 0, dy: 0, released: false };
-      pendingTapDrag.current = pending;
-      // Single/double taps are immediate. Only a held or moved second contact
-      // waits beyond the desktop double-click interval before pressing again.
-      tapDragTimer.current = setTimeout(() => {
-        tapDragTimer.current = null;
-        if (pendingTapDrag.current !== pending) return;
-        pendingTapDrag.current = null;
-        send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
-        if (pending.dx || pending.dy) send({ type: "mousemoverel", dx: pending.dx, dy: pending.dy });
-        if (pending.released) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
-        else isDragging.current = true;
-      }, Math.max(0, 600 - (touchStartTime.current - lastTouchEndTime.current)));
-    } else if (tapDragTimer.current) {
-      clearTimeout(tapDragTimer.current);
-      tapDragTimer.current = null;
-      pendingTapDrag.current = null;
-    }
+    secondTap.current = tapReleaseTimer.current !== null && tapMouseDown.current &&
+      lastGestureAllowsDrag.current && touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40;
+    if (secondTap.current) {
+      // Reuse the first press. Movement can now start a drag immediately without
+      // generating the second native press that would maximize a titlebar.
+      clearTimeout(tapReleaseTimer.current!);
+      tapReleaseTimer.current = null;
+    } else releaseTap();
 
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
@@ -693,18 +694,17 @@ function TouchArea({
     }
 
     const touch = e.touches[0];
-    if (touchStartPos.current && Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) >= 10) gestureMoved.current = true;
+    if (touchStartPos.current && Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) >= 6) gestureMoved.current = true;
     if (lastTouchRef.current) {
       const rawDx = touch.clientX - lastTouchRef.current.x;
       const rawDy = touch.clientY - lastTouchRef.current.y;
       const dx = rawDx * settings.cursorSensitivity;
       const dy = rawDy * settings.cursorSensitivity;
 
-      if (pendingTapDrag.current) {
-        pendingTapDrag.current.dx += dx;
-        pendingTapDrag.current.dy += dy;
-        lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
-        return;
+      if (secondTap.current) {
+        if (!gestureMoved.current) return;
+        secondTap.current = false;
+        isDragging.current = true;
       }
       // Stationary taps must not nudge the pointer out of the desktop's
       // double-click hit region. Begin cursor movement only after tap slop.
@@ -786,24 +786,24 @@ function TouchArea({
     const now = performance.now();
     lastTouchEndTime.current = now;
 
-    if (pendingTapDrag.current) {
-      if (gestureMoved.current) {
-        // Preserve a short drag even if the finger lifts before the guard ends.
-        pendingTapDrag.current.released = true;
-        lastGestureAllowsDrag.current = false;
-      } else {
-        if (tapDragTimer.current) clearTimeout(tapDragTimer.current);
-        tapDragTimer.current = null; pendingTapDrag.current = null;
-        const wasTap = now - touchStartTime.current < 200;
-        if (wasTap) send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
-        lastGestureAllowsDrag.current = wasTap;
+    if (secondTap.current) {
+      secondTap.current = false;
+      releaseTap();
+      if (!gestureMoved.current && now - touchStartTime.current < 200) {
+        // Give the two complete native clicks a short, real interval instead
+        // of emitting a zero-duration burst that some desktops ignore.
+        doubleClickTimer.current = setTimeout(() => {
+          doubleClickTimer.current = null;
+          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+        }, 40);
       }
+      lastGestureAllowsDrag.current = false;
       lastTapEndPos.current = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
       touchStartPos.current = null; lastTouchRef.current = null;
       return;
     }
     if (isDragging.current) {
-      send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+      releaseTap();
       isDragging.current = false;
       lastGestureAllowsDrag.current = false;
     } else {
@@ -849,8 +849,16 @@ function TouchArea({
         const touch = e.changedTouches[0];
         const dx = touch.clientX - touchStartPos.current.x;
         const dy = touch.clientY - touchStartPos.current.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 10) {
-          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+        if (Math.sqrt(dx * dx + dy * dy) < 6) {
+          send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
+          tapMouseDown.current = true;
+          // Press feedback is immediate; only release waits for a very quick
+          // retouch, which can continue the same press as a drag.
+          tapReleaseTimer.current = setTimeout(() => {
+            tapReleaseTimer.current = null;
+            if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+            tapMouseDown.current = false;
+          }, 100);
           wasTap = true;
         }
       }
@@ -1085,9 +1093,9 @@ function TouchArea({
           onTouchMove={connected ? onTouchMove : undefined}
           onTouchEnd={connected ? onTouchEnd : undefined}
           onTouchCancel={() => {
-            if (tapDragTimer.current) clearTimeout(tapDragTimer.current);
-            tapDragTimer.current = null; pendingTapDrag.current = null;
-            if (isDragging.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
+            releaseTap(); secondTap.current = false;
+            if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
+            doubleClickTimer.current = null;
             isDragging.current = false;
             lastGestureAllowsDrag.current = false;
             lastTouchRef.current = null;
