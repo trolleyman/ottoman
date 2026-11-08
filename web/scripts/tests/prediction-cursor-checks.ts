@@ -38,9 +38,10 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
   await reset("HEL");
   assert(Number(await key(grown.letter!).getAttribute("data-key-scale")) > 1, "Uppercase prefixes must still enlarge predicted letters");
   const shift = page.getByRole("button", { name: "Shift", exact: true });
-  for (const button of [shift, page.getByRole("button", { name: /^(Super|Windows|Command)$/ })]) {
-    const color = await button.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, text: getComputedStyle(element).color }));
-    assert((color.background === "rgb(39, 39, 42)" || color.background === "oklch(0.274 0.006 286.033)") && (color.text === "rgb(244, 244, 245)" || color.text === "oklch(0.967 0.001 286.375)"), `Inactive modifiers must match the readable utility keys: ${JSON.stringify(color)}`);
+  const controlStyle = await page.getByRole("button", { name: "Function keys", exact: true }).evaluate(element => ({ background: getComputedStyle(element).backgroundColor, text: getComputedStyle(element).color, border: getComputedStyle(element).borderColor }));
+  for (const button of [page.getByRole("button", { name: "Control", exact: true }), page.getByRole("button", { name: /^(Super|Windows|Command)$/ }), page.getByRole("button", { name: /^(Alt|Option)$/ })]) {
+    const color = await button.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, text: getComputedStyle(element).color, border: getComputedStyle(element).borderColor }));
+    assert(JSON.stringify(color) === JSON.stringify(controlStyle), "Ctrl, Super/Windows and Alt must match Fn styling");
   }
   await shift.click();
   assert(await key(grown.letter!).locator(":scope > span.relative").textContent() === grown.letter!.toUpperCase(), "Shift must show the uppercase predicted letter");
