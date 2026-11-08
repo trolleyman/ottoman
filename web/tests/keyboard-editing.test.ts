@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Modifier } from "../src/api";
-import { createAutocorrect, KeyboardModifiers, nextKeyWeights, spaceEdit } from "../src/keyboardEditing";
+import { adaptiveKeyScale, createAutocorrect, KeyboardModifiers, nextKeyWeights, spaceEdit } from "../src/keyboardEditing";
 import { parseSettings } from "../src/trackpadSettings";
 
 test("all modifiers support one-shot, double-tap lock, hold and cancellation", () => {
@@ -54,6 +54,8 @@ test("predicted next letters widen within bounds and options persist", () => {
   expect(weights.p).toBeLessThanOrEqual(1.8);
   expect(nextKeyWeights("", ["hello"]).h).toBeGreaterThan(1);
   expect(nextKeyWeights("HEL", ["HELLO"]).l).toBeGreaterThan(1);
+  expect(adaptiveKeyScale(1.8)).toBe(1.2);
+  expect(adaptiveKeyScale(1)).toBe(1);
   expect(parseSettings({}).autocorrect).toBe(false);
   const saved = parseSettings({ autocorrect: true, adaptiveKeys: true, debugKeySizes: true, previewNavigation: false, spaceCursorSensitivity: 100 });
   expect(saved.autocorrect && saved.adaptiveKeys && saved.debugKeySizes).toBe(true);

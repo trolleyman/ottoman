@@ -46,6 +46,11 @@ export function nextKeyWeights(prefix: string, predictions: readonly string[]): 
   return weights;
 }
 
+// Transform the key itself (including its hit target), without changing layout.
+export function adaptiveKeyScale(weight: number): number {
+  return Math.max(1, Math.min(1.2, 1 + (weight - 1) / 4));
+}
+
 // A conservative one-edit corrector: valid dictionary words are never replaced.
 export function createAutocorrect(words: readonly string[]) {
   const ranks = new Map(words.map((word, index) => [word.toLowerCase(), index]));
