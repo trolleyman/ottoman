@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { RemotePage } from "../../src/RemotePage";
-import { useStore } from "../../src/store";
+import { CancelablePromise } from "../../src/api/core/CancelablePromise";
+import { client, useStore } from "../../src/store";
 import { DEFAULT_SETTINGS } from "../../src/trackpadSettings";
 import { codePointOffset } from "../../src/remoteText";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "../../src/api";
@@ -17,9 +18,25 @@ const writeVolume = async (target: string, value: number, update: () => void) =>
 useStore.setState({
   monitors: [{ edid: "fixture-screen", port: "DP-1", name: "Screen", manufacturer: "Fixture", brightness: 55, capabilities: { brightness: true, power: true, volume: false } }],
   audioSinks: [{ id: 1, name: "fixture-audio", description: "Audio", default: true, volume: 0.4, muted: false }],
-  setSinkVolume: (name, volume) => writeVolume(name, volume, () => useStore.setState(state => ({ audioSinks: state.audioSinks.map(item => item.name === name ? { ...item, volume } : item) }))),
-  setMonitorVolume: (edid, volume) => writeVolume(edid, volume, () => useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid && item.tv_state ? { ...item, tv_state: { ...item.tv_state, volume } } : item) }))),
   setMonitorBrightness: (edid, brightness) => { useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid ? { ...item, brightness } : item) })); return Promise.resolve(); },
+});
+// Exercise the production store actions, including a poll with the old value
+// arriving after an optimistic write but before the device has applied it.
+client.default.setAudioVolume = ({ name, volume } = { name: "" }) => new CancelablePromise((resolve, reject) => {
+  void (async () => {
+    const old = useStore.getState().audioSinks.find(item => item.name === name)?.volume;
+    setTimeout(() => useStore.setState(state => ({ audioSinks: state.audioSinks.map(item => item.name === name ? { ...item, volume: old ?? item.volume } : item) })), 30);
+    await writeVolume(name, volume!, () => useStore.setState(state => ({ audioSinks: state.audioSinks.map(item => item.name === name ? { ...item, volume: volume! } : item) })));
+    resolve({ success: true });
+  })().catch(reject);
+});
+client.default.setMonitorVolume = ({ edid, volume } = { edid: "" }) => new CancelablePromise((resolve, reject) => {
+  void (async () => {
+    const old = useStore.getState().monitors.find(item => item.edid === edid)?.tv_state?.volume;
+    setTimeout(() => useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid && item.tv_state ? { ...item, tv_state: { ...item.tv_state, volume: old ?? item.tv_state.volume } } : item) })), 30);
+    await writeVolume(edid, volume!, () => useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid && item.tv_state ? { ...item, tv_state: { ...item.tv_state, volume: volume! } } : item) })));
+    resolve({ success: true });
+  })().catch(reject);
 });
 export function Fixture() {
   const log = useRef<TrackpadMessage[]>([]);

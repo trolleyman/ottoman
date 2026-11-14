@@ -18,6 +18,9 @@ export async function checkRemoteVolume(page: Page) {
   await key("AudioVolumeUp");
   assert(await volume("PC").inputValue() === "41", "Default keys must adjust the selected slider");
   assert(!(await fixture("log") as { key?: string }[]).some(item => item.key === "AudioVolumeUp"), "Default volume keys must not reach OS");
+  await page.waitForTimeout(60);
+  assert(await volume("PC").inputValue() === "41", "Stale PC refresh must not undo a key step before the write completes");
+  await page.waitForTimeout(100);
   await key("AudioVolumeDown");
   await page.getByRole("button", { name: "Trackpad settings", exact: true }).click();
   await setting.check();
@@ -44,12 +47,15 @@ export async function checkRemoteVolume(page: Page) {
     }
   });
   assert(await volume("TV").inputValue() === "20", "Rapid presses must accumulate against optimistic value");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(60);
+  assert(await volume("TV").inputValue() === "20", "Stale TV refresh must not reset accumulated key steps");
+  await page.waitForTimeout(190);
   const writes = await fixture("volumeWrites") as { target: string; value: number }[];
   assert(writes.length === 2 && writes[0].value === 13 && writes[1].value === 20 && writes.every(item => item.target === "fixture-tv"), `Slow TV writes must coalesce on the selected target: ${JSON.stringify(writes)}`);
+  const brightness = await fixture("brightness()");
   await page.getByRole("button", { name: "Switch to brightness", exact: true }).click();
   await key("AudioVolumeDown");
-  assert(await page.getByRole("slider", { name: "Screen brightness", exact: true }).inputValue() === "72", "Volume keys must leave brightness unchanged");
+  assert(await page.getByRole("slider", { name: "Screen brightness", exact: true }).inputValue() === String(brightness), "Volume keys must leave brightness unchanged");
   await page.getByRole("button", { name: "Switch to volume", exact: true }).click();
   assert(await volume("TV").inputValue() === "19", "Keys must adjust audio while brightness is shown");
   await setVolume("TV", 100);

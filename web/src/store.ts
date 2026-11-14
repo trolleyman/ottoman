@@ -509,11 +509,8 @@ export const useStore = create<OttomanStore>((set, get) => ({
   // ── Audio Actions ─────────────────────────────────────
 
   setSinkVolume: async (name: string, volume: number) => {
-    // Optimistic local update so the slider stays responsive; the next poll
-    // reconciles with the true value.
-    set((s) => ({
-      audioSinks: s.audioSinks.map((k) => (k.name === name ? { ...k, volume } : k)),
-    }));
+    // The slider owns the optimistic value. Keep the store authoritative so
+    // that a local update cannot masquerade as a device acknowledgement.
     try {
       await client.default.setAudioVolume({ name, volume });
     } catch {
@@ -590,7 +587,7 @@ export const useStore = create<OttomanStore>((set, get) => ({
   },
 
   setMonitorVolume: async (edid: string, volume: number) => {
-    patchTVState(set, edid, { volume });
+    // Leave volume reconciliation to device reads; the slider updates locally.
     try {
       await client.default.setMonitorVolume({ edid, volume });
     } catch {
