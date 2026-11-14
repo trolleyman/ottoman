@@ -24,7 +24,7 @@ export function useCoalescedSlider(
   commit: (value: number) => Promise<void> | void,
 ): {
   value: number;
-  set: (value: number) => void;
+  set: (value: number | ((current: number) => number)) => void;
   dragProps: {
     onPointerDown: () => void;
     onPointerUp: () => void;
@@ -32,8 +32,9 @@ export function useCoalescedSlider(
   };
 } {
   const [value, setValue] = useState(serverValue);
+  const valueRef = useRef(serverValue);
   const draggingRef = useRef(false);
-  // The most recent value committed to the backend; while set, server values
+  // The most recent value requested, including a queued write; server values
   // that don't yet match it are stale echoes and must be ignored.
   const lastSentRef = useRef<number | null>(null);
   // Coalescing state: at most one write in flight, with the latest pending
@@ -52,6 +53,7 @@ export function useCoalescedSlider(
     if (draggingRef.current) return;
     if (lastSentRef.current !== null && serverValue !== lastSentRef.current) return;
     lastSentRef.current = null;
+    valueRef.current = serverValue;
     setValue(serverValue);
   }, [serverValue]);
 
@@ -60,7 +62,6 @@ export function useCoalescedSlider(
     inflightRef.current = true;
     const v = pendingRef.current;
     pendingRef.current = null;
-    lastSentRef.current = v;
     try {
       await commitRef.current(v);
     } finally {
@@ -70,7 +71,10 @@ export function useCoalescedSlider(
     }
   };
 
-  const set = (v: number) => {
+  const set = (next: number | ((current: number) => number)) => {
+    const v = typeof next === "function" ? next(valueRef.current) : next;
+    valueRef.current = v;
+    lastSentRef.current = v;
     setValue(v);
     pendingRef.current = v;
     void flush();

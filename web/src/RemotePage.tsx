@@ -1,17 +1,26 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, Sun } from "lucide-react";
 import { followAppLink } from "./navigation";
+import { OfflineTVControls } from "./Monitors";
 import { Trackpad } from "./Trackpad";
 import { useStore } from "./store";
 import { useCoalescedSlider } from "./useCoalescedSlider";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "./api";
 
-function RemoteVolume({ label, value, onVolume, onTarget, brightness = false, onMode }: {
+type VolumeControl = { step: (delta: number) => void };
+
+function RemoteVolume({ label, value, onVolume, onTarget, brightness = false, onMode, controlRef, hidden = false }: {
+  controlRef?: Ref<VolumeControl>; hidden?: boolean;
   brightness?: boolean; onMode?: () => void;
   onTarget?: () => void; label: string; value: number; onVolume: (value: number) => Promise<void>;
 }) {
   const slider = useCoalescedSlider(value, onVolume);
-  return <aside className="remote-volume flex w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-white/8 bg-white/3 py-2" aria-label={brightness ? "Remote brightness" : "Remote audio"}>
+  // Keep audio mounted while brightness is visible so keys share its optimistic
+  // value and coalesced writes, even with a slow TV or stale status polls.
+  useImperativeHandle(controlRef, () => ({
+    step: delta => slider.set(current => Math.min(100, Math.max(0, current + delta))),
+  }));
+  return <aside hidden={hidden} className={`${hidden ? "hidden" : "flex"} remote-volume w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-white/8 bg-white/3 py-2`} aria-label={brightness ? "Remote brightness" : "Remote audio"}>
     <button type="button" onClick={onTarget} disabled={!onTarget} aria-label={`${brightness ? "Display" : "Audio output"}: ${label}. Switch output`} className="text-xs font-medium text-zinc-300 disabled:cursor-default">{label}</button>
     <span className="text-[10px] tabular-nums text-zinc-500">{slider.value}%</span>
     <input type="range" aria-label={`${label} ${brightness ? "brightness" : "volume"}`} min={0} max={100} value={slider.value} {...slider.dragProps} onChange={(event) => slider.set(Number(event.target.value))} className="remote-volume-slider min-h-0 flex-1 accent-blue-400" />
@@ -25,6 +34,8 @@ export function RemotePage(props: {
   cursorSupported: boolean; send: (message: TrackpadMessage) => void;
 }) {
   const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, monitors, setSinkVolume, setMonitorVolume, setMonitorBrightness } = useStore();
+  const volumeControl = useRef<VolumeControl>(null);
+  const stepVolume = useCallback((delta: number) => volumeControl.current?.step(delta), []);
   const [settingsContainer, setSettingsContainer] = useState<HTMLDivElement | null>(null);
   const [brightnessMode, setBrightnessMode] = useState(false);
   const [brightnessTarget, setBrightnessTarget] = useState("");
@@ -64,9 +75,13 @@ export function RemotePage(props: {
     </header>
     {showFullscreenHelp && <p role="status" className="shrink-0 text-xs text-zinc-300">To open without the address bar on iPhone, use Safari’s Share menu → Add to Home Screen. Enable Open as Web App if shown, then launch PC remote from your Home Screen.</p>}
     {fullscreenError && <p role="alert" className="text-xs text-amber-300">{fullscreenError}</p>}
-    <div className="remote-workspace">
-      <div className="remote-pad"><Trackpad {...props} mode="remote" settingsContainer={settingsContainer}
-        sideControls={output && <RemoteVolume key={output.id} {...output} brightness={isBrightness} onMode={display && audioOutput ? () => setBrightnessMode(!isBrightness) : undefined} onTarget={isBrightness ? displays.length > 1 ? () => setBrightnessTarget(displays[(displayIndex + 1) % displays.length].edid) : undefined : outputs.length > 1 ? () => setAudioTarget(outputs[(outputIndex + 1) % outputs.length].id) : undefined} />} /></div>
-    </div>
+    {!props.connected ? <OfflineTVControls /> : <div className="remote-workspace">
+      <div className="remote-pad"><Trackpad {...props} mode="remote" settingsContainer={settingsContainer} onVolumeStep={audioOutput ? stepVolume : undefined}
+        sideControls={<>{audioOutput && <RemoteVolume key={audioOutput.id} {...audioOutput} controlRef={volumeControl} hidden={isBrightness}
+          onMode={display ? () => setBrightnessMode(true) : undefined}
+          onTarget={outputs.length > 1 ? () => setAudioTarget(outputs[(outputIndex + 1) % outputs.length].id) : undefined} />}
+        {isBrightness && output && <RemoteVolume key={output.id} {...output} brightness onMode={audioOutput ? () => setBrightnessMode(false) : undefined}
+          onTarget={displays.length > 1 ? () => setBrightnessTarget(displays[(displayIndex + 1) % displays.length].edid) : undefined} />}</>} /></div>
+    </div>}
   </main>;
 }

@@ -43,8 +43,8 @@ type Controller struct {
 	localIP string
 
 	// TV mirror: a registry + pairing-key store synced from the agent while it's
-	// up (see syncTVFromAgent), and a manager that drives the TV directly when
-	// the agent is down (see the fallbacks in monitors.go). registry/tvStore are
+	// up (see syncTVFromAgent), and a manager that drives the TV directly,
+	// independently of the agent (see monitors.go). registry/tvStore are
 	// nil only if their data dir couldn't be initialised.
 	registry *store.Registry
 	tvStore  *store.TVStore

@@ -107,3 +107,10 @@ test("Tab placement defaults to the main keyboard and preserves an explicit choi
   expect(parseSettings({ tabKey: false }).tabKey).toBe(false);
   expect(parseSettings({ tabKey: "false" }).tabKey).toBe(true);
 });
+
+test("selected-output volume keys default on and preserve an explicit opt-out", () => {
+  expect(loadSettings().volumeKeysControlOutput).toBe(true);
+  savePreference("ottoman-trackpad-settings", { volumeKeysControlOutput: false });
+  expect(loadSettings().volumeKeysControlOutput).toBe(false);
+  expect(parseSettings({ volumeKeysControlOutput: "false" }).volumeKeysControlOutput).toBe(true);
+});

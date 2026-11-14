@@ -1,4 +1,5 @@
 import { checkImagePaste } from "./image-paste-checks";
+import { checkRemoteVolume } from "./remote-volume-checks";
 import { checkEnter } from "./enter-checks";
 import { createServer } from "vite";
 import { checkSettingsPreview } from "./settings-preview-checks";
@@ -12,7 +13,7 @@ const server = await createServer({ server: { host: "127.0.0.1", port: 0 }, plug
 await server.listen();
 const address = server.httpServer!.address() as { port: number };
 let browser;
-try { browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }); } catch (error) { await server.close(); throw error; }
+try { browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH, args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"] }); } catch (error) { await server.close(); throw error; }
 try {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true });
   const errors: string[] = [];
@@ -126,6 +127,7 @@ try {
   assert(await fixture("brightness()") === 72, "Brightness slider must address the selected monitor");
   await page.getByRole("button", { name: "Switch to volume", exact: true }).click();
   assert(await page.getByRole("slider", { name: "PC volume", exact: true }).inputValue() === "40", "Switching back must retain the audio value");
+  await checkRemoteVolume(page);
   const pad = page.getByLabel(/Trackpad\. Tap to click/);
   const touchEvent = async (type: string, points: { x: number; y: number }[], changed = points) => pad.evaluate((element, { type, points, changed }) => {
     const touch = (p: { x: number; y: number }, i: number) => new Touch({ identifier: i, target: element, clientX: p.x, clientY: p.y });
@@ -133,22 +135,26 @@ try {
   }, { type, points, changed });
   const count = async (type: string) => (await fixture("log") as { type: string }[]).filter(item => item.type === type).length;
   const first = { x: 110, y: 180 }, second = { x: 160, y: 200 };
-  await reset("drag");
-  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
-  assert(await count("mousedown") === 1 && await count("mouseup") === 0, "A tap must press immediately while only its release waits briefly");
-  await page.waitForTimeout(30);
-  await touchEvent("touchstart", [first]);
-  await touchEvent("touchmove", [second]);
-  assert(await count("mousemoverel") === 1 && await count("mousedown") === 1 && await count("mouseup") === 0, "Retouch and movement must drag immediately using the same native press");
-  await touchEvent("touchend", [], [second]);
-  assert(await count("mouseup") === 1, "A drag must release as soon as the finger lifts");
-  await page.waitForTimeout(150);
-  assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "Dragging must never generate a second native click or delayed movement");
+  for (const gap of [30, 150, 250]) {
+    await reset(`drag after ${gap}ms`);
+    await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+    assert(await count("mousedown") === 1 && await count("mouseup") === 0, "A tap must press immediately while only its release waits briefly");
+    await page.waitForTimeout(gap);
+    await touchEvent("touchstart", [first]);
+    // A second press may be held before moving, without the release timer firing.
+    await page.waitForTimeout(350);
+    await touchEvent("touchmove", [second]);
+    assert(await count("mousemoverel") === 1 && await count("mousedown") === 1 && await count("mouseup") === 0, `Retouch after ${gap}ms and movement must drag immediately using the same native press`);
+    await touchEvent("touchend", [], [second]);
+    assert(await count("mouseup") === 1, "A drag must release as soon as the finger lifts");
+    await page.waitForTimeout(350);
+    assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "Dragging must never generate a second native click or delayed movement");
+  }
   await reset("tap");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   assert(await count("mousedown") === 1 && await count("mouseup") === 0, "Single tap press feedback must be immediate");
-  await page.waitForTimeout(120);
-  assert(await count("mouseup") === 1, "Single tap must finish after the 100ms grace");
+  await page.waitForTimeout(350);
+  assert(await count("mouseup") === 1, "Single tap must finish after the 300ms grace");
   await reset("double tap");
   const jitter = { x: first.x + 2, y: first.y + 1 };
   await touchEvent("touchstart", [first]); await touchEvent("touchmove", [jitter]); await touchEvent("touchend", [], [jitter]);
@@ -164,7 +170,13 @@ try {
   await page.waitForTimeout(150);
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(120);
-  assert(await count("mousedown") === 2 && await count("mouseup") === 2, "Two taps outside the retouch grace must still produce two ordinary clicks");
+  assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 1, "Naturally spaced stationary taps must still produce a double-click");
+  await reset("separate taps");
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(350);
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(350);
+  assert(await count("mousedown") === 2 && await count("mouseup") === 2 && await count("mouseclick") === 0, "Taps outside the double-tap window must finish independently");
   await reset("cancel drag");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(30);

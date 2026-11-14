@@ -8,10 +8,17 @@ import (
 	"github.com/trolleyman/ottoman/internal/api"
 )
 
-// SetMonitorBrightness implements api.StrictServerInterface by proxying to the
-// agent. For a mirrored TV it falls back to setting the OLED backlight directly
-// when the agent is down (matching how the agent routes brightness for a TV).
+// SetMonitorBrightness drives mirrored TVs directly; desktop monitors use the agent.
 func (c *Controller) SetMonitorBrightness(ctx context.Context, request api.SetMonitorBrightnessRequestObject) (api.SetMonitorBrightnessResponseObject, error) {
+	if request.Body != nil {
+		if _, ok := c.localTVEntry(request.Body.Edid); ok {
+			msg, lerr := c.localSetBacklight(ctx, request.Body.Edid, request.Body.Brightness)
+			if lerr != nil {
+				return api.SetMonitorBrightness500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
+			}
+			return api.SetMonitorBrightness200JSONResponse{Success: true, Message: &msg}, nil
+		}
+	}
 	body, _ := json.Marshal(request.Body)
 	resp, err := proxyRequest(ctx, c, "POST", "/api/monitors/brightness", body, func(resp *http.Response) (api.SetMonitorBrightnessResponseObject, error) {
 		switch resp.StatusCode {
@@ -31,22 +38,21 @@ func (c *Controller) SetMonitorBrightness(ctx context.Context, request api.SetMo
 			return api.SetMonitorBrightness502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
-	if err != nil && request.Body != nil {
-		if _, ok := c.localTVEntry(request.Body.Edid); ok {
-			msg, lerr := c.localSetBacklight(ctx, request.Body.Edid, request.Body.Brightness)
-			if lerr != nil {
-				return api.SetMonitorBrightness500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
-			}
-			return api.SetMonitorBrightness200JSONResponse{Success: true, Message: &msg}, nil
-		}
-	}
+
 	return resp, err
 }
 
-// SetMonitorPower implements api.StrictServerInterface by proxying to the
-// agent, falling back to driving a mirrored TV directly when the agent is down
-// (the main point of the feature: turn the TV off after the desktop is off).
+// SetMonitorPower drives mirrored TVs directly; desktop monitors use the agent.
 func (c *Controller) SetMonitorPower(ctx context.Context, request api.SetMonitorPowerRequestObject) (api.SetMonitorPowerResponseObject, error) {
+	if request.Body != nil {
+		if _, ok := c.localTVEntry(request.Body.Edid); ok {
+			msg, lerr := c.localSetPower(ctx, request.Body.Edid, request.Body.On)
+			if lerr != nil {
+				return api.SetMonitorPower500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
+			}
+			return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
+		}
+	}
 	body, _ := json.Marshal(request.Body)
 	resp, err := proxyRequest(ctx, c, "POST", "/api/monitors/power", body, func(resp *http.Response) (api.SetMonitorPowerResponseObject, error) {
 		switch resp.StatusCode {
@@ -66,21 +72,20 @@ func (c *Controller) SetMonitorPower(ctx context.Context, request api.SetMonitor
 			return api.SetMonitorPower502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
-	if err != nil && request.Body != nil {
-		if _, ok := c.localTVEntry(request.Body.Edid); ok {
-			msg, lerr := c.localSetPower(ctx, request.Body.Edid, request.Body.On)
-			if lerr != nil {
-				return api.SetMonitorPower500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
-			}
-			return api.SetMonitorPower200JSONResponse{Success: true, Message: &msg}, nil
-		}
-	}
+
 	return resp, err
 }
 
-// GetMonitorPowerState implements api.StrictServerInterface by proxying to the
-// agent, falling back to probing a mirrored TV directly when the agent is down.
+// GetMonitorPowerState probes mirrored TVs directly; desktop monitors use the agent.
 func (c *Controller) GetMonitorPowerState(ctx context.Context, request api.GetMonitorPowerStateRequestObject) (api.GetMonitorPowerStateResponseObject, error) {
+	if request.Body != nil {
+		if _, ok := c.localTVEntry(request.Body.Edid); ok {
+			return api.GetMonitorPowerState200JSONResponse{
+				Edid:       request.Body.Edid,
+				Responding: c.tv.Reachable(ctx, request.Body.Edid),
+			}, nil
+		}
+	}
 	body, _ := json.Marshal(request.Body)
 	resp, err := proxyRequest(ctx, c, "POST", "/api/monitors/power-state", body, func(resp *http.Response) (api.GetMonitorPowerStateResponseObject, error) {
 		switch resp.StatusCode {
@@ -100,20 +105,21 @@ func (c *Controller) GetMonitorPowerState(ctx context.Context, request api.GetMo
 			return api.GetMonitorPowerState502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
-	if err != nil && request.Body != nil {
-		if _, ok := c.localTVEntry(request.Body.Edid); ok {
-			return api.GetMonitorPowerState200JSONResponse{
-				Edid:       request.Body.Edid,
-				Responding: c.tv.Reachable(ctx, request.Body.Edid),
-			}, nil
-		}
-	}
+
 	return resp, err
 }
 
-// SetMonitorVolume implements api.StrictServerInterface by proxying to the
-// agent, falling back to driving a mirrored TV directly when the agent is down.
+// SetMonitorVolume drives mirrored TVs directly; desktop monitors use the agent.
 func (c *Controller) SetMonitorVolume(ctx context.Context, request api.SetMonitorVolumeRequestObject) (api.SetMonitorVolumeResponseObject, error) {
+	if request.Body != nil {
+		if _, ok := c.localTVEntry(request.Body.Edid); ok {
+			msg, lerr := c.localSetVolume(ctx, request.Body.Edid, request.Body.Volume, request.Body.Muted)
+			if lerr != nil {
+				return api.SetMonitorVolume500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
+			}
+			return api.SetMonitorVolume200JSONResponse{Success: true, Message: &msg}, nil
+		}
+	}
 	body, _ := json.Marshal(request.Body)
 	resp, err := proxyRequest(ctx, c, "POST", "/api/monitors/volume", body, func(resp *http.Response) (api.SetMonitorVolumeResponseObject, error) {
 		switch resp.StatusCode {
@@ -133,15 +139,7 @@ func (c *Controller) SetMonitorVolume(ctx context.Context, request api.SetMonito
 			return api.SetMonitorVolume502JSONResponse{Code: resp.StatusCode, Error: "Bad Gateway"}, nil
 		}
 	})
-	if err != nil && request.Body != nil {
-		if _, ok := c.localTVEntry(request.Body.Edid); ok {
-			msg, lerr := c.localSetVolume(ctx, request.Body.Edid, request.Body.Volume, request.Body.Muted)
-			if lerr != nil {
-				return api.SetMonitorVolume500JSONResponse{Code: http.StatusInternalServerError, Error: lerr.Error()}, nil
-			}
-			return api.SetMonitorVolume200JSONResponse{Success: true, Message: &msg}, nil
-		}
-	}
+
 	return resp, err
 }
 
