@@ -5,6 +5,7 @@
 export type TrackpadMessageTextWatch = {
     type: 'textwatch';
     enabled: boolean;
+    terminalScrollback?: boolean;
     windowSize?: number;
 };
 

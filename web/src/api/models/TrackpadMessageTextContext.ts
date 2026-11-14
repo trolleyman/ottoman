@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { TerminalColor } from './TerminalColor';
 /**
  * Focused field window. All offsets are absolute Unicode code-point offsets. Unavailable or protected fields carry no text.
  */
@@ -13,6 +14,11 @@ export type TrackpadMessageTextContext = {
     selectionStart: number;
     selectionEnd: number;
     windowStart: number;
+    terminal?: boolean;
+    /**
+     * Terminal foreground colour runs, with absolute Unicode code-point offsets.
+     */
+    terminalColors?: Array<TerminalColor>;
     editable: boolean;
     multiline: boolean;
     available: boolean;

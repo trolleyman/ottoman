@@ -22,6 +22,7 @@ type fakeAccessible struct {
 	value      string
 	start, end int32
 	reads      int
+	parent     reference
 }
 
 func (f *fakeAccessible) GetState() ([]uint32, *dbus.Error) {
@@ -47,6 +48,13 @@ func (f *fakeAccessible) GetInterfaces() ([]string, *dbus.Error) {
 func (f *fakeAccessible) Get(_ string, name string) (dbus.Variant, *dbus.Error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if name == "Parent" {
+		parent := f.parent
+		if parent.Bus == "" {
+			parent = reference{"org.ottoman.Test", "/active_window"}
+		}
+		return dbus.MakeVariant(parent), nil
+	}
 	if name == "CharacterCount" {
 		return dbus.MakeVariant(int32(len([]rune(f.value)))), nil
 	}
@@ -87,6 +95,23 @@ func (f *fakeAccessible) SetCaretOffset(offset int32) (bool, *dbus.Error) {
 }
 func (*fakeAccessible) RegisterEvent(string, []string, string) *dbus.Error { return nil }
 
+type fakeActiveWindow struct {
+	mu     sync.Mutex
+	active bool
+}
+
+func (w *fakeActiveWindow) GetState() ([]uint32, *dbus.Error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.active {
+		return []uint32{1 << 1}, nil
+	}
+	return []uint32{0}, nil
+}
+func (*fakeActiveWindow) Get(_ string, _ string) (dbus.Variant, *dbus.Error) {
+	return dbus.MakeVariant(reference{"", "/org/a11y/atspi/null"}), nil
+}
+
 type fakeBus struct{ Address string }
 
 func (b fakeBus) GetAddress() (string, *dbus.Error) { return b.Address, nil }
@@ -122,6 +147,8 @@ func privateTextBus(t *testing.T) (*dbus.Conn, context.Context, string) {
 			t.Fatal(err)
 		}
 	}
+	exportTextObject(t, server, &fakeActiveWindow{active: true}, "/active_window", accessible)
+
 	export := func(v interface{}, path dbus.ObjectPath, iface string) {
 		t.Helper()
 		if err := server.Export(v, path, iface); err != nil {
@@ -210,6 +237,12 @@ func (*fakeTerminal) GetState() ([]uint32, *dbus.Error) {
 }
 func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
 
+func (f *fakeTerminal) GetAttributeRun(offset int32, defaults bool) (map[string]string, int32, int32, *dbus.Error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return map[string]string{"fg-color": "0,205,255"}, 0, int32(len([]rune(f.value))), nil
+}
+
 func TestNativeATSPITerminalPreview(t *testing.T) {
 	server, ctx, _ := privateTextBus(t)
 	root := &fakeAccessible{root: true}
@@ -235,7 +268,7 @@ func TestNativeATSPITerminalPreview(t *testing.T) {
 	}
 	defer backend.Close()
 	first, err := backend.Snapshot(ctx, 128)
-	if err != nil || !first.Available || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
+	if err != nil || !first.Available || !first.Terminal || len(first.TerminalColors) != 1 || first.TerminalColors[0].Color != "#00cdff" || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
 		t.Fatalf("terminal preview unavailable or writable: %#v, %v", first, err)
 	}
 	for _, edit := range []Edit{{Start: first.Start, End: first.End, Text: "x"}, {Start: 0, End: 0, SelectionOnly: true}} {
@@ -465,5 +498,59 @@ func TestNativeRichEditorPreview(t *testing.T) {
 	defer second.mu.Unlock()
 	if second.reads != reads {
 		t.Fatal("read a protected embedded field")
+	}
+}
+
+func TestBackgroundTerminalDoesNotReappearWithoutFocusedChromeInput(t *testing.T) {
+	server, ctx, _ := privateTextBus(t)
+	root := &fakeAccessible{root: true}
+	terminalWindow := &fakeActiveWindow{active: true}
+	field := &fakeTerminal{fakeAccessible: fakeAccessible{role: terminalRole, value: "❯ echo secret", start: 13, parent: reference{"org.ottoman.Test", "/terminal_window"}}}
+	exportTextObject(t, server, root, "/org/a11y/atspi/accessible/root", accessible)
+	exportTextObject(t, server, root, "/org/a11y/atspi/registry", "org.a11y.atspi.Registry")
+	for _, iface := range []string{accessible, "org.freedesktop.DBus.Properties"} {
+		exportTextObject(t, server, terminalWindow, "/terminal_window", iface)
+	}
+	for _, iface := range []string{accessible, textInterface, "org.freedesktop.DBus.Properties"} {
+		exportTextObject(t, server, field, "/field", iface)
+	}
+	backend, err := Native(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	first, err := backend.Snapshot(ctx, 128)
+	if err != nil || !first.Available {
+		t.Fatalf("active terminal missing: %#v %v", first, err)
+	}
+	field.mu.Lock()
+	reads := field.reads
+	field.mu.Unlock()
+	// Chrome takes the foreground without focusing a text box. The background
+	// terminal intentionally keeps its stale FOCUSED flag and sends no blur event.
+	terminalWindow.mu.Lock()
+	terminalWindow.active = false
+	terminalWindow.mu.Unlock()
+	provider := backend.(*atspi)
+	for i := 0; i < 3; i++ {
+		provider.searched = time.Time{} // Exercise discovery as well as cached focus.
+		next, err := backend.Snapshot(ctx, 128)
+		if err != nil || next.Available || next.Value != "" || next.Password {
+			t.Fatalf("background terminal leaked: %#v %v", next, err)
+		}
+	}
+	field.mu.Lock()
+	afterReads := field.reads
+	field.mu.Unlock()
+	if afterReads != reads {
+		t.Fatal("read background terminal contents")
+	}
+	terminalWindow.mu.Lock()
+	terminalWindow.active = true
+	terminalWindow.mu.Unlock()
+	provider.searched = time.Time{}
+	restored, err := backend.Snapshot(ctx, 128)
+	if err != nil || !restored.Available || restored.Value != first.Value {
+		t.Fatalf("terminal did not recover on activation: %#v %v", restored, err)
 	}
 }

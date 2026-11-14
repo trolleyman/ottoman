@@ -1,7 +1,7 @@
 import { ActionKey } from "./KeyboardKeys";
 import { ArrowLeft } from "lucide-react";
 import { supportsHaptics } from "./keyboardHaptics";
-import { KEYBOARD_TIMINGS, type KeyboardSettings } from "./trackpadSettings";
+import { TERMINAL_FONTS, KEYBOARD_TIMINGS, type KeyboardSettings } from "./trackpadSettings";
 
 function SettingSwitch({
   label,
@@ -105,6 +105,14 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                 </select>
               </label>
             </div>
+            <label className="mb-2 flex shrink-0 flex-col gap-1 text-xs text-zinc-300">Terminal font
+              <select aria-label="Terminal font" value={settings.terminalFont}
+                onChange={event => onSettingsChange({ terminalFont: event.target.value as KeyboardSettings["terminalFont"] })}
+                className="custom-keyboard-utility rounded-md border border-zinc-600 bg-zinc-800 p-2">
+                {Object.entries(TERMINAL_FONTS).map(([value, font]) => <option key={value} value={value}>{font.label}</option>)}
+              </select>
+            </label>
+            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Terminal previews use the caret’s line and prompt. Show terminal scrollback includes nearby output (up to 4,096 characters). Colours depend on the terminal’s accessibility support. Iosevka Term Nerd Font Mono includes Nerd Font icons and is bundled alongside Fira Code; Consolas uses an installed copy.</p>
             <div className="mb-3 grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
               <ActionKey
                 type="button"
@@ -125,7 +133,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
             </div>
             {([
               ["Typing", [["Autocorrect", "autocorrect"], ["Double-space period", "doubleSpacePeriod"], ["Swipe typing", "swipeTyping"]]],
-              ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Interact with text preview", "interactivePreview"], ["Navigate by preview lines", "previewNavigation"]]],
+              ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Show terminal scrollback", "terminalScrollback"], ["Interact with text preview", "interactivePreview"], ["Navigate by preview lines", "previewNavigation"]]],
               ["Key layout", [["Tab beside space", "tabKey"], ["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
               ["Prediction & feedback", [["Adaptive key sizes", "adaptiveKeys"], ["Debug key sizes", "debugKeySizes"], ["Key haptics", "haptics"]]],
             ] as const).map(([title, fields]) => <fieldset key={title} className="mb-3 shrink-0">

@@ -5,10 +5,13 @@ package textcontext
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/trolleyman/ottoman/internal/api"
 )
 
 const accessible = "org.a11y.atspi.Accessible"
@@ -64,6 +67,31 @@ func (a *atspi) states(ctx context.Context, r reference) ([]uint32, error) {
 	return states, err
 }
 func state(v []uint32, bit uint) bool { return int(bit/32) < len(v) && v[bit/32]&(1<<(bit%32)) != 0 }
+
+// Toolkits may retain FOCUSED on a control in an inactive window. Walk its
+// parents and require ACTIVE on the owning window before exposing any text.
+func (a *atspi) inActiveWindow(ctx context.Context, r reference) bool {
+	seen := make(map[reference]bool)
+	for depth := 0; depth < 64 && r.Bus != "" && !seen[r] && ctx.Err() == nil; depth++ {
+		seen[r] = true
+		states, err := a.states(ctx, r)
+		if err != nil {
+			return false
+		}
+		if state(states, 1) {
+			return true
+		} // ATSPI_STATE_ACTIVE
+		var parent dbus.Variant
+		if a.object(r).CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0, accessible, "Parent").Store(&parent) != nil {
+			return false
+		}
+		if dbus.Store([]interface{}{parent.Value()}, &r) != nil {
+			return false
+		}
+	}
+	return false
+}
+
 func (a *atspi) locked(ctx context.Context) bool {
 	var locked bool
 	if a.session.Object("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver").CallWithContext(ctx, "org.gnome.ScreenSaver.GetActive", 0).Store(&locked) == nil {
@@ -81,7 +109,7 @@ func (a *atspi) discover(ctx context.Context) reference {
 		if err != nil {
 			continue
 		}
-		if state(states, 12) {
+		if state(states, 12) && a.inActiveWindow(ctx, r) {
 			if state(states, 7) {
 				return r
 			} // Focus must be on an editable control or terminal, not its window.
@@ -147,8 +175,9 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		return Snapshot{}, nil
 	}
 	states, err := a.states(ctx, r)
-	if err != nil || !state(states, 12) {
+	if err != nil || !state(states, 12) || !a.inActiveWindow(ctx, r) {
 		a.focused = reference{}
+		a.searched = time.Time{}
 		return Snapshot{}, nil
 	}
 	var role uint32
@@ -163,7 +192,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		}
 		// Discard even mask metadata if focus or lock state changed during the query.
 		now, err := a.states(ctx, r)
-		if err != nil || !state(now, 12) || a.locked(ctx) {
+		if err != nil || !state(now, 12) || !a.inActiveWindow(ctx, r) || a.locked(ctx) {
 			return Snapshot{Protected: true}, nil
 		}
 		return masked, nil
@@ -234,16 +263,20 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		// keystrokes preserve the editor's formatting and native selection.
 		writable = false
 	}
+	var colors []api.TerminalColor
+	if terminal {
+		colors = a.terminalColors(ctx, r, low, high)
+	}
 	// Recheck privacy/focus after the read. Events racing this snapshot are handled next tick.
 	now, err := a.states(ctx, r)
-	if err != nil || !state(now, 12) || a.locked(ctx) {
+	if err != nil || !state(now, 12) || !a.inActiveWindow(ctx, r) || a.locked(ctx) {
 		return Snapshot{}, ErrUnavailable
 	}
-	return Snapshot{Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
+	return Snapshot{Terminal: terminal, TerminalColors: colors, Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
 }
 func (a *atspi) Replace(ctx context.Context, expected Snapshot, e Edit) error {
 	current, err := a.Snapshot(ctx, a.window)
-	if err != nil || current != expected || !current.Editable {
+	if err != nil || !sameSnapshot(current, expected) || !current.Editable {
 		return ErrUnavailable
 	}
 	obj := a.object(a.focused)
@@ -396,4 +429,34 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 		return "", 0, 0, ErrUnavailable
 	}
 	return string(result), low + mappedStart, low + mappedEnd, nil
+}
+
+// Attribute runs are optional: emulators without colour metadata still provide
+// a usable monochrome preview. Bound calls and validate colours at the source.
+func (a *atspi) terminalColors(ctx context.Context, r reference, low, high int) []api.TerminalColor {
+	var runs []api.TerminalColor
+	for offset, calls := high-1, 0; offset >= low && calls < 64; calls++ {
+		var attrs map[string]string
+		var start, end int32
+		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil || int(end) <= offset || int(start) > offset {
+			break
+		}
+		parts := strings.Split(attrs["fg-color"], ",")
+		if len(parts) == 3 {
+			rgb := [3]int{}
+			valid := true
+			for i, part := range parts {
+				n, err := strconv.Atoi(strings.TrimSpace(part))
+				if err != nil || n < 0 || n > 255 {
+					valid = false
+				}
+				rgb[i] = n
+			}
+			if valid {
+				runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: fmt.Sprintf("#%02x%02x%02x", rgb[0], rgb[1], rgb[2])})
+			}
+		}
+		offset = int(start) - 1
+	}
+	return runs
 }

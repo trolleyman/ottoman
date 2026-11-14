@@ -610,6 +610,13 @@ type TVConn struct {
 	Type *string `json:"type,omitempty"`
 }
 
+// TerminalColor defines model for TerminalColor.
+type TerminalColor struct {
+	Color string `json:"color"`
+	End   int    `json:"end"`
+	Start int    `json:"start"`
+}
+
 // TrackpadMessage defines model for TrackpadMessage.
 type TrackpadMessage struct {
 	union json.RawMessage
@@ -734,13 +741,17 @@ type TrackpadMessageTextContext struct {
 	Multiline    bool `json:"multiline"`
 
 	// Password A focused password field, distinct from a locked or inaccessible session. Its value and selection are always omitted.
-	Password       bool                           `json:"password"`
-	Protected      bool                           `json:"protected"`
-	Rejected       *bool                          `json:"rejected,omitempty"`
-	RequestId      *int                           `json:"requestId,omitempty"`
-	Revision       int                            `json:"revision"`
-	SelectionEnd   int                            `json:"selectionEnd"`
-	SelectionStart int                            `json:"selectionStart"`
+	Password       bool  `json:"password"`
+	Protected      bool  `json:"protected"`
+	Rejected       *bool `json:"rejected,omitempty"`
+	RequestId      *int  `json:"requestId,omitempty"`
+	Revision       int   `json:"revision"`
+	SelectionEnd   int   `json:"selectionEnd"`
+	SelectionStart int   `json:"selectionStart"`
+	Terminal       bool  `json:"terminal,omitempty"`
+
+	// TerminalColors Terminal foreground colour runs, with absolute Unicode code-point offsets.
+	TerminalColors []TerminalColor                `json:"terminalColors,omitempty"`
 	Type           TrackpadMessageTextContextType `json:"type"`
 	Value          string                         `json:"value"`
 	WindowStart    int                            `json:"windowStart"`
@@ -766,9 +777,10 @@ type TrackpadMessageTextEditType string
 
 // TrackpadMessageTextWatch defines model for TrackpadMessageTextWatch.
 type TrackpadMessageTextWatch struct {
-	Enabled    bool                         `json:"enabled"`
-	Type       TrackpadMessageTextWatchType `json:"type"`
-	WindowSize *int                         `json:"windowSize,omitempty"`
+	Enabled            bool                         `json:"enabled"`
+	TerminalScrollback bool                         `json:"terminalScrollback,omitempty"`
+	Type               TrackpadMessageTextWatchType `json:"type"`
+	WindowSize         *int                         `json:"windowSize,omitempty"`
 }
 
 // TrackpadMessageTextWatchType defines model for TrackpadMessageTextWatch.Type.
