@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: TrackpadSettings = {
   scrollFriction: 0.92,
   clickAndDrag: false,
   customKeyboard: true,
-  volumeKeysControlOutput: false,
+  volumeKeysControlOutput: true,
   suggestionsAboveControls: true,
   numberRow: true,
   tallerKeys: true,

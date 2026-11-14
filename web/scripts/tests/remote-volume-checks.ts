@@ -16,8 +16,9 @@ export async function checkRemoteVolume(page: Page) {
   const setting = page.getByRole("checkbox", { name: "Volume keys control selected output", exact: true });
   await fixture('reset("volume")');
   await key("AudioVolumeUp");
-  assert(await volume("PC").inputValue() === "40", "Default keys must leave the slider alone");
-  assert((await fixture("log") as { key?: string }[]).filter(item => item.key === "AudioVolumeUp").length === 2, "Default keydown and keyup must reach OS");
+  assert(await volume("PC").inputValue() === "41", "Default keys must adjust the selected slider");
+  assert(!(await fixture("log") as { key?: string }[]).some(item => item.key === "AudioVolumeUp"), "Default volume keys must not reach OS");
+  await key("AudioVolumeDown");
   await page.getByRole("button", { name: "Trackpad settings", exact: true }).click();
   await setting.check();
   await page.screenshot({ path: "/tmp/remote-volume-settings@2x.png" });

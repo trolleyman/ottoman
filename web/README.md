@@ -58,7 +58,7 @@ and browser after the checks. Preview/settings screenshots are saved under
 `/tmp/keyboard-preview@2x.png` and `/tmp/keyboard-settings@2x.png`.
 
 PC remote’s Trackpad settings include **Volume keys control selected output**
-(off by default). When enabled, the keyboard’s Fn volume up/down keys and volume
+(on by default). When enabled, the keyboard’s Fn volume up/down keys and volume
 key events delivered to the trackpad adjust the selected TV or PC slider in 1%
 steps. Tap the sidebar’s TV/PC label to change the target. Volume keys keep
 adjusting audio while brightness is shown; mute retains its OS behavior. The
