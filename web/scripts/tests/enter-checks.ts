@@ -16,7 +16,7 @@ export async function checkEnter(page: Page) {
   };
   const assertEnter = async (modifiers: string[] = []) => {
     const messages = (await fixture("log") as TrackpadMessage[]).filter(message => message.type !== "textwatch");
-    const expected = ["keydown", "keyup"].map(type => ({ type, key: "Enter", modifiers }));
+    const expected = [{ type: "keydown", key: "Enter", modifiers }, { type: "keyup", key: "Enter", modifiers: [] }];
     if (JSON.stringify(messages) !== JSON.stringify(expected)) throw Error(`Enter must send only a native key pair: ${JSON.stringify(messages)}`);
   };
   const combinations = [

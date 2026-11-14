@@ -1,5 +1,6 @@
 import { checkImagePaste } from "./image-paste-checks";
 import { checkRemoteVolume } from "./remote-volume-checks";
+import { checkModifierRelease } from "./modifier-release-checks";
 import { checkEnter } from "./enter-checks";
 import { createServer } from "vite";
 import { checkSettingsPreview } from "./settings-preview-checks";
@@ -33,6 +34,7 @@ try {
   const space = page.getByRole("button", { name: "Space. Hold and drag to move the cursor", exact: true });
   await checkImagePaste(page);
   await checkEnter(page);
+  await checkModifierRelease(page);
   await reset("sentence", 3);
   await page.getByRole("button", { name: "End", exact: true }).click();
   await space.click(); await space.click();
