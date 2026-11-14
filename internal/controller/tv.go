@@ -97,8 +97,7 @@ func (c *Controller) syncTVFromAgent(ctx context.Context) error {
 
 // localTVEntry returns the mirrored registry entry for an EDID if it's a known
 // TV the controller can drive locally, and whether it exists. Used by the
-// monitor endpoints to decide whether to fall back to local control when the
-// agent is unreachable.
+// monitor endpoints to select direct control without contacting the agent.
 func (c *Controller) localTVEntry(edid string) (store.MonitorEntry, bool) {
 	if c.registry == nil || c.tv == nil || edid == "" {
 		return store.MonitorEntry{}, false
@@ -111,7 +110,7 @@ func (c *Controller) localTVEntry(edid string) (store.MonitorEntry, bool) {
 }
 
 // The following local* helpers drive a mirrored TV directly (WoL / SSAP) and
-// are only reached from the monitor endpoints' agent-down fallback path. Each
+// are reached from the monitor endpoints before trying the agent. Each
 // returns a user-facing message on success. Callers must have already confirmed
 // the EDID is a known TV via localTVEntry.
 
@@ -121,12 +120,12 @@ func (c *Controller) localSetPower(ctx context.Context, edid string, on bool) (s
 		if err := c.tv.PowerOn(edid); err != nil {
 			return "", err
 		}
-		return "TV powering on (agent offline)", nil
+		return "TV powering on via Pi", nil
 	}
 	if err := c.tv.PowerOff(ctx, edid); err != nil {
 		return "", err
 	}
-	return "TV powering off (agent offline)", nil
+	return "TV powering off via Pi", nil
 }
 
 // localSetVolume sets a TV's volume and/or mute over SSAP.
@@ -141,17 +140,17 @@ func (c *Controller) localSetVolume(ctx context.Context, edid string, volume *in
 			return "", err
 		}
 	}
-	return "volume updated (agent offline)", nil
+	return "volume updated via Pi", nil
 }
 
 // localSetBacklight sets a TV's OLED backlight over SSAP. The agent routes a
-// brightness request for a TV-backed monitor to the backlight, so the offline
-// fallback does the same.
+// brightness request for a TV-backed monitor to the backlight; direct control
+// does the same.
 func (c *Controller) localSetBacklight(ctx context.Context, edid string, brightness int) (string, error) {
 	if err := c.tv.SetBacklight(ctx, edid, brightness); err != nil {
 		return "", err
 	}
-	return "backlight updated (agent offline)", nil
+	return "backlight updated via Pi", nil
 }
 
 // localTVMonitors synthesises the /api/monitors response from the mirrored TV
@@ -184,6 +183,9 @@ func (c *Controller) localTVMonitors(ctx context.Context) []api.Monitor {
 		}
 		if st, ok := c.tv.StateFor(ctx, e.Edid); ok {
 			mon.TvState = &st
+		}
+		if brightness, ok := c.tv.Backlight(ctx, e.Edid); ok {
+			mon.Brightness = &brightness
 		}
 		monitors = append(monitors, mon)
 	}

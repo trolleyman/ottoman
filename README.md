@@ -113,6 +113,13 @@ scroll control and docked keyboard together with separate PC/TV volume controls
 and display layouts. Tap the slider’s volume icon to switch to monitor brightness; tap the output label to choose another output or display. Use the
 fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
 
+Before the computer connects, `/remote` shows TV power, volume, mute and available
+brightness controls. Configured TVs are controlled directly by the Pi using webOS
+(and Wake-on-LAN for power-on), without waiting for the computer. Set up and pair
+the TV while the computer is online first; the Pi persists a mirrored copy of its
+connection settings and pairing key for use after restarts. PC controls appear
+automatically when the computer connects.
+
 The PC remote keyboard stays visible even when the trackpad is unfocused. On the dashboard, focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
 shows local word completions and swipe alternatives, or searches emoji and symbols.
 Search results replace the number row; emoji
