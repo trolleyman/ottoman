@@ -247,8 +247,9 @@ function TouchArea({
 
   const beginModifier = (modifier: Modifier) => { modifierState.current.press(modifier); syncModifiers(); };
   const endModifier = (modifier: Modifier, cancelled = false) => {
-    modifierState.current.release(modifier, performance.now(), settings.shiftDoubleTapMs, cancelled);
+    const action = modifierState.current.release(modifier, performance.now(), settings.shiftDoubleTapMs, cancelled);
     syncModifiers();
+    if (action === "launcher") { dismissDraft(); sendKeyPress("Meta"); }
   };
 
   const moveRemoteCursor = useCallback(

@@ -3,8 +3,8 @@ import { Modifier } from "../src/api";
 import { adaptiveKeyScale, createAutocorrect, KeyboardModifiers, nextKeyWeights, spaceEdit } from "../src/keyboardEditing";
 import { parseSettings } from "../src/trackpadSettings";
 
-test("all modifiers support one-shot, double-tap lock, hold and cancellation", () => {
-  for (const key of [Modifier.SHIFT, Modifier.CTRL, Modifier.ALT, Modifier.META]) {
+test("Shift, Control and Alt support one-shot, double-tap lock, hold and cancellation", () => {
+  for (const key of [Modifier.SHIFT, Modifier.CTRL, Modifier.ALT]) {
     const state = new KeyboardModifiers();
     state.press(key); state.release(key, 100, 350);
     expect(state.active).toEqual([key]);
@@ -24,6 +24,31 @@ test("all modifiers support one-shot, double-tap lock, hold and cancellation", (
     state.press(key); state.release(key, 3000, 350, true);
     expect(state.active).toEqual([]);
   }
+});
+
+test("Meta double-tap requests the launcher while shortcuts and cancellation never do", () => {
+  const state = new KeyboardModifiers();
+  const tap = (now: number, cancelled = false) => {
+    state.press(Modifier.META);
+    return state.release(Modifier.META, now, 350, cancelled);
+  };
+  expect(tap(100)).toBeUndefined();
+  expect(state.active).toEqual([Modifier.META]);
+  expect(tap(200)).toBe("launcher");
+  expect(state.active).toEqual([]);
+  expect(state.taps.size).toBe(0);
+  tap(1000); state.consume(); // Meta+L consumes the single tap.
+  expect(state.active).toEqual([]);
+  expect(tap(1100)).toBeUndefined();
+  expect(tap(1200, true)).toBeUndefined();
+  state.consume();
+  state.press(Modifier.META); state.consume(); state.consume();
+  expect(state.active).toEqual([Modifier.META]);
+  expect(state.release(Modifier.META, 1300, 350)).toBeUndefined();
+  expect(state.active).toEqual([]);
+  expect(tap(1400)).toBeUndefined();
+  expect(tap(1800)).toBeUndefined(); // Outside the double-tap window.
+  expect(state.active).toEqual([]);
 });
 
 test("double-space works after navigation and only suppresses an explicit undo", () => {
