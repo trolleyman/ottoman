@@ -5,10 +5,13 @@ package textcontext
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/trolleyman/ottoman/internal/api"
 )
 
 const accessible = "org.a11y.atspi.Accessible"
@@ -234,16 +237,20 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		// keystrokes preserve the editor's formatting and native selection.
 		writable = false
 	}
+	var colors []api.TerminalColor
+	if terminal {
+		colors = a.terminalColors(ctx, r, low, high)
+	}
 	// Recheck privacy/focus after the read. Events racing this snapshot are handled next tick.
 	now, err := a.states(ctx, r)
 	if err != nil || !state(now, 12) || a.locked(ctx) {
 		return Snapshot{}, ErrUnavailable
 	}
-	return Snapshot{Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
+	return Snapshot{Terminal: terminal, TerminalColors: colors, Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
 }
 func (a *atspi) Replace(ctx context.Context, expected Snapshot, e Edit) error {
 	current, err := a.Snapshot(ctx, a.window)
-	if err != nil || current != expected || !current.Editable {
+	if err != nil || !sameSnapshot(current, expected) || !current.Editable {
 		return ErrUnavailable
 	}
 	obj := a.object(a.focused)
@@ -396,4 +403,34 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 		return "", 0, 0, ErrUnavailable
 	}
 	return string(result), low + mappedStart, low + mappedEnd, nil
+}
+
+// Attribute runs are optional: emulators without colour metadata still provide
+// a usable monochrome preview. Bound calls and validate colours at the source.
+func (a *atspi) terminalColors(ctx context.Context, r reference, low, high int) []api.TerminalColor {
+	var runs []api.TerminalColor
+	for offset, calls := high-1, 0; offset >= low && calls < 64; calls++ {
+		var attrs map[string]string
+		var start, end int32
+		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil || int(end) <= offset || int(start) > offset {
+			break
+		}
+		parts := strings.Split(attrs["fg-color"], ",")
+		if len(parts) == 3 {
+			rgb := [3]int{}
+			valid := true
+			for i, part := range parts {
+				n, err := strconv.Atoi(strings.TrimSpace(part))
+				if err != nil || n < 0 || n > 255 {
+					valid = false
+				}
+				rgb[i] = n
+			}
+			if valid {
+				runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: fmt.Sprintf("#%02x%02x%02x", rgb[0], rgb[1], rgb[2])})
+			}
+		}
+		offset = int(start) - 1
+	}
+	return runs
 }

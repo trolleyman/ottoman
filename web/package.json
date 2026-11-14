@@ -13,6 +13,8 @@
     "test:native-text": "bun run build && bun scripts/tests/native-text-smoke.ts"
   },
   "dependencies": {
+    "@fontsource/fira-code": "^5.3.0",
+    "@fontsource/iosevka": "^5.3.0",
     "lucide-react": "^1.66.0",
     "norvig-frequencies": "^0.0.0",
     "react": "^19.3.1",

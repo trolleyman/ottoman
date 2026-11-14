@@ -210,6 +210,12 @@ func (*fakeTerminal) GetState() ([]uint32, *dbus.Error) {
 }
 func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
 
+func (f *fakeTerminal) GetAttributeRun(offset int32, defaults bool) (map[string]string, int32, int32, *dbus.Error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return map[string]string{"fg-color": "0,205,255"}, 0, int32(len([]rune(f.value))), nil
+}
+
 func TestNativeATSPITerminalPreview(t *testing.T) {
 	server, ctx, _ := privateTextBus(t)
 	root := &fakeAccessible{root: true}
@@ -235,7 +241,7 @@ func TestNativeATSPITerminalPreview(t *testing.T) {
 	}
 	defer backend.Close()
 	first, err := backend.Snapshot(ctx, 128)
-	if err != nil || !first.Available || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
+	if err != nil || !first.Available || !first.Terminal || len(first.TerminalColors) != 1 || first.TerminalColors[0].Color != "#00cdff" || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
 		t.Fatalf("terminal preview unavailable or writable: %#v, %v", first, err)
 	}
 	for _, edit := range []Edit{{Start: first.Start, End: first.End, Text: "x"}, {Start: 0, End: 0, SelectionOnly: true}} {

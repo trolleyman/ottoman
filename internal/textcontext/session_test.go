@@ -279,7 +279,7 @@ func TestEditSettlementAcceptsSelectedInlineCompletion(t *testing.T) {
 		calls++
 		return next
 	})
-	if rejected || result != next || calls != 1 {
+	if rejected || !sameSnapshot(result, next) || calls != 1 {
 		t.Fatalf("inline completion must acknowledge the typed prefix immediately: rejected=%v calls=%d", rejected, calls)
 	}
 	for _, invalid := range []Snapshot{

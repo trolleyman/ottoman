@@ -1441,6 +1441,7 @@ components:
       properties:
         type: {type: string, enum: [textwatch]}
         enabled: {type: boolean}
+        terminalScrollback: {type: boolean, default: false, x-go-type-skip-optional-pointer: true}
         windowSize: {type: integer, minimum: 128, maximum: 4096, default: 4096}
     TrackpadMessageTextContext:
       description: Focused field window. All offsets are absolute Unicode code-point offsets. Unavailable or protected fields carry no text.
@@ -1454,6 +1455,13 @@ components:
         selectionStart: {type: integer}
         selectionEnd: {type: integer}
         windowStart: {type: integer}
+        terminal: {type: boolean, default: false, x-go-type-skip-optional-pointer: true}
+        terminalColors:
+          description: Terminal foreground colour runs, with absolute Unicode code-point offsets.
+          type: array
+          maxItems: 64
+          x-go-type-skip-optional-pointer: true
+          items: {$ref: '#/components/schemas/TerminalColor'}
         editable: {type: boolean}
         multiline: {type: boolean}
         available: {type: boolean}
@@ -1468,6 +1476,13 @@ components:
           description: Optional password character count obtained without reading text. Omitted when unavailable; clients show a fixed mask.
         requestId: {type: integer}
         rejected: {type: boolean}
+    TerminalColor:
+      type: object
+      required: [start, end, color]
+      properties:
+        start: {type: integer}
+        end: {type: integer}
+        color: {type: string, pattern: '^#[0-9a-fA-F]{6}$'}
     TrackpadMessageTextEdit:
       description: Revision-guarded replacement of an absolute code-point range. selectionOnly changes the selection without replacing text.
       type: object

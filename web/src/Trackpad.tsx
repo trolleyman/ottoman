@@ -1,3 +1,5 @@
+import { PreviewViewport } from "./PreviewViewport";
+import { TERMINAL_FONTS } from "./trackpadSettings";
 import { createPortal } from "react-dom";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -74,9 +76,9 @@ function TouchArea({
     // Reset the preview when the external WebSocket subscription changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRemote(null);
-    if (connected) send({ type: "textwatch", enabled: settings.mirrorFocusedText });
+    if (connected) send({ type: "textwatch", enabled: settings.mirrorFocusedText, terminalScrollback: settings.terminalScrollback });
     return () => { remoteModel.current!.clear(); };
-  }, [connected, settings.mirrorFocusedText, send]);
+  }, [connected, settings.mirrorFocusedText, settings.terminalScrollback, send]);
   useEffect(() => {
     if (!settings.mirrorFocusedText || !connected || !textContext) return;
     const previous = remoteModel.current!.view;
@@ -1080,7 +1082,7 @@ function TouchArea({
               <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
                 className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
             </div>
-            <div data-preview-scroll data-preview-interactive={settings.interactivePreview} className={`${settings.interactivePreview ? "pointer-events-auto" : "pointer-events-none"} min-h-0 overflow-y-auto overscroll-contain rounded-lg border border-white/5 bg-zinc-950/65 shadow-lg backdrop-blur-md`}>
+            <PreviewViewport interactive={settings.interactivePreview}>
               <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
                 onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
                 onPointerUp={(event) => {
@@ -1091,14 +1093,17 @@ function TouchArea({
                   if (offset !== undefined) { navigationX.current = undefined; selectPreview(offset); showDraftIndicator(); }
                 }}
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
-                data-password-preview={remote?.password || undefined}>
-                <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} hideCaret={!!remote?.password}
+                data-password-preview={remote?.password || undefined}
+                data-terminal-preview={remote?.terminal || undefined}
+                style={remote?.terminal ? { fontFamily: TERMINAL_FONTS[settings.terminalFont].family, fontVariantLigatures: "none" } : undefined}>
+                <CaretText key={settings.terminalFont} value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} hideCaret={!!remote?.password}
                   dragging={cursorDrag !== null}
+                  colors={remote?.terminal ? remote.terminalColors?.map(run => ({ ...run, start: utf16Offset(preview, run.start - remote.windowStart), end: utf16Offset(preview, run.end - remote.windowStart) })) : undefined}
                   variant="preview" className="shrink-0 whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-zinc-200 [overflow-wrap:anywhere]" />
                 {cursorDrag && <span aria-hidden="true" data-drag-caret className="pointer-events-none absolute left-0 top-0 z-30 w-0.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,.5)]"
                   style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} />}
               </div>
-            </div>
+            </PreviewViewport>
           </div>
         )}
         {connected && (

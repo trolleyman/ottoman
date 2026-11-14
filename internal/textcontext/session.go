@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"reflect"
 	"time"
 	"unicode/utf8"
 
@@ -21,7 +22,9 @@ type Snapshot struct {
 	Editable, Multiline, Available, Protected bool
 	Password                                  bool
 	// MaskedLength is metadata only; never derive it by reading protected text.
-	MaskedLength *int
+	MaskedLength   *int
+	Terminal       bool
+	TerminalColors []api.TerminalColor
 }
 
 type Edit struct {
@@ -78,6 +81,7 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 	revision := 0
 	window := 4096
 	enabled := false
+	terminalScrollback := false
 	var lastAttempt time.Time
 	sendFailed := false
 	nativeFailed := false
@@ -105,6 +109,8 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 			next.End = 0
 			next.WindowStart = 0
 			next.Editable = false
+			next.Terminal = false
+			next.TerminalColors = nil
 		}
 		changed := !sameSnapshot(next, previous)
 		if next.Identity != previous.Identity || ((next.Available || next.Password) && field == "") {
@@ -118,7 +124,7 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 		}
 		previous = next
 		if changed || force {
-			v := api.TrackpadMessageTextContext{Type: api.Textcontext, FieldId: field, Revision: revision, Value: next.Value, SelectionStart: next.Start, SelectionEnd: next.End, WindowStart: next.WindowStart, Editable: next.Editable, Multiline: next.Multiline, Available: next.Available, Protected: next.Protected, Password: next.Password, MaskedLength: next.MaskedLength, RequestId: request}
+			v := api.TrackpadMessageTextContext{Type: api.Textcontext, FieldId: field, Revision: revision, Value: next.Value, SelectionStart: next.Start, SelectionEnd: next.End, WindowStart: next.WindowStart, Editable: next.Editable, Multiline: next.Multiline, Available: next.Available, Protected: next.Protected, Password: next.Password, MaskedLength: next.MaskedLength, Terminal: next.Terminal, TerminalColors: next.TerminalColors, RequestId: request}
 			if rejected {
 				v.Rejected = &rejected
 			}
@@ -148,6 +154,9 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 			return Snapshot{Protected: true}
 		}
 		nativeFailed = false
+		if v.Terminal && !terminalScrollback {
+			v = compactTerminal(v)
+		}
 		return v
 	}
 	for {
@@ -162,6 +171,7 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 		case c := <-s.commands:
 			if c.watch != nil {
 				enabled = c.watch.Enabled
+				terminalScrollback = c.watch.TerminalScrollback
 				nativeFailed = false
 				if c.watch.WindowSize != nil {
 					window = max(128, min(4096, *c.watch.WindowSize))
@@ -215,13 +225,10 @@ func (s *Session) run(ctx context.Context, factory func(context.Context) (Backen
 
 var ErrUnavailable = errors.New("accessible text unavailable")
 
-// Snapshot includes optional metadata pointers; compare their values so stable
-// password counts do not cause repeated updates or revive dismissed previews.
+// Compare metadata values, including colour runs and optional password counts,
+// so stable snapshots do not repeat updates or revive dismissed previews.
 func sameSnapshot(a, b Snapshot) bool {
-	al, bl := a.MaskedLength, b.MaskedLength
-	a.MaskedLength = nil
-	b.MaskedLength = nil
-	return a == b && ((al == nil && bl == nil) || (al != nil && bl != nil && *al == *bl))
+	return reflect.DeepEqual(a, b)
 }
 
 // Native accessibility writes can return before the renderer publishes the new

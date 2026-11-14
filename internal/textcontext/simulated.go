@@ -21,7 +21,7 @@ func (s *Simulated) Snapshot(context.Context, int) (Snapshot, error) {
 func (s *Simulated) Replace(_ context.Context, expected Snapshot, e Edit) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Current != expected || !expected.Available || !expected.Editable || expected.Protected {
+	if !sameSnapshot(s.Current, expected) || !expected.Available || !expected.Editable || expected.Protected {
 		return ErrUnavailable
 	}
 	if e.SelectionOnly {

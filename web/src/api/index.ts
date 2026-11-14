@@ -48,6 +48,7 @@ export type { SimStateResponse } from './models/SimStateResponse';
 export type { StatusResponse } from './models/StatusResponse';
 export type { SwitchLayoutRequest } from './models/SwitchLayoutRequest';
 export { SwitchLayoutResponse } from './models/SwitchLayoutResponse';
+export type { TerminalColor } from './models/TerminalColor';
 export type { TrackpadMessage } from './models/TrackpadMessage';
 export type { TrackpadMessageConnected } from './models/TrackpadMessageConnected';
 export type { TrackpadMessageKeyDown } from './models/TrackpadMessageKeyDown';

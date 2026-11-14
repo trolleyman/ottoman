@@ -1,4 +1,12 @@
+export const TERMINAL_FONTS = {
+  iosevka: { label: "Iosevka", family: '"Iosevka", monospace' },
+  "fira-code": { label: "Fira Code", family: '"Fira Code", monospace' },
+  consolas: { label: "Consolas (if installed)", family: 'Consolas, "Iosevka", monospace' },
+} as const;
+
 export interface KeyboardSettings {
+  terminalScrollback: boolean;
+  terminalFont: keyof typeof TERMINAL_FONTS;
   autocorrect: boolean;
   adaptiveKeys: boolean;
   debugKeySizes: boolean;
@@ -36,6 +44,8 @@ export interface TrackpadSettings extends KeyboardSettings {
 }
 
 export const DEFAULT_SETTINGS: TrackpadSettings = {
+  terminalScrollback: false,
+  terminalFont: "iosevka",
   autocorrect: false,
   adaptiveKeys: false,
   debugKeySizes: false,
@@ -90,7 +100,7 @@ export function parseSettings(value: unknown): TrackpadSettings {
   const settings = { ...DEFAULT_SETTINGS };
   if (!value || typeof value !== "object" || Array.isArray(value)) return settings;
   const saved = value as Record<string, unknown>;
-  for (const key of ["tabKey", "interactivePreview", "autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "volumeKeysControlOutput", "periodKey", "commaKey", "swipeTyping"] as const) {
+  for (const key of ["terminalScrollback", "tabKey", "interactivePreview", "autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "volumeKeysControlOutput", "periodKey", "commaKey", "swipeTyping"] as const) {
     if (typeof saved[key] === "boolean") settings[key] = saved[key];
   }
   for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES, { key: "spaceCursorSensitivity", min: 0.5, max: 5 } as const]) {
@@ -103,5 +113,7 @@ export function parseSettings(value: unknown): TrackpadSettings {
     settings.keyboardLayout = saved.keyboardLayout as TrackpadSettings["keyboardLayout"];
   if (["dark", "light", "system"].includes(String(saved.keyboardTheme)))
     settings.keyboardTheme = saved.keyboardTheme as TrackpadSettings["keyboardTheme"];
+  if (typeof saved.terminalFont === "string" && Object.hasOwn(TERMINAL_FONTS, saved.terminalFont))
+    settings.terminalFont = saved.terminalFont as KeyboardSettings["terminalFont"];
   return settings;
 }

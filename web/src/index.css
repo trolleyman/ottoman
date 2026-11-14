@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@fontsource/iosevka/400.css";
+@import "@fontsource/fira-code/400.css";
 
 /* Keep the exposed viewport and iOS overscroll area the same solid app color. */
 html { background: #09090b; }

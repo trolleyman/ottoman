@@ -1,3 +1,4 @@
+import { checkTerminalPreview } from "./terminal-preview-checks";
 import { checkImagePaste } from "./image-paste-checks";
 import { checkRemoteVolume } from "./remote-volume-checks";
 import { checkModifierRelease } from "./modifier-release-checks";
@@ -246,6 +247,7 @@ try {
   const passThroughMessages = await fixture("log") as { type: string; selectionOnly?: boolean }[];
   assert(passThroughMessages.some(message => message.type === "mousedown") && passThroughMessages.some(message => message.type === "mouseup") && !passThroughMessages.some(message => message.type === "textedit" && message.selectionOnly), "A tap over the default read-only preview must click the trackpad without moving the text caret");
   await checkSettingsPreview(page, reset);
+  await checkTerminalPreview(page);
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
   console.log("PASS: navigation, period undo, suggestion spacing, blank lines, settings preview, autocorrect, adaptive keys, held Shift, selection, scrolling, brightness, single/double taps and dragging");
 } finally { await browser.close(); await server.close(); }

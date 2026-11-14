@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 type Box = { left: number; top: number; width: number; height: number };
 
 // Keep one uninterrupted text run: inserting an inline caret changes kerning,
 // line wrapping and the space available to letters on either side of it.
-export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = false, dragging = false, variant, className }: {
+export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = false, dragging = false, variant, className, colors }: {
+  colors?: { start: number; end: number; color: string }[];
   value: string;
   cursor: number;
   selectionEnd?: number;
@@ -19,6 +20,29 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
   const root = useRef<HTMLDivElement>(null);
   const text = useRef<HTMLSpanElement>(null);
   const endMarker = useRef<HTMLSpanElement>(null);
+
+  const highlightId = useId().replace(/[^a-zA-Z0-9]/g, "");
+  useLayoutEffect(() => {
+    // CSS highlights keep the single text node used by caret measurement and
+    // hit testing. Browsers without the API retain a monochrome preview.
+    if (!colors?.length || !CSS.highlights || typeof Highlight === "undefined") return;
+    const node = text.current!.firstChild!;
+    const names: string[] = [];
+    const rules: string[] = [];
+    for (const [index, run] of (colors ?? []).slice(0, 64).entries()) {
+      if (!/^#[0-9a-f]{6}$/i.test(run.color) || run.start < 0 || run.end > value.length || run.end <= run.start) continue;
+      const range = document.createRange();
+      range.setStart(node, run.start); range.setEnd(node, run.end);
+      const name = `terminal-${highlightId}-${index}`;
+      CSS.highlights.set(name, new Highlight(range));
+      names.push(name);
+      rules.push(`::highlight(${name}) { color: ${run.color}; }`);
+    }
+    const style = document.createElement("style");
+    style.textContent = rules.join("\n");
+    document.head.append(style);
+    return () => { names.forEach(name => CSS.highlights.delete(name)); style.remove(); };
+  }, [colors, value, highlightId]);
 
   const [geometry, setGeometry] = useState<{ caret: Box; selection: Box[] } | null>(null);
   useLayoutEffect(() => {
