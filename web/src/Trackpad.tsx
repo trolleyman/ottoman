@@ -114,11 +114,20 @@ function TouchArea({
   const [keyboardSettingsOpen, setKeyboardSettingsOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
   const modifierState = useRef(new KeyboardModifiers());
+  const syncedModifiers = useRef<Modifier[]>([]);
   const [lockedModifiers, setLockedModifiers] = useState<Modifier[]>([]);
   const syncModifiers = useCallback(() => {
-    setActiveModifiers(modifierState.current.active);
+    const active = modifierState.current.active;
+    // Changing the selection must release the remote key too: scrolling has
+    // no modifier snapshot and otherwise keeps using the previous shortcut's.
+    const keys = { shift: "Shift", ctrl: "Control", alt: "Alt", meta: "Meta" };
+    for (const modifier of syncedModifiers.current) {
+      if (!active.includes(modifier)) send({ type: "keyup", key: keys[modifier], modifiers: active });
+    }
+    syncedModifiers.current = active;
+    setActiveModifiers(active);
     setLockedModifiers([...modifierState.current.states].filter(([, state]) => state === "locked").map(([key]) => key));
-  }, []);
+  }, [send]);
   const consumeModifiers = useCallback(() => { modifierState.current.consume(); syncModifiers(); }, [syncModifiers]);
   const previewRef = useRef<HTMLDivElement>(null);
   const tapReleaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -196,10 +205,15 @@ function TouchArea({
   const sendKeyPress = useCallback(
     (key: string, modifiers: Modifier[] = []) => {
       send({ type: "keydown", key, modifiers });
-      send({ type: "keyup", key, modifiers });
-      consumeModifiers();
+      modifierState.current.consume();
+      const remaining = modifierState.current.active;
+      // Key-up carries the state after a one-shot shortcut. Held and locked
+      // modifiers stay pressed; transient modifiers end with this key pair.
+      send({ type: "keyup", key, modifiers: remaining });
+      syncedModifiers.current = remaining;
+      syncModifiers();
     },
-    [send, consumeModifiers],
+    [send, syncModifiers],
   );
 
   const showDraftIndicator = useCallback(() => setDraftVisible(true), []);
