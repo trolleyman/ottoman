@@ -11,7 +11,11 @@ export async function checkTerminalPreview(page: Page) {
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const value = "~/code/ottoman \ue0a0 main\n❯ echo 'hello world' \uf120";
   await page.evaluate(value => {
-    (window as unknown as { fixture: { setField: (v: object) => void } }).fixture.setField({ terminal: true, editable: false, value, selectionStart: Array.from(value).length, selectionEnd: Array.from(value).length, terminalColors: [{ start: 0, end: 14, color: "#00cdd8" }, { start: 18, end: 22, color: "#e879f9" }, { start: 23, end: 24, color: "#4ade80" }] });
+    const colorRun = (text: string, color: string) => {
+      const start = Array.from(value.slice(0, value.indexOf(text))).length;
+      return { start, end: start + Array.from(text).length, color };
+    };
+    (window as unknown as { fixture: { setField: (v: object) => void } }).fixture.setField({ terminal: true, editable: false, value, selectionStart: Array.from(value).length, selectionEnd: Array.from(value).length, terminalColors: [colorRun("~/code/ottoman", "#00cdd8"), colorRun("main", "#e879f9"), colorRun("❯", "#4ade80")] });
   }, value);
   const preview = page.locator("[data-terminal-preview]");
   await preview.waitFor();
@@ -28,6 +32,9 @@ export async function checkTerminalPreview(page: Page) {
   });
   if (!nerdFontLoaded) throw Error("Bundled Nerd Font must load and retain single-cell BMP and supplementary icons");
   if (!await page.evaluate(() => CSS.highlights.size > 0)) throw Error("Terminal colours were not applied");
+  const wholeBranchHighlighted = await page.evaluate(() => Array.from(CSS.highlights.values()).some(highlight =>
+    Array.from(highlight).some(range => range instanceof Range && range.toString() === "main")));
+  if (!wholeBranchHighlighted) throw Error("Branch colour must include the entire name, including the first letter");
   const viewport = page.locator("[data-preview-scroll]");
   if (await viewport.getAttribute("data-preview-hidden-above")) throw Error("Short terminal preview must not fade");
   await page.locator("[data-text-preview]").screenshot({ path: "/tmp/terminal-command@2x.png" });
