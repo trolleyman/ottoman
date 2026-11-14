@@ -67,6 +67,31 @@ func (a *atspi) states(ctx context.Context, r reference) ([]uint32, error) {
 	return states, err
 }
 func state(v []uint32, bit uint) bool { return int(bit/32) < len(v) && v[bit/32]&(1<<(bit%32)) != 0 }
+
+// Toolkits may retain FOCUSED on a control in an inactive window. Walk its
+// parents and require ACTIVE on the owning window before exposing any text.
+func (a *atspi) inActiveWindow(ctx context.Context, r reference) bool {
+	seen := make(map[reference]bool)
+	for depth := 0; depth < 64 && r.Bus != "" && !seen[r] && ctx.Err() == nil; depth++ {
+		seen[r] = true
+		states, err := a.states(ctx, r)
+		if err != nil {
+			return false
+		}
+		if state(states, 1) {
+			return true
+		} // ATSPI_STATE_ACTIVE
+		var parent dbus.Variant
+		if a.object(r).CallWithContext(ctx, "org.freedesktop.DBus.Properties.Get", 0, accessible, "Parent").Store(&parent) != nil {
+			return false
+		}
+		if dbus.Store([]interface{}{parent.Value()}, &r) != nil {
+			return false
+		}
+	}
+	return false
+}
+
 func (a *atspi) locked(ctx context.Context) bool {
 	var locked bool
 	if a.session.Object("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver").CallWithContext(ctx, "org.gnome.ScreenSaver.GetActive", 0).Store(&locked) == nil {
@@ -84,7 +109,7 @@ func (a *atspi) discover(ctx context.Context) reference {
 		if err != nil {
 			continue
 		}
-		if state(states, 12) {
+		if state(states, 12) && a.inActiveWindow(ctx, r) {
 			if state(states, 7) {
 				return r
 			} // Focus must be on an editable control or terminal, not its window.
@@ -150,8 +175,9 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		return Snapshot{}, nil
 	}
 	states, err := a.states(ctx, r)
-	if err != nil || !state(states, 12) {
+	if err != nil || !state(states, 12) || !a.inActiveWindow(ctx, r) {
 		a.focused = reference{}
+		a.searched = time.Time{}
 		return Snapshot{}, nil
 	}
 	var role uint32
@@ -166,7 +192,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		}
 		// Discard even mask metadata if focus or lock state changed during the query.
 		now, err := a.states(ctx, r)
-		if err != nil || !state(now, 12) || a.locked(ctx) {
+		if err != nil || !state(now, 12) || !a.inActiveWindow(ctx, r) || a.locked(ctx) {
 			return Snapshot{Protected: true}, nil
 		}
 		return masked, nil
@@ -243,7 +269,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	}
 	// Recheck privacy/focus after the read. Events racing this snapshot are handled next tick.
 	now, err := a.states(ctx, r)
-	if err != nil || !state(now, 12) || a.locked(ctx) {
+	if err != nil || !state(now, 12) || !a.inActiveWindow(ctx, r) || a.locked(ctx) {
 		return Snapshot{}, ErrUnavailable
 	}
 	return Snapshot{Terminal: terminal, TerminalColors: colors, Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
