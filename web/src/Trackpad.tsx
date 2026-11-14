@@ -1288,6 +1288,7 @@ export function Trackpad({
   cursorPos,
   cursorSupported,
   send,
+  onVolumeStep,
 }: {
   textContext: TrackpadMessageTextContext | null;
   connected: boolean;
@@ -1298,6 +1299,7 @@ export function Trackpad({
   settingsContainer?: HTMLElement | null;
   sideControls?: React.ReactNode;
   send: (msg: TrackpadMessage) => void;
+  onVolumeStep?: (delta: number) => void;
 }) {
   const layouts = useStore((s) => s.layouts);
   const currentLayout = useStore((s) => s.currentLayout);
@@ -1324,6 +1326,17 @@ export function Trackpad({
       return () => document.removeEventListener("mousedown", onClick);
     }
   }, [showSettings]);
+
+  const sendInput = useCallback((message: TrackpadMessage) => {
+    if (settings.volumeKeysControlOutput && onVolumeStep &&
+      (message.type === "keydown" || message.type === "keyup") &&
+      (message.key === "AudioVolumeUp" || message.key === "AudioVolumeDown")) {
+      if (message.type === "keydown" && connected)
+        onVolumeStep(message.key === "AudioVolumeUp" ? 1 : -1);
+      return;
+    }
+    send(message);
+  }, [send, settings.volumeKeysControlOutput, onVolumeStep, connected]);
 
   const controls = (
       <div className={`flex items-center justify-between ${mode === "remote" ? "" : "mb-4"}`}>
@@ -1377,6 +1390,14 @@ export function Trackpad({
                   </label>
                 </div>
               ))}
+              {mode === "remote" && onVolumeStep && <label className="text-xs text-zinc-400">
+                <span className="flex items-center justify-between gap-3">
+                  Volume keys control selected output
+                  <input type="checkbox" aria-label="Volume keys control selected output" checked={settings.volumeKeysControlOutput}
+                    onChange={event => setSettings(current => ({ ...current, volumeKeysControlOutput: event.target.checked }))} />
+                </span>
+                <span className="mt-1 block text-[11px] text-zinc-500">Volume up/down adjust the selected TV or PC slider by 1%, including while brightness is shown.</span>
+              </label>}
               <div className="h-px bg-zinc-800" />
               <div className="flex items-center justify-between">
                 <label className="text-xs text-zinc-400">Click and Drag</label>
@@ -1405,7 +1426,7 @@ export function Trackpad({
           textContext={textContext}
           connected={connected}
           connecting={connecting}
-          send={send}
+          send={sendInput}
           settings={settings}
           onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
         />

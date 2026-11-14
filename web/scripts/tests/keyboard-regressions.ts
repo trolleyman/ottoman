@@ -1,3 +1,4 @@
+import { checkRemoteVolume } from "./remote-volume-checks";
 import { checkEnter } from "./enter-checks";
 import { createServer } from "vite";
 import { checkSettingsPreview } from "./settings-preview-checks";
@@ -11,7 +12,7 @@ const server = await createServer({ server: { host: "127.0.0.1", port: 0 }, plug
 await server.listen();
 const address = server.httpServer!.address() as { port: number };
 let browser;
-try { browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }); } catch (error) { await server.close(); throw error; }
+try { browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH, args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"] }); } catch (error) { await server.close(); throw error; }
 try {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true });
   const errors: string[] = [];
@@ -124,6 +125,7 @@ try {
   assert(await fixture("brightness()") === 72, "Brightness slider must address the selected monitor");
   await page.getByRole("button", { name: "Switch to volume", exact: true }).click();
   assert(await page.getByRole("slider", { name: "PC volume", exact: true }).inputValue() === "40", "Switching back must retain the audio value");
+  await checkRemoteVolume(page);
   const pad = page.getByLabel(/Trackpad\. Tap to click/);
   const touchEvent = async (type: string, points: { x: number; y: number }[], changed = points) => pad.evaluate((element, { type, points, changed }) => {
     const touch = (p: { x: number; y: number }, i: number) => new Touch({ identifier: i, target: element, clientX: p.x, clientY: p.y });
