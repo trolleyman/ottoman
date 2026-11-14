@@ -1245,6 +1245,14 @@ function TouchArea({
             dismissDraft();
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
+          onPasteImage={() => {
+            dismissDraft();
+            modifierState.current = new KeyboardModifiers(); syncModifiers();
+            const modifier = remoteOS === "darwin" ? Modifier.META : Modifier.CTRL;
+            send({ type: "keydown", key: "v", modifiers: [modifier] });
+            send({ type: "keyup", key: "v", modifiers: [modifier] });
+            send({ type: "keyup", key: remoteOS === "darwin" ? "Meta" : "Control", modifiers: [] });
+          }}
           onNavigate={navigate}
           onCursorDrag={handleCursorDrag}
           onClose={() => {

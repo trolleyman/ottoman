@@ -145,6 +145,7 @@ func (c *Controller) setupRoutes() error {
 	// Create outer mux that intercepts trackpad and delegates rest to inner
 	c.router = http.NewServeMux()
 	c.router.HandleFunc("GET /api/trackpad", c.handleTrackpadWebSocket)
+	c.router.HandleFunc("POST /api/clipboard/image", c.handleImageClipboard)
 	// Session endpoints, which need the ResponseWriter to set the cookie. On the
 	// outer mux they shadow the generated handlers on the inner one.
 	c.auth.RegisterAuthRoutes(c.router)

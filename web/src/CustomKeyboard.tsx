@@ -37,6 +37,7 @@ const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ defau
 import { loadRecentEmoji, savePreference } from "./preferences";
 import { ActionKey, KeyPreview, WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
 import { haptic } from "./keyboardHaptics";
+import { ImagePasteButton } from "./ImagePasteButton";
 import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
 
 type ShiftState = "off" | "once" | "locked";
@@ -68,6 +69,7 @@ function KeyboardSession({
   onModifierDown,
   onModifierUp,
   onSuperPress,
+  onPasteImage,
 }: {
   connected: boolean;
   docked?: boolean;
@@ -94,6 +96,7 @@ function KeyboardSession({
   onModifierDown: (modifier: Modifier) => void;
   onModifierUp: (modifier: Modifier, cancelled?: boolean) => void;
   onSuperPress: () => void;
+  onPasteImage: () => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const shift: ShiftState = lockedModifiers.includes(Modifier.SHIFT) ? "locked" : modifiers.includes(Modifier.SHIFT) ? "once" : "off";
@@ -410,7 +413,8 @@ function KeyboardSession({
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
           Fn
         </ActionKey>
-        <ActionKey
+        <div className={fnActive ? "contents" : "hidden"}><ImagePasteButton connected={connected} onPaste={onPasteImage} /></div>
+        {!fnActive && <ActionKey
           type="button"
           aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
           title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
@@ -423,7 +427,7 @@ function KeyboardSession({
           }`}
         >
           {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-        </ActionKey>
+        </ActionKey>}
         {!docked && <ActionKey
           type="button"
           aria-label="Close keyboard"

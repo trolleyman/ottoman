@@ -214,6 +214,7 @@ func (a *Agent) setupRoutes() error {
 	// not a fresh display probe. Keeping this separate from /api/layouts prevents
 	// the controller's background cache refresh from querying Mutter.
 	inner.HandleFunc("GET /api/layouts/export", a.handleLayoutsExport)
+	inner.HandleFunc("POST /api/clipboard/image", a.handleImageClipboard)
 
 	if err := common.SetupSPAHandler(inner); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")

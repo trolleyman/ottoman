@@ -122,6 +122,9 @@ Accepted suggestions and swipe words insert a trailing space. Punctuation remove
 erase icon above the preview clears its local display without deleting remote text.
 Hold **Q** for backtick in the British layout; symbol mode uses the same key positions.
 **Fn** exposes function, paging and media keys. Hold an arrow key to repeat navigation; release it to stop. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. A separate launcher button opens the desktop launcher.
+
+While Fn is active, the keyboard settings cog becomes an image button: choose a photo from your phone, review it, and tap Paste to insert it into the focused desktop app. Turn Fn off to restore settings. Image paste replaces the desktop clipboard; the receiving app must support images. Photos are converted to PNG (maximum 4096 pixels per side and 20 MB uploaded); formats the phone cannot decode show an error. Linux desktops need `wl-copy` (the `wl-clipboard` package) on Wayland or `xclip` on X11. Windows uses its native image clipboard through PowerShell. Image paste is unavailable on the login screen.
+
 Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **?123** page.
 **Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It silently scales touch targets in both dimensions around fixed centers, capped at 20% growth. Visible keys stay the same size unless **Debug key sizes** is enabled, which reveals enlarged shapes, boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Completions reuse vocabulary found in the current field and offer existing one-edit typo corrections when ordinary completions run out; this never enables automatic correction by itself. A compact fallback keeps next-word choices available while the full dictionary loads. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
 
@@ -272,6 +275,7 @@ ottoman status                            # Check server and client status
 | `/api/wake` | POST | Yes | Send Wake-on-LAN |
 | `/api/layouts` | GET | Yes | List display layouts (proxied) |
 | `/api/layouts/switch` | POST | Yes | Switch layout (proxied) |
+| `/api/clipboard/image` | POST | Yes | Forward an image to the desktop clipboard |
 
 ### Client API
 
@@ -282,6 +286,7 @@ ottoman status                            # Check server and client status
 | `/api/layouts` | GET | Yes | List available layouts |
 | `/api/layouts/switch` | POST | Yes | Switch to a layout |
 | `/api/monitors` | GET | Yes | List connected monitors |
+| `/api/clipboard/image` | POST | Yes | Copy a PNG/JPEG/GIF body to the clipboard (20 MB / 16 megapixel limit); returns 204 when ready |
 
 ### Authentication
 

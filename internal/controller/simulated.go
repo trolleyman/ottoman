@@ -21,6 +21,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/pkg/errors"
 	"github.com/trolleyman/ottoman/internal/api"
+	"github.com/trolleyman/ottoman/internal/clipboard"
 	"github.com/trolleyman/ottoman/internal/common"
 	"github.com/trolleyman/ottoman/internal/config"
 	"github.com/trolleyman/ottoman/internal/display"
@@ -211,6 +212,21 @@ func (s *SimulatedController) setupRoutes() error {
 	// Create outer mux that intercepts trackpad and delegates rest to inner
 	s.router = http.NewServeMux()
 	s.router.HandleFunc("GET /api/trackpad", s.handleTrackpadWebSocket)
+	s.router.HandleFunc("POST /api/clipboard/image", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.RLock()
+		online := s.state == agentOnline
+		s.mu.RUnlock()
+		if !online {
+			http.Error(w, "Desktop is offline", http.StatusServiceUnavailable)
+			return
+		}
+		if _, status, err := clipboard.ReadPNG(w, r); err != nil {
+			http.Error(w, err.Error(), status)
+			return
+		}
+		// Simulation validates uploads without touching the host clipboard.
+		w.WriteHeader(http.StatusNoContent)
+	})
 	s.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Skip trackpad endpoint, delegate everything else to inner mux
 		if r.Method == "GET" && r.URL.Path == "/api/trackpad" {
