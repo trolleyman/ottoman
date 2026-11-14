@@ -66,7 +66,7 @@ icon = "web/public/ottoman_logo.png"
 ##     ~/.jdks, ~/.local/bin, ~/.local/share/aube, ~/.local/share/claude, ~/.local/share/codex
 ##     ~/.local/share/kotlin, ~/.local/share/mise, ~/.local/share/pnpm, ~/.local/share/JetBrains, ~/Android/Sdk
 ##     ~/Library/Android/sdk, ~/Library/pnpm, ~/.config/git, ~/.config/mise/config.toml
-# readable_paths = ["~/.cache", "~/.gitconfig", "~/.gitignore_global", "~/.cargo", "~/.rustup", "~/.gradle", "~/.m2/repository", "~/.nuget/packages", "~/.npm", "~/.nvm", "~/.bun", "~/.deno", "~/.pyenv", "~/.rbenv", "~/.sdkman", "~/.jdks", "~/.local/bin", "~/.local/share/aube", "~/.local/share/claude", "~/.local/share/codex", "~/.local/share/kotlin", "~/.local/share/mise", "~/.local/share/pnpm", "~/.local/share/JetBrains", "~/Android/Sdk", "~/Library/Android/sdk", "~/Library/pnpm", "~/.config/git", "~/.config/mise/config.toml"]
+readable_paths = ["~/.dotfiles/fonts"]
 
 ## extra paths hidden in the sandbox (added to the built-in defense-in-depth defaults and applied after every read/write allowance).
 # masked_paths = ["~/.ssh", "~/.aws", "~/.azure", "~/.gnupg", "~/.docker", "~/.kube", "~/.password-store", "~/.config/gh", "~/.config/glab-cli", "~/.cargo/credentials", "~/.cargo/credentials.toml", "~/.netrc", "~/.git-credentials", "~/.npmrc", "~/.pypirc", "~/.zsh_history", "~/.bash_history", "~/.sh_history", "~/.config/mise/config.local.toml", "~/.dotfiles/mise/config.local.toml", "~/Library/Keychains", "~/Library/Mail", "~/Library/Messages", "/Volumes"]
