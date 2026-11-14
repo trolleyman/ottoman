@@ -1,3 +1,4 @@
+import { checkEnter } from "./enter-checks";
 import { createServer } from "vite";
 import { checkSettingsPreview } from "./settings-preview-checks";
 import { checkArrowRepeat } from "./arrow-repeat-checks";
@@ -28,6 +29,7 @@ try {
   const value = () => fixture("context.value");
   const key = (letter: string) => page.locator(`[data-letter="${letter}"]`);
   const space = page.getByRole("button", { name: "Space. Hold and drag to move the cursor", exact: true });
+  await checkEnter(page);
   await reset("sentence", 3);
   await page.getByRole("button", { name: "End", exact: true }).click();
   await space.click(); await space.click();

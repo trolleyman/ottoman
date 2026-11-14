@@ -97,10 +97,6 @@ function TouchArea({
     if (applied) setRemote(remoteModel.current!.view);
     return applied;
   }, []);
-  const insertRemote = useCallback((text: string) => {
-    const view = remoteModel.current!.view;
-    return !!view && replaceRemote(view.selectionStart, view.selectionEnd, text);
-  }, [replaceRemote]);
   const trackpadRef = useRef<HTMLDivElement>(null);
   const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
   const lastMoveTime = useRef(0);
@@ -283,7 +279,7 @@ function TouchArea({
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.nativeEvent.isComposing || composing.current) return;
-      if (remoteModel.current!.view?.editable && ((e.key === "Enter" && remoteModel.current!.view?.multiline) || e.key.startsWith("Arrow"))) return;
+      if (remoteModel.current!.view?.editable && e.key.startsWith("Arrow")) return;
       if (
         e.key === "Unidentified" ||
         e.key === "Process" ||
@@ -293,15 +289,23 @@ function TouchArea({
 
       e.preventDefault();
       e.stopPropagation();
-      sendKeyPress(e.key);
+      sendKeyPress(e.key, combineModifiers(getModifiers(e), activeModifiers));
+      if (e.key === "Enter") dismissDraft();
     },
-    [sendKeyPress],
+    [sendKeyPress, activeModifiers, dismissDraft],
   );
 
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const next = e.currentTarget.value;
       if (composing.current) { setCompositionValue(next); return; }
+      // Some phone keyboards report Return as an input event with no keydown.
+      const inputType = (e.nativeEvent as InputEvent).inputType;
+      if (inputType === "insertLineBreak" || inputType === "insertParagraph") {
+        sendKeyPress("Enter", activeModifiers);
+        dismissDraft();
+        return;
+      }
       const view = remoteModel.current!.view;
       if (view?.available && view.editable) {
         const edit = diffText(view.value, next);
@@ -330,7 +334,7 @@ function TouchArea({
       showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator],
+    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft],
   );
 
   const handleSelection = useCallback(
@@ -1231,20 +1235,14 @@ function TouchArea({
           }}
           onBackspace={backspace}
           onEnter={(shifted) => {
-            if (!remoteModel.current!.view?.available && activeModifiers.length === 0) { appendText("\n"); return; }
-            if (activeModifiers.length === 0 && remoteModel.current!.view?.multiline && insertRemote("\n")) { consumeModifiers(); return; }
+            // Enter is an action, even in multiline fields: the remote app
+            // decides whether it submits or inserts a line break.
             const modifiers = combineModifiers(
               activeModifiers,
               shifted ? [Modifier.SHIFT] : [],
             );
             sendKeyPress("Enter", modifiers);
-            if (activeModifiers.length > 0) return;
-            const next = `${draftRef.current}\n`;
-            draftRef.current = next;
-            remoteCursor.current += 1;
-            setDraft(next);
-            setDraftCursor(next.length);
-            showDraftIndicator();
+            dismissDraft();
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
           onNavigate={navigate}
