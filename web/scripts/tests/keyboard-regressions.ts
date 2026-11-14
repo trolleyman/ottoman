@@ -133,22 +133,26 @@ try {
   }, { type, points, changed });
   const count = async (type: string) => (await fixture("log") as { type: string }[]).filter(item => item.type === type).length;
   const first = { x: 110, y: 180 }, second = { x: 160, y: 200 };
-  await reset("drag");
-  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
-  assert(await count("mousedown") === 1 && await count("mouseup") === 0, "A tap must press immediately while only its release waits briefly");
-  await page.waitForTimeout(30);
-  await touchEvent("touchstart", [first]);
-  await touchEvent("touchmove", [second]);
-  assert(await count("mousemoverel") === 1 && await count("mousedown") === 1 && await count("mouseup") === 0, "Retouch and movement must drag immediately using the same native press");
-  await touchEvent("touchend", [], [second]);
-  assert(await count("mouseup") === 1, "A drag must release as soon as the finger lifts");
-  await page.waitForTimeout(150);
-  assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "Dragging must never generate a second native click or delayed movement");
+  for (const gap of [30, 150, 250]) {
+    await reset(`drag after ${gap}ms`);
+    await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+    assert(await count("mousedown") === 1 && await count("mouseup") === 0, "A tap must press immediately while only its release waits briefly");
+    await page.waitForTimeout(gap);
+    await touchEvent("touchstart", [first]);
+    // A second press may be held before moving, without the release timer firing.
+    await page.waitForTimeout(350);
+    await touchEvent("touchmove", [second]);
+    assert(await count("mousemoverel") === 1 && await count("mousedown") === 1 && await count("mouseup") === 0, `Retouch after ${gap}ms and movement must drag immediately using the same native press`);
+    await touchEvent("touchend", [], [second]);
+    assert(await count("mouseup") === 1, "A drag must release as soon as the finger lifts");
+    await page.waitForTimeout(350);
+    assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "Dragging must never generate a second native click or delayed movement");
+  }
   await reset("tap");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   assert(await count("mousedown") === 1 && await count("mouseup") === 0, "Single tap press feedback must be immediate");
-  await page.waitForTimeout(120);
-  assert(await count("mouseup") === 1, "Single tap must finish after the 100ms grace");
+  await page.waitForTimeout(350);
+  assert(await count("mouseup") === 1, "Single tap must finish after the 300ms grace");
   await reset("double tap");
   const jitter = { x: first.x + 2, y: first.y + 1 };
   await touchEvent("touchstart", [first]); await touchEvent("touchmove", [jitter]); await touchEvent("touchend", [], [jitter]);
@@ -164,7 +168,13 @@ try {
   await page.waitForTimeout(150);
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(120);
-  assert(await count("mousedown") === 2 && await count("mouseup") === 2, "Two taps outside the retouch grace must still produce two ordinary clicks");
+  assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 1, "Naturally spaced stationary taps must still produce a double-click");
+  await reset("separate taps");
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(350);
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(350);
+  assert(await count("mousedown") === 2 && await count("mouseup") === 2 && await count("mouseclick") === 0, "Taps outside the double-tap window must finish independently");
   await reset("cancel drag");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(30);

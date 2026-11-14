@@ -18,6 +18,8 @@ import { CustomKeyboard } from "./CustomKeyboard";
 import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
 import { loadSettings, savePreference } from "./preferences";
 
+const TAP_DRAG_WINDOW_MS = 300;
+
 function getModifiers(e: {
   shiftKey: boolean;
   ctrlKey: boolean;
@@ -631,7 +633,7 @@ function TouchArea({
       : Infinity;
 
     secondTap.current = tapReleaseTimer.current !== null && tapMouseDown.current &&
-      lastGestureAllowsDrag.current && touchStartTime.current - lastTouchEndTime.current < 300 && dist < 40;
+      lastGestureAllowsDrag.current && touchStartTime.current - lastTouchEndTime.current < TAP_DRAG_WINDOW_MS && dist < 40;
     if (secondTap.current) {
       // Reuse the first press. Movement can now start a drag immediately without
       // generating the second native press that would maximize a titlebar.
@@ -856,13 +858,14 @@ function TouchArea({
         if (Math.sqrt(dx * dx + dy * dy) < 6) {
           send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
           tapMouseDown.current = true;
-          // Press feedback is immediate; only release waits for a very quick
-          // retouch, which can continue the same press as a drag.
+          // Press feedback is immediate; only release waits for a nearby
+          // retouch within the full double-tap window, which can continue
+          // the same press as a drag.
           tapReleaseTimer.current = setTimeout(() => {
             tapReleaseTimer.current = null;
             if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
             tapMouseDown.current = false;
-          }, 100);
+          }, TAP_DRAG_WINDOW_MS);
           wasTap = true;
         }
       }

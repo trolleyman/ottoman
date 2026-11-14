@@ -113,6 +113,13 @@ scroll control and docked keyboard together with separate PC/TV volume controls
 and display layouts. Tap the slider’s volume icon to switch to monitor brightness; tap the output label to choose another output or display. Use the
 fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
 
+Before the computer connects, `/remote` shows TV power, volume, mute and available
+brightness controls. Configured TVs are controlled directly by the Pi using webOS
+(and Wake-on-LAN for power-on), without waiting for the computer. Set up and pair
+the TV while the computer is online first; the Pi persists a mirrored copy of its
+connection settings and pairing key for use after restarts. PC controls appear
+automatically when the computer connects.
+
 The PC remote keyboard stays visible even when the trackpad is unfocused. On the dashboard, focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
 shows local word completions and swipe alternatives, or searches emoji and symbols.
 Search results replace the number row; emoji
@@ -125,7 +132,7 @@ Hold **Q** for backtick in the British layout; symbol mode uses the same key pos
 Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **?123** page.
 **Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It silently scales touch targets in both dimensions around fixed centers, capped at 20% growth. Visible keys stay the same size unless **Debug key sizes** is enabled, which reveals enlarged shapes, boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Completions reuse vocabulary found in the current field and offer existing one-edit typo corrections when ordinary completions run out; this never enables automatic correction by itself. A compact fallback keeps next-word choices available while the full dictionary loads. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
 
-A tap presses immediately and releases after a short 100 ms recognition grace. Retouch during that grace and move to drag: movement continues the same press immediately, avoiding both a titlebar double-click and a delayed jump. A stationary second tap becomes a double-click. There is no drag toggle or long startup timer.
+A tap presses immediately and releases after a 300 ms recognition grace. Retouch during that grace and move to drag: movement continues the same press immediately, avoiding both a titlebar double-click and a delayed jump. A stationary second tap becomes a double-click. There is no drag toggle or long startup timer.
 
 ## Linux login and lock screens
 

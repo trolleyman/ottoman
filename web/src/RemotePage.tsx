@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, Sun } from "lucide-react";
 import { followAppLink } from "./navigation";
+import { OfflineTVControls } from "./Monitors";
 import { Trackpad } from "./Trackpad";
 import { useStore } from "./store";
 import { useCoalescedSlider } from "./useCoalescedSlider";
@@ -74,13 +75,13 @@ export function RemotePage(props: {
     </header>
     {showFullscreenHelp && <p role="status" className="shrink-0 text-xs text-zinc-300">To open without the address bar on iPhone, use Safari’s Share menu → Add to Home Screen. Enable Open as Web App if shown, then launch PC remote from your Home Screen.</p>}
     {fullscreenError && <p role="alert" className="text-xs text-amber-300">{fullscreenError}</p>}
-    <div className="remote-workspace">
+    {!props.connected ? <OfflineTVControls /> : <div className="remote-workspace">
       <div className="remote-pad"><Trackpad {...props} mode="remote" settingsContainer={settingsContainer} onVolumeStep={audioOutput ? stepVolume : undefined}
         sideControls={<>{audioOutput && <RemoteVolume key={audioOutput.id} {...audioOutput} controlRef={volumeControl} hidden={isBrightness}
           onMode={display ? () => setBrightnessMode(true) : undefined}
           onTarget={outputs.length > 1 ? () => setAudioTarget(outputs[(outputIndex + 1) % outputs.length].id) : undefined} />}
         {isBrightness && output && <RemoteVolume key={output.id} {...output} brightness onMode={audioOutput ? () => setBrightnessMode(false) : undefined}
           onTarget={displays.length > 1 ? () => setBrightnessTarget(displays[(displayIndex + 1) % displays.length].edid) : undefined} />}</>} /></div>
-    </div>
+    </div>}
   </main>;
 }
