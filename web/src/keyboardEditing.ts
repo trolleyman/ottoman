@@ -15,6 +15,13 @@ export class KeyboardModifiers {
     if (cancelled || hold.used) { this.taps.delete(key); return; }
     if (hold.previous === "locked") { this.states.delete(key); this.taps.delete(key); return; }
     if (now - (this.taps.get(key) ?? -Infinity) < doubleTapMs) {
+      // Meta's double tap opens the desktop launcher instead of latching a
+      // system shortcut modifier. A single tap still applies to the next key.
+      if (key === Modifier.META) {
+        this.states.delete(key);
+        this.taps.delete(key);
+        return "launcher";
+      }
       this.states.set(key, "locked");
       this.taps.delete(key);
     } else {

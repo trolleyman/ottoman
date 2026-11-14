@@ -58,6 +58,24 @@ export async function checkModifierRelease(page: Page) {
   await enter.click();
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await assertControl(false);
+
+  // A Meta shortcut must carry the modifier snapshot without opening the
+  // launcher; a double tap must emit a standalone down/up pair and clear it.
+  await fixture('setOS("linux")');
+  const meta = page.getByRole("button", { name: "Super", exact: true });
+  await fixture('setField({ fieldId: "terminal", available: false, editable: false })');
+  await meta.click();
+  await page.locator('[data-letter="l"]').click();
+  let messages = await fixture("log") as TrackpadMessage[];
+  if (!messages.some(message => message.type === "keydown" && message.key === "l" && message.modifiers.includes(Modifier.META))) throw Error("Meta+L must send the lock shortcut");
+  if (messages.some(message => message.type === "keydown" && message.key === "Meta")) throw Error("Meta+L must not open the launcher");
+  if (await meta.getAttribute("aria-pressed") !== "false") throw Error("Meta+L must consume one-shot Meta");
+  await fixture('setField({ fieldId: "terminal", available: false, editable: false })');
+  await meta.dblclick();
+  messages = await fixture("log") as TrackpadMessage[];
+  const last = messages.slice(-2);
+  if (last[0]?.type !== "keydown" || last[0].key !== "Meta" || last[0].modifiers.length || last[1]?.type !== "keyup" || last[1].key !== "Meta" || last[1].modifiers.length) throw Error(`Meta double tap must send a standalone press/release: ${JSON.stringify(messages)}`);
+  if (await meta.getAttribute("aria-pressed") !== "false") throw Error("Meta double tap must not lock the modifier");
   await fixture('setField({ fieldId: "fixture" })');
   console.log("PASS: Ctrl+Enter releases one-shot modifiers before scrolling; locked, held, cancelled and blurred Control stay in sync");
 }

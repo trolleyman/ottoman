@@ -75,7 +75,7 @@ export function ModifierButton({ modifier, label, text, selected, locked = false
     pointer.current = null;
     onUp(modifier, cancelled);
   };
-  return <button type="button" aria-label={label} title={`${label}: tap once, double-tap to lock, or hold`}
+  return <button type="button" aria-label={label} title={`${label}: tap for the next key, ${modifier === Modifier.META ? "double-tap to open the desktop launcher" : "double-tap to lock"}, or hold`}
     aria-pressed={active} data-modifier-locked={locked || undefined}
     className={`relative touch-none select-none flex ${wide ? "keyboard-cell min-w-[52px] flex-[1.4]" : "h-9 min-w-10 flex-1 px-1"} items-center justify-center gap-1 rounded-md border ${active ? "border-blue-400/60 bg-blue-500 text-white" : wide ? "custom-keyboard-utility border-white/10 bg-zinc-800 text-zinc-100" : "custom-keyboard-utility border-zinc-800 bg-zinc-900 text-zinc-400"}`}
     onPointerDown={event => {
