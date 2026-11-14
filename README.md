@@ -169,13 +169,19 @@ does not restart GDM or log out your desktop session.
 ## Focused text on the trackpad
 
 Open the trackpad keyboard settings and enable **Mirror focused text** to show
-an accessible desktop field's text, caret, and selection on the phone. Preview interaction is off by default, so touches pass through to the trackpad. Enable **Interact with text preview** to scroll inside it or tap to position the caret. The status dot sits beside the clear eraser button. Spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Holding and dragging space shows a smooth blue floating caret while the actual insertion position appears gray; releasing space restores the regular caret. Opening keyboard settings keeps both the text preview and suggestion strip visible and in the same position. Both Ottoman and Device keyboards can replace the
+an accessible desktop field's text, caret, and selection on the phone. Preview interaction is off by default, so touches pass through to the trackpad. Enable **Interact with text preview** to scroll inside it or tap to position the caret. The status dot sits beside the clear eraser button. For connected fields that support native edits, spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Holding and dragging space shows a smooth blue floating caret while the actual insertion position appears gray; releasing space restores the regular caret. Opening keyboard settings keeps both the text preview and suggestion strip visible and in the same position. Both Ottoman and Device keyboards can replace the
 native selection; local desktop edits and caret moves update the preview.
 Mirroring is off by default and uses the existing authenticated WebSocket.
 
 Linux uses AT-SPI2 on the graphical user's accessibility bus. The current lock
 screen check supports GNOME; sessions without a readable lock state fall back
 to ordinary keyboard input. EditableText controls support native range edits.
+Linux terminal emulators exposing the AT-SPI Terminal role and Text interface
+also mirror their text and caret, including shells such as Fish, Bash, and Zsh.
+This is a plain text view of the terminal buffer; ANSI colors and formatting
+are not mirrored. Terminal and read-only rich text previews always send navigation
+keys directly to the desktop, as does the local typing indicator. Preview taps
+can position the caret only in fields that support native edits.
 Windows uses UI Automation through a helper running under the agent's user
 account (Windows PowerShell and the system UI Automation assemblies). Writable
 ValuePattern controls with a matching TextPattern support native edits; rich

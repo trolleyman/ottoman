@@ -13,6 +13,7 @@ import (
 
 const accessible = "org.a11y.atspi.Accessible"
 const textInterface = "org.a11y.atspi.Text"
+const terminalRole = 60 // ATSPI_ROLE_TERMINAL
 
 type reference struct {
 	Bus  string
@@ -83,9 +84,9 @@ func (a *atspi) discover(ctx context.Context) reference {
 		if state(states, 12) {
 			if state(states, 7) {
 				return r
-			} // Focus must be on an editable control, not its window.
+			} // Focus must be on an editable control or terminal, not its window.
 			var role uint32
-			if a.object(r).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role) == nil && role == 40 {
+			if a.object(r).CallWithContext(ctx, accessible+".GetRole", 0).Store(&role) == nil && (role == 40 || role == terminalRole) {
 				return r
 			}
 		}
@@ -167,13 +168,14 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		}
 		return masked, nil
 	}
-	if !state(states, 7) || !state(states, 8) || !state(states, 24) {
+	terminal := role == terminalRole
+	if (!state(states, 7) && !terminal) || !state(states, 8) || !state(states, 24) {
 		// A focus event can identify a window before its renderer publishes the
 		// focused input. Do not pin discovery to that non-editable object forever.
 		a.focused = reference{}
 		a.searched = time.Time{}
 		return Snapshot{}, nil
-	} // ATSPI_STATE_EDITABLE
+	} // Terminals expose Text without ATSPI_STATE_EDITABLE.
 	var interfaces []string
 	if err = a.object(r).CallWithContext(ctx, accessible+".GetInterfaces", 0).Store(&interfaces); err != nil {
 		return Snapshot{}, err
@@ -218,7 +220,12 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	if err = a.object(r).CallWithContext(ctx, textInterface+".GetText", 0, int32(low), int32(high)).Store(&value); err != nil {
 		return Snapshot{}, err
 	}
-	if strings.ContainsRune(value, '\ufffc') {
+	if terminal {
+		// Screen-buffer offsets are not shell input offsets, even if the emulator
+		// advertises EditableText. Keep all input and navigation as keystrokes.
+		writable = false
+	}
+	if !terminal && strings.ContainsRune(value, '\ufffc') {
 		value, start, end, err = a.expandRichText(ctx, r, value, low, start, end, window, 0)
 		if err != nil {
 			return Snapshot{}, err
@@ -232,7 +239,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	if err != nil || !state(now, 12) || a.locked(ctx) {
 		return Snapshot{}, ErrUnavailable
 	}
-	return Snapshot{Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: state(states, 17)}, nil
+	return Snapshot{Identity: fmt.Sprintf("%s:%s:%d", r.Bus, r.Path, a.epoch), Value: value, Start: start, End: end, WindowStart: low, Available: true, Editable: writable, Multiline: terminal || state(states, 17)}, nil
 }
 func (a *atspi) Replace(ctx context.Context, expected Snapshot, e Edit) error {
 	current, err := a.Snapshot(ctx, a.window)

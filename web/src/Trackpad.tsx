@@ -437,60 +437,31 @@ function TouchArea({
 
   const selectPreview = (offset: number, extend = false) => {
     const view = remoteModel.current!.view;
-    if (view?.password || view?.protected) return false;
-    if (view?.available) {
-      const target = view.windowStart + codePointOffset(view.value, offset);
-      if (view.editable) {
-        const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
-        navigationAnchor.current = extend ? anchor : null;
-        return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
-      }
-      // Expanded rich text cannot be edited with accessibility offsets; native
-      // horizontal steps still correspond to characters in the preview.
-      const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
-      const current = extend && navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd;
-      if (!extend && view.selectionStart !== view.selectionEnd) sendKeyPress("ArrowRight");
-      const delta = target - current;
-      for (let i = 0; i < Math.abs(delta); i++) sendKeyPress(delta < 0 ? "ArrowLeft" : "ArrowRight", extend ? [Modifier.SHIFT] : []);
-      navigationAnchor.current = extend ? anchor : null;
-      remoteModel.current!.view = { ...view, selectionStart: Math.min(anchor, target), selectionEnd: Math.max(anchor, target) };
-      setRemote(remoteModel.current!.view);
-      return true;
-    }
-    const target = codePointOffset(draftRef.current, offset);
-    if (extend) {
-      const anchor = navigationAnchor.current ?? remoteCursor.current;
-      navigationAnchor.current = anchor;
-      const delta = target - remoteCursor.current;
-      for (let i = 0; i < Math.abs(delta); i++) sendKeyPress(delta < 0 ? "ArrowLeft" : "ArrowRight", [Modifier.SHIFT]);
-      remoteCursor.current = target;
-      setDraftSelection([anchor, target]);
-    } else {
-      if (draftSelection) { sendKeyPress("ArrowRight"); remoteCursor.current = Math.max(...draftSelection); }
-      moveRemoteCursor(target);
-      navigationAnchor.current = null;
-      setDraftSelection(null);
-    }
-    setDraftCursor(offset);
-    return true;
+    // Preview offsets are safe only when the focused field supports native edits.
+    // Read-only rich text and terminal buffers must receive their original keys.
+    if (!view?.available || !view.editable || view.password || view.protected) return false;
+    const target = view.windowStart + codePointOffset(view.value, offset);
+    const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
+    navigationAnchor.current = extend ? anchor : null;
+    return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
   };
 
   const navigate = (key: string) => {
     const view = remoteModel.current!.view;
     const modifiers = modifierState.current.active;
-    if (settings.previewNavigation && previewRef.current && !view?.password && !view?.protected &&
+    if (settings.previewNavigation && previewRef.current && view?.available && view.editable && !view.password && !view.protected &&
       !modifiers.some(modifier => modifier !== Modifier.SHIFT) && /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(key)) {
-      const value = view?.available ? view.value : draftRef.current;
+      const value = view.value;
       const extending = modifiers.includes(Modifier.SHIFT);
       const anchor = navigationAnchor.current;
       if (!extending && (key === "ArrowLeft" || key === "ArrowRight")) {
-        const selected = view?.available ? [view.selectionStart, view.selectionEnd] : draftSelection;
-        if (selected && selected[0] !== selected[1]) {
-          selectPreview(utf16Offset(value, (key === "ArrowLeft" ? Math.min(...selected) : Math.max(...selected)) - (view?.available ? view.windowStart : 0)));
+        const selected = [view.selectionStart, view.selectionEnd];
+        if (selected[0] !== selected[1]) {
+          selectPreview(utf16Offset(value, (key === "ArrowLeft" ? Math.min(...selected) : Math.max(...selected)) - view.windowStart));
           consumeModifiers(); return;
         }
       }
-      const position = view?.available ? (extending && anchor === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart : remoteCursor.current;
+      const position = (extending && anchor === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart;
       const result = previewMove(previewRef.current, utf16Offset(value, position), key, navigationX.current);
       if (result) {
         navigationX.current = result.x;
@@ -500,6 +471,8 @@ function TouchArea({
     navigationAnchor.current = null;
     navigationX.current = undefined;
     sendKeyPress(key, modifiers);
+    // Without native context, the new caret position and shell history are unknown.
+    if (!view?.available) dismissDraft();
     showDraftIndicator();
   };
 
@@ -507,11 +480,11 @@ function TouchArea({
     const root = previewRef.current;
     const view = remoteModel.current!.view;
     if (phase === "end") { dragOrigin.current = null; setCursorDrag(null); return false; }
-    if (!root || view?.password || view?.protected) return false;
+    if (!root || !view?.available || !view.editable || view.password || view.protected) return false;
     const bounds = root.getBoundingClientRect();
     if (phase === "start") {
-      const value = view?.available ? view.value : draftRef.current;
-      const offset = view?.available ? utf16Offset(value, view.selectionEnd - view.windowStart) : utf16Offset(value, remoteCursor.current);
+      const value = view.value;
+      const offset = utf16Offset(value, view.selectionEnd - view.windowStart);
       const positions = previewPositions(root);
       const point = positions.find(point => point.offset === offset);
       if (!point) return false;
@@ -540,8 +513,8 @@ function TouchArea({
     if (!settings.previewNavigation || modifiers.some(modifier => modifier !== Modifier.SHIFT)) return false;
     const offset = previewHit(root, bounds.left + left, bounds.top + top + origin.height / 2);
     if (offset !== undefined) {
-      const value = view?.available ? view.value : draftRef.current;
-      const current = view?.available ? utf16Offset(value, (navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart) : utf16Offset(value, remoteCursor.current);
+      const value = view.value;
+      const current = utf16Offset(value, (navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart);
       if (offset !== current) {
         selectPreview(offset, modifiers.includes(Modifier.SHIFT));
         consumeModifiers();

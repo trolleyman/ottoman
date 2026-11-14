@@ -3,7 +3,7 @@ import { checkRemoteVolume } from "./remote-volume-checks";
 import { checkEnter } from "./enter-checks";
 import { createServer } from "vite";
 import { checkSettingsPreview } from "./settings-preview-checks";
-import { checkArrowRepeat } from "./arrow-repeat-checks";
+import { checkArrowRepeat, checkRawNavigation } from "./arrow-repeat-checks";
 import { checkPredictionAndCursor } from "./prediction-cursor-checks";
 import { chromium } from "playwright";
 
@@ -66,6 +66,7 @@ try {
   assert(await page.locator('[data-key-weight]').evaluateAll(elements => elements.some(element => Number(element.getAttribute("data-key-weight")) > 1)), "Predictions must enlarge likely next keys");
   await checkPredictionAndCursor(page, reset);
   await checkArrowRepeat(page, reset);
+  await checkRawNavigation(page);
   const shift = page.getByRole("button", { name: "Shift", exact: true });
   await reset("");
   const pointer = async (locator: ReturnType<typeof key>, type: string, id: number) => locator.evaluate((element, { type, id }) => {

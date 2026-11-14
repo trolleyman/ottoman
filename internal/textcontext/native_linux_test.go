@@ -201,6 +201,58 @@ func TestNativeATSPIFocusedTextAndProtectedField(t *testing.T) {
 	}
 }
 
+// Terminals need not advertise editable state, and some nevertheless expose
+// EditableText. Neither case permits treating screen-buffer offsets as input.
+type fakeTerminal struct{ fakeAccessible }
+
+func (*fakeTerminal) GetState() ([]uint32, *dbus.Error) {
+	return []uint32{1<<8 | 1<<12 | 1<<24}, nil
+}
+func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
+
+func TestNativeATSPITerminalPreview(t *testing.T) {
+	server, ctx, _ := privateTextBus(t)
+	root := &fakeAccessible{root: true}
+	field := &fakeTerminal{fakeAccessible{role: terminalRole, value: "previous output\n❯ echo 😀"}}
+	field.start = int32(len([]rune(field.value)))
+	for _, entry := range []struct {
+		path  dbus.ObjectPath
+		iface string
+		value interface{}
+	}{
+		{"/org/a11y/atspi/accessible/root", accessible, root},
+		{"/org/a11y/atspi/registry", "org.a11y.atspi.Registry", root},
+		{"/field", accessible, field},
+		{"/field", textInterface, field},
+		{"/field", "org.a11y.atspi.EditableText", field},
+		{"/field", "org.freedesktop.DBus.Properties", field},
+	} {
+		exportTextObject(t, server, entry.value, entry.path, entry.iface)
+	}
+	backend, err := Native(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	first, err := backend.Snapshot(ctx, 128)
+	if err != nil || !first.Available || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
+		t.Fatalf("terminal preview unavailable or writable: %#v, %v", first, err)
+	}
+	for _, edit := range []Edit{{Start: first.Start, End: first.End, Text: "x"}, {Start: 0, End: 0, SelectionOnly: true}} {
+		if err := backend.Replace(ctx, first, edit); err == nil {
+			t.Fatal("terminal accepted a native range edit")
+		}
+	}
+	field.mu.Lock()
+	field.value = strings.Repeat("output\n", 1000) + "❯ ls"
+	field.start = int32(len([]rune(field.value)))
+	field.mu.Unlock()
+	next, err := backend.Snapshot(ctx, 128)
+	if err != nil || !next.Available || len([]rune(next.Value)) != 128 || next.Start != next.WindowStart+128 || next.Editable {
+		t.Fatalf("terminal output did not update within bounded window: %#v, %v", next, err)
+	}
+}
+
 type fakeRegistry struct {
 	fakeAccessible
 	children []reference
