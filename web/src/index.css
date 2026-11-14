@@ -1,6 +1,13 @@
 @import "tailwindcss";
-@import "@fontsource/iosevka/400.css";
 @import "@fontsource/fira-code/400.css";
+
+@font-face {
+  font-family: "Iosevka Term Nerd Font Mono";
+  src: url("/fonts/iosevka-term-nerd-font-mono-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 
 /* Keep the exposed viewport and iOS overscroll area the same solid app color. */
 html { background: #09090b; }

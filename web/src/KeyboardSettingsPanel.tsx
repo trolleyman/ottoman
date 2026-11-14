@@ -112,7 +112,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
                 {Object.entries(TERMINAL_FONTS).map(([value, font]) => <option key={value} value={value}>{font.label}</option>)}
               </select>
             </label>
-            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Terminal previews use the caret’s line and prompt. Show terminal scrollback includes nearby output (up to 4,096 characters). Colours depend on the terminal’s accessibility support. Iosevka and Fira Code are bundled; Consolas uses an installed copy.</p>
+            <p className="mb-3 shrink-0 text-[11px] leading-4 text-zinc-400">Terminal previews use the caret’s line and prompt. Show terminal scrollback includes nearby output (up to 4,096 characters). Colours depend on the terminal’s accessibility support. Iosevka Term Nerd Font Mono includes Nerd Font icons and is bundled alongside Fira Code; Consolas uses an installed copy.</p>
             <div className="mb-3 grid grid-cols-2 rounded-lg bg-zinc-950 p-1 text-xs">
               <ActionKey
                 type="button"

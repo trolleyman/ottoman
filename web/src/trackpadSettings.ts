@@ -1,7 +1,7 @@
 export const TERMINAL_FONTS = {
-  iosevka: { label: "Iosevka", family: '"Iosevka", monospace' },
-  "fira-code": { label: "Fira Code", family: '"Fira Code", monospace' },
-  consolas: { label: "Consolas (if installed)", family: 'Consolas, "Iosevka", monospace' },
+  iosevka: { label: "Iosevka Term Nerd Font Mono", family: '"Iosevka Term Nerd Font Mono", monospace' },
+  "fira-code": { label: "Fira Code", family: '"Fira Code", "Iosevka Term Nerd Font Mono", monospace' },
+  consolas: { label: "Consolas (if installed)", family: 'Consolas, "Iosevka Term Nerd Font Mono", monospace' },
 } as const;
 
 export interface KeyboardSettings {
