@@ -217,6 +217,7 @@ func (a *Agent) setupRoutes() error {
 	inner.HandleFunc("POST /api/clipboard/image", a.handleImageClipboard)
 	inner.HandleFunc("GET /api/clipboard/text", a.handleTextClipboard)
 	inner.HandleFunc("POST /api/clipboard/text", a.handleTextClipboard)
+	inner.HandleFunc("GET /api/media/artwork", a.handleMediaArtwork)
 	inner.HandleFunc("GET /api/media", a.handleMedia)
 	inner.HandleFunc("POST /api/media", a.handleMedia)
 

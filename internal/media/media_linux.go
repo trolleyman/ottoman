@@ -39,11 +39,15 @@ func parse(name string, props map[string]dbus.Variant) State {
 	st := State{Available: status == "Playing" || status == "Paused", Player: name, Playing: status == "Playing", CanNext: boolean("CanControl") && boolean("CanGoNext"), CanPrevious: boolean("CanControl") && boolean("CanGoPrevious")}
 	st.CanToggle = boolean("CanControl") && ((st.Playing && boolean("CanPause")) || (!st.Playing && boolean("CanPlay")))
 	meta, _ := props["Metadata"].Value().(map[string]dbus.Variant)
+	st.ArtworkSource, _ = meta["mpris:artUrl"].Value().(string)
 	st.Title, _ = meta["xesam:title"].Value().(string)
 	artists, _ := meta["xesam:artist"].Value().([]string)
 	st.Artist = strings.Join(artists, ", ")
 	st.Title = string([]rune(st.Title)[:min(len([]rune(st.Title)), 500)])
 	st.Artist = string([]rune(st.Artist)[:min(len([]rune(st.Artist)), 500)])
+	if st.Available && validArtworkSource(st.ArtworkSource) {
+		st.Artwork = "/api/media/artwork?key=" + artworkKey(st)
+	}
 	return st
 }
 func Read(ctx context.Context) (State, error) {

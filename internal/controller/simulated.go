@@ -240,6 +240,7 @@ func (s *SimulatedController) setupRoutes() error {
 	}
 	s.router.HandleFunc("GET /api/clipboard/text", textClipboardHandler)
 	s.router.HandleFunc("POST /api/clipboard/text", textClipboardHandler)
+	s.router.HandleFunc("GET /api/media/artwork", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	s.router.HandleFunc("GET /api/media", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")

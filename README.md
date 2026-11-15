@@ -147,7 +147,7 @@ native clipboard through PowerShell. Text transfers are limited to 1 MiB.
 Clipboard sharing is unavailable on the login screen.
 
 Compatible Linux players expose now-playing information through MPRIS. The menu
-shows a player and only the playback controls it supports; unavailable players
+shows a player, album art when supplied (including local artwork), and only the playback controls it supports; unavailable players
 and unsupported platforms have no card.
 
 Enable **Taller keys** in Settings for larger touch targets. Tab, comma and

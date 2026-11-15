@@ -31,9 +31,22 @@ try {
     if (route.request().method() === "POST") { clipboard = route.request().postData() || ""; await route.fulfill({ status: 204 }); }
     else await route.fulfill({ status: 200, body: clipboard, headers: { "Content-Type": "text/plain; charset=utf-8" } });
   });
+  let artwork = "/api/media/artwork?key=first";
+  const cover = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 96; canvas.height = 96;
+    const context = canvas.getContext("2d")!;
+    const gradient = context.createLinearGradient(0, 0, 96, 96); gradient.addColorStop(0, "#dc934e"); gradient.addColorStop(1, "#2d4867");
+    context.fillStyle = gradient; context.fillRect(0, 0, 96, 96);
+    context.fillStyle = "#eacda8"; context.beginPath(); context.arc(48, 48, 22, 0, Math.PI * 2); context.fill();
+    return canvas.toDataURL().split(",")[1];
+  }), "base64");
+  await page.route("**/api/media/artwork?*", async route => {
+    if (route.request().url().includes("broken")) await route.fulfill({ status: 404 });
+    else await route.fulfill({ contentType: "image/png", body: cover });
+  });
   await page.route("**/api/media", async route => {
     if (route.request().method() === "POST") { mediaActions.push(route.request().postData() || ""); await route.fulfill({ status: 204 }); }
-    else await route.fulfill({ json: { available: true, player: "org.mpris.MediaPlayer2.fixture", title: "Something About Us", artist: "Daft Punk", playing: true, canToggle: true, canPrevious: true, canNext: false } });
+    else await route.fulfill({ json: { available: true, artwork, player: "org.mpris.MediaPlayer2.fixture", title: "Something About Us", artist: "Daft Punk", playing: true, canToggle: true, canPrevious: true, canNext: false } });
   });
   await page.goto(`http://127.0.0.1:${port}/__remote`);
   await page.locator('[data-letter="q"]').waitFor();
@@ -52,6 +65,12 @@ try {
   await page.screenshot({ path: `${out}/phone@2x.png` });
   await fixture("addTV()"); await openMenu(page);
   await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
+  await page.waitForFunction(() => (document.querySelector(".remote-media-art img") as HTMLImageElement)?.naturalWidth > 0);
+  artwork = "/api/media/artwork?key=broken";
+  await page.locator(".remote-media-art svg").waitFor();
+  artwork = "/api/media/artwork?key=recovered";
+  await page.waitForFunction(() => (document.querySelector(".remote-media-art img") as HTMLImageElement)?.naturalWidth > 0);
+
   assert(await page.getByRole("button", { name: "Next track", exact: true }).isDisabled(), "Unsupported media actions must be disabled");
   await page.getByRole("button", { name: "Pause", exact: true }).click(); assert(mediaActions.length === 1, "Playback must target the desktop player only on request");
   const layoutRow = await page.locator(".remote-layout").evaluate(element => {

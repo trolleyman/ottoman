@@ -148,6 +148,7 @@ func (c *Controller) setupRoutes() error {
 	c.router.HandleFunc("POST /api/clipboard/image", c.handleImageClipboard)
 	c.router.HandleFunc("GET /api/clipboard/text", c.handleTextClipboard)
 	c.router.HandleFunc("POST /api/clipboard/text", c.handleTextClipboard)
+	c.router.HandleFunc("GET /api/media/artwork", c.handleMediaArtwork)
 	c.router.HandleFunc("GET /api/media", c.handleMedia)
 	c.router.HandleFunc("POST /api/media", c.handleMedia)
 	// Session endpoints, which need the ResponseWriter to set the cookie. On the

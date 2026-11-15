@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Music2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
 
-type MediaState = { available: boolean; player: string; title: string; artist: string; playing: boolean; canToggle: boolean; canNext: boolean; canPrevious: boolean };
+type MediaState = { artwork?: string; available: boolean; player: string; title: string; artist: string; playing: boolean; canToggle: boolean; canNext: boolean; canPrevious: boolean };
+function AlbumArt({ source }: { source?: string }) {
+  const [failed, setFailed] = useState(false);
+  return <div className="remote-media-art">{source && !failed ? <img src={source} alt="" onError={() => setFailed(true)} /> : <Music2 />}</div>;
+}
+
 export function NowPlaying({ active }: { active: boolean }) {
   const [state, setState] = useState<MediaState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,5 +37,5 @@ export function NowPlaying({ active }: { active: boolean }) {
       if (action === "toggle") setState(current => current ? { ...current, playing: !current.playing } : null);
     } catch { setError("Player unavailable."); } finally { setBusy(false); }
   };
-  return <div className="remote-now-playing" aria-label="Now playing"><div className="remote-media-art"><Music2 /></div><div className="remote-media-track"><strong>{state.title || "Media"}</strong>{state.artist && <span>{state.artist}</span>}</div><div className="remote-media-controls"><button aria-label="Previous track" disabled={busy || !state.canPrevious} onClick={() => void control("previous")}><SkipBack /></button><button aria-label={state.playing ? "Pause" : "Play"} disabled={busy || !state.canToggle} onClick={() => void control("toggle")}>{state.playing ? <Pause /> : <Play />}</button><button aria-label="Next track" disabled={busy || !state.canNext} onClick={() => void control("next")}><SkipForward /></button></div>{error && <p role="status">{error}</p>}</div>;
+  return <div className="remote-now-playing" aria-label="Now playing"><AlbumArt key={state.artwork || "none"} source={state.artwork} /><div className="remote-media-track"><strong>{state.title || "Media"}</strong>{state.artist && <span>{state.artist}</span>}</div><div className="remote-media-controls"><button aria-label="Previous track" disabled={busy || !state.canPrevious} onClick={() => void control("previous")}><SkipBack /></button><button aria-label={state.playing ? "Pause" : "Play"} disabled={busy || !state.canToggle} onClick={() => void control("toggle")}>{state.playing ? <Pause /> : <Play />}</button><button aria-label="Next track" disabled={busy || !state.canNext} onClick={() => void control("next")}><SkipForward /></button></div>{error && <p role="status">{error}</p>}</div>;
 }
