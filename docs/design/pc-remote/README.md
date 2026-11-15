@@ -1,5 +1,94 @@
 # PC remote design review
 
+## Revision 2 (latest)
+
+`v2.html` / `v2.tsx` supersede the earlier mockups. They import the actual
+`CustomKeyboard` and `ScrollRail` components, with a design-only adapter for
+proposed layout changes. `v2.css` is isolated from the application.
+
+- **A, recommended:** a real multiline text field inside the existing trackpad,
+  alongside the existing right-hand scroll rail. Empty space remains available
+  for pointing. Text interaction stays inside the field; the rail scrolls the
+  desktop. An implementation must isolate these gestures from trackpad events.
+- **B:** move the same field below the trackpad. Clearer separation, at the cost
+  of a smaller pointing area. Both designs keep native text selection and local
+  scrolling, without instructional labels or a "Text preview" badge.
+- Keep the existing keyboard, symbol hints, modifiers, navigation, suggestions,
+  emoji categories/search/skin tones, long presses, swipe typing, Fn/media keys,
+  space cursor movement and configurable keys. This preview reuses that code.
+- Rename `?123` to `#+=`. Hide Tab, comma and period beside space by default,
+  while retaining their switches. "commnd" was interpreted as comma, not the
+  Command modifier; platform modifiers remain intact.
+- Put Settings in the main menu. Remove the keyboard gear; place Clipboard
+  immediately left of Fn at the right end of the existing control row.
+  Clipboard reuses the actual F-key/suggestion row for its three actions.
+- Menu: PC volume, then TV volume and brightness. No Quick Controls heading.
+  Keep layout, displays, settings and connection/power below. Media metadata
+  and playback controls appear under PC only if a player is available.
+- Image selection should send/paste immediately; remove the second confirmation
+  screen. Keep short progress/error feedback and disable duplicate submissions.
+  The review adapter only opens a local picker and reports selection; it never
+  uploads or pastes anything.
+- Add one-finger hold-to-right-click on the pointing surface. Proposed defaults:
+  500 ms and 6 CSS px maximum movement, matching the current pointer movement
+  threshold. Trackpad → Gestures exposes an enable switch, hold duration
+  (250–1,000 ms in 50 ms steps), and movement tolerance (2–20 CSS px).
+  The preview implements a local timer and feedback only, with no host command.
+  The app implementation must fire once, suppress the release's left click,
+  and cancel on movement, another contact, cancellation, disconnect, unmount,
+  or a settings change. Do not re-arm after a finger crosses the tolerance.
+  The active double-tap-drag gesture takes priority; preserve two-finger tapping
+  and scrolling. Native text selection, the scroll rail and keyboard must not
+  trigger this desktop gesture. If tolerance differs from pointer movement
+  slop, coordinate recognition so cursor movement cancels a pending hold.
+
+The textarea is a real browser control with `inputMode="none"`, intended to keep
+the custom keyboard while allowing native selection/copy/paste. Actual iPhone
+selection handles, touch callouts and native keyboard suppression still require
+device testing. Desktop screenshots do not establish iOS behavior. Remote
+selection/edit reconciliation must preserve protected fields and the existing
+text-context protections. Do not treat a local preview as proof an edit reached
+the host; readonly terminal output must remain selectable without implying it is
+editable. An empty field should stay hidden until needed, preserving trackpad
+space. Fullscreen remains capability-gated, and the disconnected state continues
+to use the remote surface, as agreed in the previous revision.
+
+### Reported defects
+
+- **Emoji increases page width:** the preview adds explicit shrinking and width
+  constraints to the keyboard/picker flex chain. The actual component stays at
+  the same width when switching to emoji at 390px in Chromium. This is a proposed
+  containment approach, not an application fix or iOS validation.
+- **Caret at a wrapped endpoint:** `CaretText` uses the end marker's horizontal
+  coordinate but the final grapheme's vertical coordinate. If wrapping puts the
+  endpoint on a later line, these can disagree. This is a likely explanation
+  from code inspection; it has not yet been reproduced or fixed in the app.
+  A native textarea supplies its own caret for editable text. Retained terminal
+  rendering needs a regression case and a consistent endpoint rectangle.
+
+### Media feasibility
+
+The keyboard already sends media keys, but the app currently has no now-playing
+metadata endpoint. On Linux, compatible players expose metadata, playback state
+and control methods through MPRIS. Add an authenticated agent/controller source
+for that information, expose capabilities, and hide unavailable actions/card.
+The sample track in this design is illustrative, not read from the host.
+
+Reference: https://specifications.freedesktop.org/mpris/latest/Player_Interface.html
+
+### Render revision 2
+
+```sh
+node docs/design/pc-remote/render-v2.mjs /tmp/ottoman-remote-design-v2
+```
+
+Uses the existing web dependencies, a sandbox browser, an ephemeral localhost
+port, and closes both browser and preview server. `PLAYWRIGHT_EXECUTABLE_PATH`
+can select the bundled browser. Generates two 2x boards plus emoji and gesture-settings phone captures;
+checks that opening emoji does not change keyboard/viewport width at 390px.
+
+## Original proposal (superseded where revision 2 differs)
+
 Design-only proposal. No application UI, routes, desktop settings, TV inputs, or
 clipboard behavior have been changed. Open `index.html` locally to review.
 
