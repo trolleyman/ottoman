@@ -240,7 +240,11 @@ func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
 func (f *fakeTerminal) GetAttributeRun(offset int32, defaults bool) (map[string]string, int32, int32, *dbus.Error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return map[string]string{"fg-color": "0,52685,65535"}, 0, int32(len([]rune(f.value))), nil
+	end := int32(len([]rune(f.value)))
+	if strings.HasSuffix(f.value, "\n") {
+		end-- // VTE reports the preceding run for the newline itself.
+	}
+	return map[string]string{"fg-color": "0,52685,65535"}, 0, end, nil
 }
 
 func TestNativeATSPITerminalPreview(t *testing.T) {
@@ -270,6 +274,13 @@ func TestNativeATSPITerminalPreview(t *testing.T) {
 	first, err := backend.Snapshot(ctx, 128)
 	if err != nil || !first.Available || !first.Terminal || len(first.TerminalColors) != 1 || first.TerminalColors[0].Color != "#00cdff" || first.Editable || !first.Multiline || first.Value != field.value || first.Start != int(field.start) || first.End != first.Start {
 		t.Fatalf("terminal preview unavailable or writable: %#v, %v", first, err)
+	}
+	field.mu.Lock()
+	field.value += "\n"
+	field.mu.Unlock()
+	withNewline, err := backend.Snapshot(ctx, 128)
+	if err != nil || len(withNewline.TerminalColors) != 1 || withNewline.TerminalColors[0].Color != "#00cdff" || withNewline.TerminalColors[0].End != len([]rune(field.value))-1 {
+		t.Fatalf("VTE trailing-newline attribute boundary discarded terminal colours: %+v %v", withNewline, err)
 	}
 	for _, edit := range []Edit{{Start: first.Start, End: first.End, Text: "x"}, {Start: 0, End: 0, SelectionOnly: true}} {
 		if err := backend.Replace(ctx, first, edit); err == nil {

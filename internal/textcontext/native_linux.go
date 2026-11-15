@@ -442,8 +442,15 @@ func (a *atspi) terminalColors(ctx context.Context, r reference, low, high int) 
 	for offset, calls := high-1, 0; offset >= low && calls < 64; calls++ {
 		var attrs map[string]string
 		var start, end int32
-		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil || int(end) <= offset || int(start) > offset {
+		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil {
 			break
+		}
+		// VTE can return the preceding run at a newline: its exclusive end is
+		// exactly the requested offset. Keep that run instead of dropping all
+		// colours because the window happens to end with a newline.
+		if start < 0 || end <= start || int(start) > offset || int(end) < offset {
+			offset--
+			continue
 		}
 		if color, ok := terminalColor(attrs["fg-color"]); ok {
 			runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: color})
