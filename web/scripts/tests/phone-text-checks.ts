@@ -65,6 +65,23 @@ export async function checkPhoneText(page: Page, out: string) {
       if (!native) await page.screenshot({ path: `${out}/local-cursor@2x.png` });
     } finally { await page.mouse.up(); }
     assert(await page.locator("[data-drag-caret]").count() === 0, "Releasing space removes the floating caret");
+    const pad = page.getByLabel(/Trackpad\. Tap to click/);
+    const padBox = (await pad.boundingBox())!;
+    await field.fill("one");
+    await page.waitForTimeout(40);
+    assert((await field.boundingBox())!.height === 42, "A single line must use a single-line field");
+    assert(await field.evaluate((element: HTMLTextAreaElement) => element.scrollHeight === element.clientHeight), "One line must not have a tiny scroll range");
+    await field.fill("one\ntwo");
+    await page.waitForTimeout(40);
+    assert((await field.boundingBox())!.height === 66, "Two complete lines must fit with padding and borders");
+    assert(await field.evaluate((element: HTMLTextAreaElement) => element.scrollHeight === element.clientHeight), "Two lines must not have a tiny scroll range");
+    await field.fill(Array.from({ length: 12 }, (_, index) => `line ${index}`).join("\n"));
+    await field.evaluate((element: HTMLTextAreaElement) => { element.scrollTop = 0; });
+    await page.locator('[data-letter="q"]').click();
+    await page.waitForTimeout(50);
+    assert(await field.evaluate((element: HTMLTextAreaElement) => element.scrollTop > 0 && element.scrollHeight - element.clientHeight - element.scrollTop < 2), "Typing with the custom keyboard must follow the caret at the end");
+    assert(JSON.stringify(await pad.boundingBox()) === JSON.stringify(padBox), "Fitting the field must not resize the trackpad");
+
     if (mode === "rich") {
       await fixture("log.length = 0");
       await field.fill("Rich edit 👩‍💻 stays whole");

@@ -63,7 +63,7 @@ try {
   assert(JSON.stringify(await pad.boundingBox()) === JSON.stringify(before), "Preview dismissal must not resize the trackpad");
   await page.locator('[data-letter="q"]').click();
   assert(await field.inputValue() === "Select and edit this text normally.q", "Typing must restore the same field and insertion position");
-  assert((await field.boundingBox())!.height === 64, "Text field must stay two lines tall");
+  assert((await field.boundingBox())!.height <= 66, "Text field must be capped at two complete lines");
   await page.screenshot({ path: `${out}/phone@2x.png` });
   await fixture("addTV()"); await openMenu(page);
   await page.getByRole("button", { name: "Pause", exact: true }).waitFor();

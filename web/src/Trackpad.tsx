@@ -1,3 +1,4 @@
+import { usePhoneTextLayout } from "./usePhoneTextLayout";
 import { useOverflowFade } from "./useOverflowFade";
 import { PreviewViewport } from "./PreviewViewport";
 import { TERMINAL_FONTS } from "./trackpadSettings";
@@ -377,6 +378,13 @@ function TouchArea({
           view.windowStart + codePointOffset(view.value, edit.start),
           view.windowStart + codePointOffset(view.value, edit.start + edit.removed.length), edit.inserted,
         );
+        const start = view.windowStart + codePointOffset(next, e.currentTarget.selectionStart);
+        const end = view.windowStart + codePointOffset(next, e.currentTarget.selectionEnd);
+        const updated = remoteModel.current!.view;
+        if (updated?.value === next && (updated.selectionStart !== start || updated.selectionEnd !== end)) {
+          if (view.editable) replaceRemote(start, end, "", true);
+          else selectRichText(start, end);
+        }
         return;
       }
       const edit = diffText(draftRef.current, next);
@@ -402,7 +410,7 @@ function TouchArea({
       showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, replaceRemote, editRichText, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft, draftSelection],
+    [moveRemoteCursor, replaceRemote, editRichText, selectRichText, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft, draftSelection],
   );
 
   const handleSelection = useCallback(
@@ -1185,6 +1193,7 @@ function TouchArea({
 
   const hasPreview = !!(preview || remote?.available || remote?.password) && draftVisible;
   const nativePreview = !remote?.password && !remote?.protected && !remote?.terminal;
+  usePhoneTextLayout(inputRef, previewRef, nativePreview && hasPreview ? preview : null, previewSelectionEnd);
   useOverflowFade(inputRef, nativePreview && hasPreview ? preview : null);
   const previewStatus = <>
     <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
@@ -1293,7 +1302,7 @@ function TouchArea({
         {(
           <textarea
             ref={inputRef}
-            rows={2}
+            rows={1}
             value={compositionValue ?? (remote?.available && !remote.terminal && !remote.password && !remote.protected ? remote.value : draft)}
             disabled={!connected || !inputEnabled}
             aria-label="Remote text"

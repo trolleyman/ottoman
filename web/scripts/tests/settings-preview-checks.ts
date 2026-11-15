@@ -14,7 +14,7 @@ export async function checkSettingsPreview(page: Page, reset: (text: string, cur
     const after = (await pad.boundingBox())!;
     if (JSON.stringify(before) !== JSON.stringify(after)) throw Error("Opening settings must not permanently resize the trackpad");
     const box = (await field.boundingBox())!;
-    if (box.height > 65 || box.x < 0 || box.x + box.width > viewport.width) throw Error("Native field must remain two lines wide within the viewport");
+    if (box.height > 66 || box.x < 0 || box.x + box.width > viewport.width) throw Error("Native field must remain at most two complete lines within the viewport");
     await page.getByRole("button", { name: "Dismiss preview", exact: true }).click();
     const dismissed = (await pad.boundingBox())!;
     if (JSON.stringify(after) !== JSON.stringify(dismissed)) throw Error("Dismissing the field must not resize the trackpad");

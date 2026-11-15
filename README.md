@@ -198,8 +198,8 @@ does not restart GDM or log out your desktop session.
 ## Focused text on the trackpad
 
 Enable **Mirror focused text** in menu → Settings to show an accessible desktop
-field in a native text box inside the trackpad. The box has a fixed two-line
-height and scrolls independently, with native selection controls. The × dismisses
+field in a native text box inside the trackpad. The box fits one or two complete lines
+without moving the trackpad and scrolls independently, with native selection controls. The × dismisses
 it without deleting text or moving the keyboard. Protected fields stay masked;
 terminal content uses the retained preview renderer. Non-terminal rich editors
 use the same native phone field, with edits and selections sent as keystrokes
@@ -431,3 +431,8 @@ MIT
 - minor features
    - Add HDR info at least of monitors
    - Add monitor logical size to monitor info (e.g. `XxY (X2xY2 @ Nx)` - `2680x1400 (1920x1080 @ 2x)` - dimensions are wrong here but give impression)
+
+A read-only terminal colour probe is available at
+`scripts/diagnose-terminal-colours`. It prints focused-terminal colour attributes
+and offsets without calling GetText or changing focus; it needs the desktop
+accessibility bus and an unlocked, focused terminal.

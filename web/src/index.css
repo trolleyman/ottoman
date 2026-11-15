@@ -275,3 +275,11 @@ html{font-family:Inter,ui-sans-serif,system-ui,sans-serif}.native-drag-caret{pos
 .input-settings-reset{width:100%;min-height:44px;margin-top:24px;padding:10px 12px;border:1px solid #454554;border-radius:9px;background:#24242d;color:#c5c5d2;font-size:13px}
 
 .remote-build-versions{display:flex;flex-direction:column;gap:5px;margin-top:24px;padding-top:14px;border-top:1px solid #32323c;font-size:10px;color:#858592}.remote-build-versions span{display:flex;justify-content:space-between;gap:12px}.remote-build-versions code{font-size:10px;overflow-wrap:anywhere;text-align:right}
+
+.remote-native-text{height:var(--remote-field-height,42px);min-height:0}
+.native-text-frame,.native-caret-overlay,.native-preview-ruler{height:var(--remote-field-height,42px)}
+.remote-text-preview[data-native-field]{bottom:calc(var(--remote-field-height,42px) + 16px)}
+.native-preview-ruler{box-sizing:border-box;border:1px solid transparent}
+.remote-text-measure{position:fixed!important;left:-10000px!important;right:auto!important;top:0!important;bottom:auto!important;height:0!important;min-height:0!important;max-height:none!important;opacity:0;pointer-events:none;visibility:hidden;overflow:hidden;mask-image:none!important}
+
+.remote-native-text.remote-native-hidden{height:1px;min-height:0}
