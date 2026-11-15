@@ -240,11 +240,7 @@ func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
 func (f *fakeTerminal) GetAttributeRun(offset int32, defaults bool) (map[string]string, int32, int32, *dbus.Error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	end := int32(len([]rune(f.value)))
-	if strings.HasSuffix(f.value, "\n") {
-		end-- // VTE reports the preceding run for the newline itself.
-	}
-	return map[string]string{"fg-color": "0,52685,65535"}, 0, end, nil
+	return map[string]string{"fg-color": "0,52685,65535"}, 0, int32(len([]rune(f.value))), nil
 }
 
 func TestNativeATSPITerminalPreview(t *testing.T) {
@@ -279,8 +275,8 @@ func TestNativeATSPITerminalPreview(t *testing.T) {
 	field.value += "\n"
 	field.mu.Unlock()
 	withNewline, err := backend.Snapshot(ctx, 128)
-	if err != nil || len(withNewline.TerminalColors) != 1 || withNewline.TerminalColors[0].Color != "#00cdff" || withNewline.TerminalColors[0].End != len([]rune(field.value))-1 {
-		t.Fatalf("VTE trailing-newline attribute boundary discarded terminal colours: %+v %v", withNewline, err)
+	if err != nil || len(withNewline.TerminalColors) != 1 || withNewline.TerminalColors[0].Color != "#00cdff" || withNewline.TerminalColors[0].End != len([]rune(field.value)) {
+		t.Fatalf("exclusive-end terminal lost trailing-newline colour coverage: %+v %v", withNewline, err)
 	}
 	for _, edit := range []Edit{{Start: first.Start, End: first.End, Text: "x"}, {Start: 0, End: 0, SelectionOnly: true}} {
 		if err := backend.Replace(ctx, first, edit); err == nil {

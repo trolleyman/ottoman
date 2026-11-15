@@ -1,4 +1,6 @@
-// A read-only colour-attribute probe. Never calls GetText or changes focus.
+// A read-only colour-attribute probe. Default mode never calls GetText.
+// --offsets reads a bounded focused-terminal sample to print only byte/rune counts.
+// Neither mode prints terminal text or changes focus.
 package main
 
 import (
@@ -8,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"unicode/utf8"
 )
 
 const accessible = "org.a11y.atspi.Accessible"
@@ -86,6 +89,15 @@ func run() error {
 				}
 			}
 			fmt.Printf("Offsets: %v\n", props)
+			if len(os.Args) > 1 && os.Args[1] == "--offsets" && props["CharacterCount"] <= 65536 {
+				var value string
+				if err := obj.CallWithContext(ctx, text+".GetText", 0, int32(0), props["CharacterCount"]).Store(&value); err != nil {
+					fmt.Printf("Offset sample error: %v\n", err)
+				} else {
+					fmt.Printf("Offset units: CharacterCount=%d UTF8Bytes=%d UnicodeCharacters=%d\n", props["CharacterCount"], len(value), utf8.RuneCountInString(value))
+				}
+			}
+
 			for _, offset := range []int32{max(0, props["CaretOffset"]-1), max(0, props["CharacterCount"]-1), max(0, props["CaretOffset"]-60)} {
 				for _, method := range []string{"GetAttributeRun", "GetAttributes"} {
 					var attrs map[string]string
@@ -106,6 +118,14 @@ func run() error {
 					}
 					sort.Strings(keys)
 					fmt.Printf("%s offset %d: run %d..%d keys=%v fg-color=%q bg-color=%q\n", method, offset, start, end, keys, attrs["fg-color"], attrs["bg-color"])
+					if len(os.Args) > 1 && os.Args[1] == "--offsets" && method == "GetAttributeRun" && end >= 0 && end < props["CharacterCount"] {
+						var edge map[string]string
+						var edgeStart, edgeEnd int32
+						if obj.CallWithContext(ctx, text+".GetAttributeRun", 0, end, true).Store(&edge, &edgeStart, &edgeEnd) == nil {
+							fmt.Printf("End-boundary probe %d: run %d..%d sameColour=%v\n", end, edgeStart, edgeEnd, edge["fg-color"] == attrs["fg-color"])
+						}
+					}
+
 				}
 			}
 			return nil

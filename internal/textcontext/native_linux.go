@@ -5,9 +5,12 @@ package textcontext
 import (
 	"context"
 	"fmt"
+	"maps"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/godbus/dbus/v5"
 
@@ -269,7 +272,7 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 	}
 	var colors []api.TerminalColor
 	if terminal {
-		colors = a.terminalColors(ctx, r, low, high)
+		colors = a.terminalColors(ctx, r, low, value, count)
 	}
 	// Recheck privacy/focus after the read. Events racing this snapshot are handled next tick.
 	now, err := a.states(ctx, r)
@@ -437,23 +440,72 @@ func (a *atspi) expandRichText(ctx context.Context, r reference, value string, l
 
 // Attribute runs are optional: emulators without colour metadata still provide
 // a usable monochrome preview. Bound calls and validate colours at the source.
-func (a *atspi) terminalColors(ctx context.Context, r reference, low, high int) []api.TerminalColor {
+func (a *atspi) terminalColors(ctx context.Context, r reference, low int, value string, reportedCount int) []api.TerminalColor {
+	// Text/caret offsets are characters, but VTE's attribute table and reported
+	// CharacterCount use UTF-8 bytes. Read at most 64K focused-terminal characters
+	// to establish the absolute byte base when the requested window starts later.
+	high := low + utf8.RuneCountInString(value)
+	complete := ""
+	if low == 0 && (len(value) == reportedCount || utf8.RuneCountInString(value) == reportedCount) {
+		complete = value
+	} else if reportedCount > 0 && reportedCount <= 65536 {
+		if a.object(r).CallWithContext(ctx, textInterface+".GetText", 0, int32(0), int32(reportedCount)).Store(&complete) != nil {
+			return nil
+		}
+	}
+	var bytes []int
+	if complete != "" && len(complete) == reportedCount && utf8.RuneCountInString(complete) != reportedCount {
+		chars := []rune(complete)
+		if low < 0 || high > len(chars) || string(chars[low:high]) != value {
+			return nil
+		}
+		for offset := range complete {
+			bytes = append(bytes, offset)
+		}
+		bytes = append(bytes, len(complete))
+	}
+	rawLow, rawHigh := low, high
+	if bytes != nil {
+		rawLow, rawHigh = bytes[low], bytes[high]
+	}
+	toCharacter := func(offset int) int {
+		if bytes == nil {
+			return offset
+		}
+		return sort.SearchInts(bytes, offset)
+	}
 	var runs []api.TerminalColor
-	for offset, calls := high-1, 0; offset >= low && calls < 64; calls++ {
+	inclusive, checked := false, false
+	for offset, calls := rawHigh-1, 0; offset >= rawLow && calls < 64; calls++ {
 		var attrs map[string]string
 		var start, end int32
 		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil {
 			break
 		}
-		// VTE can return the preceding run at a newline: its exclusive end is
-		// exactly the requested offset. Keep that run instead of dropping all
-		// colours because the window happens to end with a newline.
-		if start < 0 || end <= start || int(start) > offset || int(end) < offset {
+		// VTE's end points at the last byte in the run. Querying that endpoint
+		// returns the same run; conforming exclusive-end providers return the next.
+		if !checked && start >= 0 && end >= start && int(end) < reportedCount {
+			var edge map[string]string
+			var edgeStart, edgeEnd int32
+			if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, end, true).Store(&edge, &edgeStart, &edgeEnd) == nil {
+				inclusive = start == edgeStart && end == edgeEnd && maps.Equal(attrs, edge)
+				checked = true
+			}
+		}
+		if inclusive && complete == "" {
+			return nil
+		} // Cannot safely map an unbounded byte prefix.
+		last := int(end)
+		if inclusive {
+			last++
+		}
+		if start < 0 || last <= int(start) || int(start) > offset || last <= offset {
 			offset--
 			continue
 		}
-		if color, ok := terminalColor(attrs["fg-color"]); ok {
-			runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: color})
+		left, right := max(rawLow, int(start)), min(rawHigh, last)
+		if color, ok := terminalColor(attrs["fg-color"]); ok && right > left {
+			runs = append(runs, api.TerminalColor{Start: toCharacter(left), End: toCharacter(right), Color: color})
 		}
 		offset = int(start) - 1
 	}

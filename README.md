@@ -434,5 +434,7 @@ MIT
 
 A read-only terminal colour probe is available at
 `scripts/diagnose-terminal-colours`. It prints focused-terminal colour attributes
-and offsets without calling GetText or changing focus; it needs the desktop
-accessibility bus and an unlocked, focused terminal.
+and offsets without calling GetText or changing focus by default. Its optional
+`--offsets` mode reads a bounded focused-terminal sample but prints only lengths
+and colour boundaries, never text. Both modes need the desktop accessibility bus
+and an unlocked, focused terminal.
