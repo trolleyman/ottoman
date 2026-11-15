@@ -1,6 +1,26 @@
 # PC remote design review
 
-## Revision 2 (latest)
+## Latest refinement
+
+Use the in-trackpad field (A), capped at two visible lines with native scrolling.
+It stays absolutely positioned so showing, typing or dismissing it never resizes
+or moves the trackpad/keyboard. Use an × to dismiss without deleting text; typing
+restores it. Avoid a permanent gradient on the editable field so selection and
+the caret stay legible; the fixed-height field supplies native scrolling.
+
+Move the selected display layout out of the right edge of the navigation row.
+Give it a labeled full-width selector immediately below the menu header, above
+PC and TV. The updated layout board shows the field, dismissed state and menu.
+
+Unlike the broader redesign, the tap-and-drag correction and the × dismiss
+control have now been implemented in the application. Dragging reuses one held
+native press across the existing 300 ms retouch window, preserving long holds
+and immediate movement while preventing accidental titlebar/word double-clicks.
+A single tap has immediate button-down feedback but delays release up to 300 ms;
+a short stationary second tap completes a true double-click. The previous
+100 ms retouch and 600 ms movement-buffer approaches are deliberately avoided.
+
+## Revision 2
 
 `v2.html` / `v2.tsx` supersede the earlier mockups. They import the actual
 `CustomKeyboard` and `ScrollRail` components, with a design-only adapter for

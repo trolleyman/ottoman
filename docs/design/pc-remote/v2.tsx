@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal } from 'react-dom';
-import { Menu, Monitor, ChevronDown, ChevronRight, X, Eraser, Clipboard, Settings, Volume2, Sun, SkipBack, SkipForward, Pause, Play, LayoutGrid, Power, TextCursorInput, ArrowLeft, Check, Music2, Maximize } from '../../../web/node_modules/lucide-react';
+import { Menu, Monitor, ChevronRight, X, Clipboard, Settings, Volume2, Sun, SkipBack, SkipForward, Pause, Play, Power, TextCursorInput, ArrowLeft, Check, Music2, Maximize } from '../../../web/node_modules/lucide-react';
 import { CustomKeyboard } from '../../../web/src/CustomKeyboard';
 import { ScrollRail } from '../../../web/src/ScrollRail';
 import { DEFAULT_SETTINGS } from '../../../web/src/trackpadSettings';
@@ -13,10 +13,11 @@ import './v2.css';
 const noop = () => {};
 const sample = 'I like the current keyboard. Keep the scroller on the right, and let me select and edit this text normally.';
 
-function Phone({ variant = 'overlay', menu = false, offline = false, emoji = false, clip = false, settings = false }: {
-  variant?: 'overlay' | 'split'; menu?: boolean; offline?: boolean; emoji?: boolean; clip?: boolean; settings?: boolean;
+function Phone({ variant = 'overlay', menu = false, offline = false, emoji = false, clip = false, settings = false, dismissed = false }: {
+  variant?: 'overlay' | 'split'; menu?: boolean; offline?: boolean; emoji?: boolean; clip?: boolean; settings?: boolean; dismissed?: boolean;
 }) {
   const [text, setText] = useState(sample);
+  const [previewVisible, setPreviewVisible] = useState(!dismissed);
   const [openMenu, setMenu] = useState(menu);
   const [showSettings, setSettings] = useState(settings);
   const [clipboardMode, setClipboardMode] = useState(clip);
@@ -51,6 +52,7 @@ function Phone({ variant = 'overlay', menu = false, offline = false, emoji = fal
   }, [clip, emoji, showSettings]);
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo); }, [photo]);
   function insert(value: string) {
+    setPreviewVisible(true);
     const start = field.current?.selectionStart ?? text.length;
     const end = field.current?.selectionEnd ?? text.length;
     setText(text.slice(0, start) + value + text.slice(end));
@@ -75,14 +77,14 @@ function Phone({ variant = 'overlay', menu = false, offline = false, emoji = fal
         onPointerUp={cancelHold} onPointerCancel={cancelHold} onPointerLeave={cancelHold}
         onContextMenu={e => { if (!(e.target as Element).closest('textarea')) e.preventDefault(); }}>
         {offline ? <span className="v2-disconnected">Disconnected</span> : <>
-          {variant === 'overlay' && <div className="v2-text-wrap"><div className="v2-text-actions"><button onClick={() => setText('')} aria-label="Clear text"><Eraser /></button></div>{textarea}</div>}
+          {variant === 'overlay' && previewVisible && <div className="v2-text-wrap"><div className="v2-text-actions"><button onClick={() => setPreviewVisible(false)} aria-label="Dismiss preview"><X /></button></div>{textarea}</div>}
           <ScrollRail send={noop} sensitivity={preferences.scrollSensitivity} friction={preferences.scrollFriction} haptics={false} onInteract={noop} />
           {variant === 'split' && <button className="v2-field-toggle" aria-label="Show text field" onClick={() => field.current?.focus()}><TextCursorInput /></button>}
         </>}
         {copyPreview && <div className="v2-copy"><header><b>PC clipboard</b><button aria-label="Close clipboard" onClick={() => setCopyPreview(false)}><X /></button></header><textarea aria-label="Clipboard text" readOnly value="Booking reference: OTT-2048" /><button className="v2-primary" onClick={() => { setStatus('Copied · design preview'); setCopyPreview(false); }}>Copy to iPhone</button></div>}
         {photo && <div className="v2-image-progress"><Check /><span>Image selected · design preview</span><button aria-label="Dismiss image status" onClick={() => setPhoto('')}><X /></button></div>}
       </div>
-      {variant === 'split' && <div className="v2-separate-text"><button aria-label="Clear text" onClick={() => setText('')}><Eraser /></button>{textarea}</div>}
+      {variant === 'split' && previewVisible && <div className="v2-separate-text"><button aria-label="Dismiss preview" onClick={() => setPreviewVisible(false)}><X /></button>{textarea}</div>}
       <div className={`v2-keyboard ${clipboardMode ? 'clipboard-mode' : ''}`}>
         <CustomKeyboard open connected={!offline} docked textContext={1} remoteOS="linux" settings={preferences}
           textBeforeCursor={text} sensitiveInput={false} onText={insert} onReplaceText={(previous, next) => setText(value => value.endsWith(previous) ? value.slice(0, -previous.length) + next : value + next)}
@@ -109,11 +111,12 @@ function Slider({ label, value, brightness = false, sensitivity = false }: { lab
 function Drawer({ onClose, onSettings }: { onClose: () => void; onSettings: () => void }) {
   const [playing, setPlaying] = useState(true);
   return <aside className="v2-drawer"><header><b>ottoman<span>.</span></b><button aria-label="Close menu" onClick={onClose}><X /></button></header>
+    <label className="v2-layout-selector"><span>Display layout</span><select aria-label="Display layout"><option>TV</option><option>Desk</option></select></label>
     <section><h2><Monitor />PC <span>hades</span></h2><Slider label="Volume" value={42} />
       <div className="v2-media"><div className="v2-art"><Music2 /></div><div className="v2-track"><b>Something About Us</b><span>Daft Punk</span></div><div className="v2-playback"><button aria-label="Previous track"><SkipBack /></button><button aria-label={playing ? 'Pause' : 'Play'} onClick={() => setPlaying(value => !value)}>{playing ? <Pause /> : <Play />}</button><button aria-label="Next track"><SkipForward /></button></div></div>
     </section>
     <section><h2><Monitor />TV <span>HDMI 1</span><button aria-label="TV power"><Power /></button></h2><Slider label="Volume" value={7} /><Slider label="Brightness" value={65} brightness /></section>
-    <nav><button><LayoutGrid /><span>Display layout</span><small>TV</small><ChevronDown /></button><button><Monitor /><span>Displays</span><ChevronRight /></button><button onClick={onSettings}><Settings /><span>Settings</span><ChevronRight /></button><button><Power /><span>Connection & power</span><ChevronRight /></button></nav>
+    <nav><button><Monitor /><span>Displays</span><ChevronRight /></button><button onClick={onSettings}><Settings /><span>Settings</span><ChevronRight /></button><button><Power /><span>Connection & power</span><ChevronRight /></button></nav>
   </aside>;
 }
 
@@ -136,7 +139,7 @@ function App() {
   if (view === 'gestures') return <main className="v2-single"><Phone settings /></main>;
   if (view === 'phone') return <main className="v2-single"><Phone variant={new URLSearchParams(location.search).get('variant') === 'split' ? 'split' : 'overlay'} /></main>;
   return <main className="v2-board"><header className="v2-board-head"><span>OTTOMAN / REVISED</span><h1>{view === 'layouts' ? 'Keep the keyboard. Clear the clutter.' : 'Everything stays within reach.'}</h1></header><div className="v2-columns">
-    {view === 'layouts' ? <><section><h2>A / Text in the trackpad <small>Recommended</small></h2><Phone /></section><section><h2>B / Separate text field</h2><Phone variant="split" /></section><section><h2>Menu / PC, then TV</h2><Phone menu /></section></> : <><section><h2>Emoji / Same width</h2><Phone emoji /></section><section><h2>Clipboard / Same row</h2><Phone clip /></section><section><h2>Settings / Optional keys</h2><Phone settings /></section></>}
+    {view === 'layouts' ? <><section><h2>Remote / Two-line field</h2><Phone /></section><section><h2>Preview dismissed</h2><Phone dismissed /></section><section><h2>Menu / Layout, PC, TV</h2><Phone menu /></section></> : <><section><h2>Emoji / Same width</h2><Phone emoji /></section><section><h2>Clipboard / Same row</h2><Phone clip /></section><section><h2>Settings / Optional keys</h2><Phone settings /></section></>}
   </div></main>;
 }
 createRoot(document.getElementById('root')!).render(<App />);
