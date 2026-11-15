@@ -478,7 +478,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
   },
 
   shutdown: async () => {
-    if (!confirm("Are you sure you want to shut down?")) return;
     try {
       const data = await client.default.shutdown();
       if (data.success) {
@@ -492,8 +491,6 @@ export const useStore = create<OttomanStore>((set, get) => ({
   },
 
   reboot: async (target: "linux" | "windows") => {
-    const label = target === "windows" ? "reboot into Windows" : "reboot";
-    if (!confirm(`Are you sure you want to ${label}?`)) return;
     try {
       const data = await client.default.boot({ target });
       if (data.success) {

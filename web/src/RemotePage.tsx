@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { Menu, X, Maximize, Minimize, Monitor, ChevronRight, Volume2, Sun, Settings, LayoutGrid, Power, LogOut, ArrowLeft } from "lucide-react";
+import { House, X, Maximize, Minimize, Monitor, ChevronRight, Volume2, Sun, Settings, LayoutGrid, Power, LogOut, ArrowLeft } from "lucide-react";
+import { ComputerPower } from "./ComputerPower";
+import { followAppLink } from "./navigation";
+import { OttomanWithLogo } from "./OttomanWithLogo";
 import { NowPlaying } from "./NowPlaying";
 import { Trackpad } from "./Trackpad";
 import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
@@ -60,7 +63,7 @@ export function RemotePage(props: {
     if (!menuOpen || wide) return;
     const previous = document.activeElement;
     const node = menu.current!;
-    node.querySelector<HTMLButtonElement>("button")?.focus();
+    node.querySelector<HTMLElement>("a,button")?.focus();
     const keys = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); setMenuOpen(false); }
       if (event.key !== "Tab") return;
@@ -84,23 +87,23 @@ export function RemotePage(props: {
   const navigate = (next: Panel) => { setPanel(next); setMenuOpen(false); };
   return <main className={`pc-remote ${wide && !sidebarClosed ? "remote-has-sidebar" : ""}`}>
     <header className="remote-header">
-      <button ref={menuButton} type="button" aria-label="Open menu" aria-expanded={visible} aria-controls="remote-menu" onClick={() => wide ? setSidebarClosed(value => !value) : setMenuOpen(value => !value)}><Menu /></button>
+      <button ref={menuButton} type="button" aria-label="Open menu" aria-expanded={visible} aria-controls="remote-menu" onClick={() => wide ? setSidebarClosed(value => !value) : setMenuOpen(value => !value)}><span className="remote-menu-icon" aria-hidden="true"><i /><i /><i /></span></button>
       <div><h1>PC remote</h1><span className="remote-connection"><i data-connected={props.connected} />{store.agentInfo?.hostname || "Computer"} · {props.connected ? "Connected" : props.connecting ? "Connecting" : "Disconnected"}</span></div>
       {document.fullscreenEnabled && <button className="remote-fullscreen" aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => { setError(""); void (fullscreen ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setError("Fullscreen could not open.")); }}>{fullscreen ? <Minimize /> : <Maximize />}</button>}
     </header>
-    {menuOpen && !wide && <button className="remote-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
-    <aside ref={menu} id="remote-menu" className="remote-menu" hidden={!visible} role={!wide ? "dialog" : undefined} aria-modal={!wide ? true : undefined} aria-label="Desktop controls">
-      <header><button className="remote-brand" onClick={() => navigate("remote")}>ottoman<span>.</span></button><button aria-label="Close menu" onClick={() => wide ? setSidebarClosed(true) : setMenuOpen(false)}><X /></button></header>
+    <button className="remote-menu-scrim" data-open={menuOpen && !wide} aria-hidden={!menuOpen || wide} inert={!menuOpen || wide} tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+    <aside ref={menu} id="remote-menu" className="remote-menu" data-open={visible} inert={!visible} aria-hidden={!visible} role={!wide ? "dialog" : undefined} aria-modal={!wide ? true : undefined} aria-label="Desktop controls">
+      <header><a href="/" className="remote-brand" aria-label="Ottoman home" onClick={event => { followAppLink(event); if (event.defaultPrevented) navigate("remote"); }}><OttomanWithLogo /></a><button aria-label="Close menu" onClick={() => wide ? setSidebarClosed(true) : setMenuOpen(false)}><X /></button></header>
       {store.layouts.length > 0 && <label className="remote-layout">Display layout<select aria-label="Display layout" value={store.currentLayout ?? ""} disabled={store.switching} onChange={e => void store.switchLayout(e.target.value)}><option value="" disabled>Choose layout</option>{store.layouts.map(layout => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></label>}
       {store.layoutNotice && <p role="status" className="remote-notice">{store.layoutNotice.text}</p>}
-      {sink && <section><h2><button className="remote-output" aria-label="Select PC audio" aria-pressed={selected === sink.name} onClick={() => setAudioTarget(sink.name)}><Monitor />PC</button><span>{store.agentInfo?.hostname}</span></h2><RemoteSlider key={sink.name} label="PC volume" value={Math.round(sink.volume * 100)} onChange={value => store.setSinkVolume(sink.name, value / 100)} disabled={!props.connected} controlRef={value => { if (value) controls.current.set(sink.name, value); else controls.current.delete(sink.name); }} /><NowPlaying active={visible && props.connected} /></section>}
+      <section><h2><button className="remote-output" aria-label="Select PC audio" aria-pressed={!!sink && selected === sink.name} disabled={!sink} onClick={() => sink && setAudioTarget(sink.name)}><Monitor />PC</button><span>{store.agentInfo?.hostname || "Computer"}</span><ComputerPower /></h2>{sink && <RemoteSlider key={sink.name} label="PC volume" value={Math.round(sink.volume * 100)} onChange={value => store.setSinkVolume(sink.name, value / 100)} disabled={!props.connected} controlRef={value => { if (value) controls.current.set(sink.name, value); else controls.current.delete(sink.name); }} />}<NowPlaying active={visible && props.connected} /></section>
       {tvs.map((tv, index) => <section key={tv.edid}><h2><button className="remote-output" aria-label={`Select ${tvs.length > 1 ? `TV ${index + 1}` : "TV"} audio`} aria-pressed={selected === tv.edid} onClick={() => setAudioTarget(tv.edid)}><Monitor />{tv.friendly_name || (tvs.length > 1 ? `TV ${index + 1}` : "TV")}</button>{tv.capabilities?.power && tv.visibility?.power !== false && <TVPower edid={tv.edid} on={tv.tv_state!.on} />}</h2>
         {tv.capabilities?.volume && tv.visibility?.volume !== false && <RemoteSlider label={`${tvs.length > 1 ? `TV ${index + 1}` : "TV"} volume`} value={tv.tv_state!.volume} onChange={value => store.setMonitorVolume(tv.edid, value)} controlRef={value => { if (value) controls.current.set(tv.edid, value); else controls.current.delete(tv.edid); }} />}
         {tv.capabilities?.brightness && tv.visibility?.brightness !== false && <RemoteSlider brightness label={`${tvs.length > 1 ? `TV ${index + 1}` : "TV"} brightness`} value={tv.brightness ?? -1} onChange={value => store.setMonitorBrightness(tv.edid, value)} />}
       </section>)}
       {store.monitors.filter(item => !item.tv_state && item.capabilities?.brightness && item.visibility?.brightness !== false).map(display => <section key={display.edid}><h2><Monitor />{display.friendly_name || display.name}</h2><RemoteSlider brightness label={`${display.name} brightness`} value={display.brightness ?? -1} onChange={value => store.setMonitorBrightness(display.edid, value)} disabled={!props.connected} /></section>)}
       <nav aria-label="Remote navigation">
-        <button onClick={() => navigate("remote")}><Monitor />PC remote<ChevronRight /></button>
+        <a href="/" onClick={event => { followAppLink(event); if (event.defaultPrevented) navigate("remote"); }}><House />Home<ChevronRight /></a>
         <button onClick={() => navigate("displays")}><Monitor />Displays<ChevronRight /></button>
         <button onClick={() => navigate("audio")}><Volume2 />Audio outputs<ChevronRight /></button>
         <button onClick={() => navigate("layouts")}><LayoutGrid />Display layouts<ChevronRight /></button>

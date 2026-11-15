@@ -19,6 +19,7 @@ const writeVolume = async (target: string, value: number, update: () => void) =>
 useStore.setState({
   layouts: [{ id: "tv", name: "TV", aliases: [], monitors: [] }, { id: "desk", name: "Desk", aliases: [], monitors: [] }],
   currentLayout: "tv",
+  agentStatus: "online",
   switchLayout: id => { useStore.setState({ currentLayout: id }); return Promise.resolve(); },
   monitors: [{ edid: "fixture-screen", port: "DP-1", name: "Screen", manufacturer: "Fixture", brightness: 55, capabilities: { brightness: true, power: true, volume: false } }],
   audioSinks: [{ id: 1, name: "fixture-audio", description: "Audio", default: true, volume: 0.4, muted: false }],
@@ -65,6 +66,7 @@ export function Fixture() {
     volumeWrites,
     powerWrites,
     setConnected,
+    setStatus(agentStatus: "online" | "offline" | "waking" | "shutting_down") { useStore.setState({ agentStatus }); },
     addTV() { useStore.setState(state => ({ monitors: [...state.monitors, { edid: "fixture-tv", port: "HDMI-1", name: "TV", brightness: 65, manufacturer: "Fixture", capabilities: { brightness: true, power: true, volume: true }, tv_state: { paired: true, pairing: false, on: true, volume: 12, muted: false } }] })); },
     removeTV() { useStore.setState(state => ({ monitors: state.monitors.filter(item => item.edid !== "fixture-tv") })); },
     brightness: () => useStore.getState().monitors[0].brightness,

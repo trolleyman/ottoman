@@ -22,6 +22,7 @@ export function ClientStatus() {
   };
 
   const shutdown = async () => {
+    if (!confirm("Are you sure you want to shut down?")) return;
     setBusy(true);
     try {
       await storeShutdown();
@@ -31,6 +32,7 @@ export function ClientStatus() {
   };
 
   const reboot = async (target: "linux" | "windows") => {
+    if (!confirm(`Are you sure you want to ${target === "windows" ? "reboot into Windows" : "reboot"}?`)) return;
     setBusy(true);
     try {
       await storeReboot(target);

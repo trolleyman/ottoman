@@ -23,6 +23,8 @@ try {
     localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false }));
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: () => Promise.resolve("From phone 👋"), writeText: (value: string) => { (window as unknown as { copiedText: string }).copiedText = value; return Promise.resolve(); } } });
   });
+  const computerActions: string[] = [];
+  await page.route(/\/api\/(shutdown|boot|wake)$/, async route => { computerActions.push(`${new URL(route.request().url()).pathname}:${route.request().postData() || ""}`); await route.fulfill({ json: { success: true } }); });
   let clipboard = "From PC £"; const mediaActions: string[] = [];
   await page.route("**/api/clipboard/text", async route => {
     if (route.request().method() === "POST") { clipboard = route.request().postData() || ""; await route.fulfill({ status: 204 }); }
@@ -55,7 +57,25 @@ try {
   await page.getByRole("button", { name: "TV power", exact: true }).click();
   await page.waitForFunction(() => document.querySelector('button[aria-label="TV power"]')?.getAttribute("aria-busy") === "false");
   assert((await fixture("powerWrites") as unknown[]).length === 1, "TV power must use the confirmed desktop control");
-  await page.screenshot({ path: `${out}/menu@2x.png` }); await closeMenu(page);
+  await page.locator("#remote-menu").evaluate(element => element.scrollTop = 0);
+  await page.screenshot({ path: `${out}/menu@2x.png` });
+  await page.getByRole("button", { name: "Computer power", exact: true }).click();
+  const powerPopup = page.getByRole("dialog").filter({ has: page.locator("#computer-power-title") });
+  await powerPopup.waitFor();
+  assert(computerActions.length === 0, "Opening power controls must never send a power command");
+  await page.screenshot({ path: `${out}/power@2x.png` });
+  await powerPopup.getByRole("button", { name: "Cancel", exact: true }).click();
+  assert(computerActions.length === 0, "Cancelling must not send a power command");
+  for (const [status, label, endpoint] of [["online", "Shut down", "/api/shutdown"], ["online", "Restart to Windows", "/api/boot"], ["offline", "Turn on", "/api/wake"]]) {
+    await fixture(`setStatus("${status}")`);
+    await page.getByRole("button", { name: "Computer power", exact: true }).click();
+    await powerPopup.getByRole("button", { name: label, exact: true }).click();
+    await powerPopup.waitFor({ state: "hidden" });
+    assert(computerActions.at(-1)?.startsWith(endpoint + ":"), `${label} must send only its explicit power command`);
+  }
+  assert(computerActions.length === 3 && computerActions[1].includes('"target":"windows"'), "Each confirmed action must send once, and Windows restart must select Windows");
+  await fixture('setStatus("online")');
+  await closeMenu(page);
   await page.getByRole("button", { name: "Clipboard", exact: true }).click();
   await page.getByRole("button", { name: "Copy from PC", exact: true }).click();
   await page.getByRole("dialog", { name: "PC clipboard" }).waitFor();
@@ -100,6 +120,14 @@ try {
     if (width === 1280) await page.screenshot({ path: `${out}/desktop@2x.png` });
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await openSettings(page);
+  await openMenu(page);
+  await page.getByRole("link", { name: "Ottoman home", exact: true }).click();
+  assert(new URL(page.url()).pathname === "/" && await pad.isVisible(), "Logo must return to the root remote without reloading");
+  await openSettings(page);
+  await openMenu(page);
+  await page.getByRole("link", { name: "Home", exact: true }).click();
+  assert(await pad.isVisible() && await fixture("context.value") !== undefined, "Home must preserve the live remote and show the trackpad");
   await fixture('setField({password:true,available:false,editable:false,value:"private value must not appear",selectionStart:0,selectionEnd:0})');
   await page.locator('[data-password-preview]').waitFor();
   await page.locator('[data-letter="q"]').click();
