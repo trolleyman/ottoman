@@ -215,6 +215,10 @@ func (a *Agent) setupRoutes() error {
 	// the controller's background cache refresh from querying Mutter.
 	inner.HandleFunc("GET /api/layouts/export", a.handleLayoutsExport)
 	inner.HandleFunc("POST /api/clipboard/image", a.handleImageClipboard)
+	inner.HandleFunc("GET /api/clipboard/text", a.handleTextClipboard)
+	inner.HandleFunc("POST /api/clipboard/text", a.handleTextClipboard)
+	inner.HandleFunc("GET /api/media", a.handleMedia)
+	inner.HandleFunc("POST /api/media", a.handleMedia)
 
 	if err := common.SetupSPAHandler(inner); err != nil {
 		return errors.Wrap(err, "failed to create SPA handler")

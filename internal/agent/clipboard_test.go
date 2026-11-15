@@ -27,3 +27,14 @@ func TestImageClipboardRejectsUnavailableOrInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestTextClipboardRejectsLoginScreen(t *testing.T) {
+	a := &Agent{greeter: true}
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		w := httptest.NewRecorder()
+		a.handleTextClipboard(w, httptest.NewRequest(method, "/api/clipboard/text", strings.NewReader("hello")))
+		if w.Code != http.StatusServiceUnavailable || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("login clipboard must remain unavailable and uncached")
+		}
+	}
+}

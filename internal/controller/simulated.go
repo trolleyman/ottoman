@@ -212,6 +212,42 @@ func (s *SimulatedController) setupRoutes() error {
 	// Create outer mux that intercepts trackpad and delegates rest to inner
 	s.router = http.NewServeMux()
 	s.router.HandleFunc("GET /api/trackpad", s.handleTrackpadWebSocket)
+	var textClipboard string
+	textClipboardHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		s.mu.RLock()
+		online := s.state == agentOnline
+		current := textClipboard
+		s.mu.RUnlock()
+		if !online {
+			http.Error(w, "Desktop is offline", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method == http.MethodGet {
+			w.Write([]byte(current))
+			return
+		}
+		value, status, err := clipboard.ReadTextBody(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), status)
+			return
+		}
+		s.mu.Lock()
+		textClipboard = string(value)
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}
+	s.router.HandleFunc("GET /api/clipboard/text", textClipboardHandler)
+	s.router.HandleFunc("POST /api/clipboard/text", textClipboardHandler)
+	s.router.HandleFunc("GET /api/media", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write([]byte(`{"available":false}`))
+	})
+	s.router.HandleFunc("POST /api/media", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "No simulated media player", http.StatusServiceUnavailable)
+	})
 	s.router.HandleFunc("POST /api/clipboard/image", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		online := s.state == agentOnline
