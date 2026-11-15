@@ -137,7 +137,8 @@ image uploads and pastes it immediately. Phone text uses browser clipboard acces
 when permitted, with a manual paste field as fallback. PC text opens a selectable
 field with an explicit Copy action. Clipboard access requires a secure browser
 context; iPhone may require an additional tap or its native paste/copy menu.
-Sharing is on demand, with no background clipboard synchronization.
+Sharing is on demand, with no background clipboard synchronization. Successful
+copy or paste returns to the keyboard and deselects Clipboard.
 
 Image paste replaces the desktop clipboard; the receiving app must support images.
 Photos are converted to PNG (maximum 4096 pixels per side and 20 MB uploaded).
@@ -195,8 +196,8 @@ height and scrolls independently, with native selection controls. The × dismiss
 it without deleting text or moving the keyboard. Protected fields stay masked;
 terminal/read-only content uses the retained preview renderer.
 
-For connected fields that support native edits, spacebar cursor gestures and
-navigation keys follow the preview’s visual lines by default; turn off
+Spacebar cursor gestures and navigation keys follow the phone text box’s visual
+lines for both native editable fields and locally typed text by default; turn off
 **Navigate by preview lines** to use the desktop’s layout instead. Adjust
 **Space cursor sensitivity** for faster or finer movement. Both Ottoman and
 Device keyboards can replace the
@@ -210,7 +211,8 @@ Linux terminal emulators exposing the AT-SPI Terminal role and Text interface
 also mirror their text and caret, including shells such as Fish, Bash, and Zsh.
 This is a plain text view of the terminal buffer; ANSI colors and formatting
 are not mirrored. Terminal and read-only rich text previews always send navigation
-keys directly to the desktop, as does the local typing indicator. Preview taps
+keys directly to the desktop. Locally typed text uses the phone text box’s
+visual lines and sends horizontal caret moves to the desktop. Preview taps
 can position the caret only in fields that support native edits.
 Windows uses UI Automation through a helper running under the agent's user
 account (Windows PowerShell and the system UI Automation assemblies). Writable

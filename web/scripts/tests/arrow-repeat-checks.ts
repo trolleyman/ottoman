@@ -32,21 +32,18 @@ export async function checkArrowRepeat(page: Page, reset: (text: string, cursor?
 
 export async function checkRawNavigation(page: Page) {
   for (const context of [
-    { available: false, editable: false, value: "", selectionStart: 0, selectionEnd: 0 },
     { available: true, editable: false, value: "❯ echo hello\noutput", selectionStart: 5, selectionEnd: 5 },
     { available: true, editable: false, value: "rich text\nsecond line", selectionStart: 1, selectionEnd: 7 },
   ]) {
     await page.evaluate(`window.fixture.setField(${JSON.stringify(context)})`);
     await page.waitForTimeout(60);
-    // Exercise the fallback even when its remembered typing indicator has text.
-    if (!context.available) await page.locator('[data-letter="a"]').click();
     for (const [label, key] of [["Arrow up", "ArrowUp"], ["Arrow down", "ArrowDown"], ["Arrow left", "ArrowLeft"], ["Arrow right", "ArrowRight"], ["Home", "Home"], ["End", "End"]]) {
       await page.evaluate("window.fixture.log.length = 0");
       await page.getByRole("button", { name: label, exact: true }).click();
       const messages = await page.evaluate<{ type: string; key?: string }[]>("window.fixture.log");
       const navigation = messages.filter(message => message.type === "keydown" || message.type === "textedit");
       if (navigation.length !== 1 || navigation[0].type !== "keydown" || navigation[0].key !== key) {
-        throw Error(`Read-only/unavailable preview must send ${key} unchanged: ${JSON.stringify(messages)}`);
+        throw Error(`Read-only preview must send ${key} unchanged: ${JSON.stringify(messages)}`);
       }
     }
   }

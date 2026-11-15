@@ -106,6 +106,7 @@ function TouchArea({
   const isDragging = useRef(false);
   const mouseHeld = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const revealPhoneCaret = useRef(false);
   const [focused, setFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
@@ -290,12 +291,27 @@ function TouchArea({
     if (input.selectionStart !== start || input.selectionEnd !== end) {
       input.setSelectionRange(start, end, input.selectionDirection);
     }
+    if (revealPhoneCaret.current && input.hasAttribute("data-native-preview") && previewRef.current) {
+      revealPhoneCaret.current = false;
+      const ruler = previewRef.current;
+      ruler.scrollTop = input.scrollTop;
+      const point = previewPositions(ruler).find(point => point.offset === end);
+      const bounds = input.getBoundingClientRect();
+      if (point) {
+        if (point.y < bounds.top + 8) input.scrollTop -= bounds.top + 8 - point.y;
+        else if (point.y + point.height > bounds.bottom - 8) input.scrollTop += point.y + point.height - bounds.bottom + 8;
+        ruler.scrollTop = input.scrollTop;
+      }
+    }
   }, [remote, draft, draftCursor, draftSelection]);
 
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.nativeEvent.isComposing || composing.current) return;
-      if (remoteModel.current!.view?.editable && !remoteModel.current!.view?.password && !remoteModel.current!.view?.protected && e.key.startsWith("Arrow")) return;
+      const view = remoteModel.current!.view;
+      if (settings.previewNavigation && !view?.password && !view?.protected &&
+        (!view?.available || view.editable) && !e.ctrlKey && !e.altKey && !e.metaKey &&
+        /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(e.key)) return;
       if (
         e.key === "Unidentified" ||
         e.key === "Process" ||
@@ -308,7 +324,7 @@ function TouchArea({
       sendKeyPress(e.key, combineModifiers(getModifiers(e), activeModifiers));
       if (e.key === "Enter") dismissDraft();
     },
-    [sendKeyPress, activeModifiers, dismissDraft],
+    [sendKeyPress, activeModifiers, dismissDraft, settings.previewNavigation],
   );
 
   const handleTextChange = useCallback(
@@ -358,7 +374,7 @@ function TouchArea({
   );
 
   const handleSelection = useCallback(
-    (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    (e: Pick<React.SyntheticEvent<HTMLTextAreaElement>, "currentTarget">) => {
       const input = e.currentTarget;
       if (composing.current) return;
       const view = remoteModel.current!.view;
@@ -394,6 +410,15 @@ function TouchArea({
     },
     [moveRemoteCursor, replaceRemote, showDraftIndicator, sendKeyPress, draftSelection],
   );
+
+  useEffect(() => {
+    const selectionChanged = () => {
+      const input = inputRef.current;
+      if (input && document.activeElement === input) handleSelection({ currentTarget: input });
+    };
+    document.addEventListener("selectionchange", selectionChanged);
+    return () => document.removeEventListener("selectionchange", selectionChanged);
+  }, [handleSelection]);
 
   const editFallback = useCallback((start: number, end: number, text: string) => {
     const chars = Array.from(draftRef.current);
@@ -472,31 +497,48 @@ function TouchArea({
 
   const selectPreview = (offset: number, extend = false) => {
     const view = remoteModel.current!.view;
-    // Preview offsets are safe only when the focused field supports native edits.
-    // Read-only rich text and terminal buffers must receive their original keys.
-    if (!view?.available || !view.editable || view.password || view.protected) return false;
-    const target = view.windowStart + codePointOffset(view.value, offset);
-    const anchor = extend ? navigationAnchor.current ?? view.selectionStart : target;
+    // Read-only and protected desktop contexts retain their original key path.
+    if (view?.password || view?.protected || (view?.available && !view.editable)) return false;
+    const value = view?.available ? view.value : draftRef.current;
+    const windowStart = view?.available ? view.windowStart : 0;
+    revealPhoneCaret.current = true;
+    const target = windowStart + codePointOffset(value, offset);
+    const current = view?.available ? view.selectionStart : remoteCursor.current;
+    const anchor = extend ? navigationAnchor.current ?? current : target;
     navigationAnchor.current = extend ? anchor : null;
-    return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
+    if (view?.available) return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
+    if (draftSelection) {
+      sendKeyPress("ArrowRight");
+      remoteCursor.current = Math.max(...draftSelection);
+    }
+    moveRemoteCursor(extend ? anchor : target);
+    if (extend) {
+      const key = target < anchor ? "ArrowLeft" : "ArrowRight";
+      for (let i = 0; i < Math.abs(target - anchor); i++) sendKeyPress(key, [Modifier.SHIFT]);
+      remoteCursor.current = target;
+    }
+    setDraftSelection(extend && target !== anchor ? [Math.min(anchor, target), Math.max(anchor, target)] : null);
+    setDraftCursor(utf16Offset(value, target));
+    return true;
   };
 
   const navigate = (key: string) => {
     const view = remoteModel.current!.view;
     const modifiers = modifierState.current.active;
-    if (settings.previewNavigation && previewRef.current && view?.available && view.editable && !view.password && !view.protected &&
+    const local = !view?.available && !!draftRef.current && !view?.password && !view?.protected;
+    if (settings.previewNavigation && previewRef.current && (local || (view?.available && view.editable && !view.password && !view.protected)) &&
       !modifiers.some(modifier => modifier !== Modifier.SHIFT) && /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(key)) {
-      const value = view.value;
+      const value = view?.available ? view.value : draftRef.current;
+      const start = view?.available ? view.selectionStart : draftSelection?.[0] ?? remoteCursor.current;
+      const end = view?.available ? view.selectionEnd : draftSelection?.[1] ?? remoteCursor.current;
+      const windowStart = view?.available ? view.windowStart : 0;
       const extending = modifiers.includes(Modifier.SHIFT);
       const anchor = navigationAnchor.current;
-      if (!extending && (key === "ArrowLeft" || key === "ArrowRight")) {
-        const selected = [view.selectionStart, view.selectionEnd];
-        if (selected[0] !== selected[1]) {
-          selectPreview(utf16Offset(value, (key === "ArrowLeft" ? Math.min(...selected) : Math.max(...selected)) - view.windowStart));
-          consumeModifiers(); return;
-        }
+      if (!extending && (key === "ArrowLeft" || key === "ArrowRight") && start !== end) {
+        selectPreview(utf16Offset(value, (key === "ArrowLeft" ? Math.min(start, end) : Math.max(start, end)) - windowStart));
+        consumeModifiers(); return;
       }
-      const position = (extending && anchor === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart;
+      const position = (extending && anchor === end ? start : end) - windowStart;
       const result = previewMove(previewRef.current, utf16Offset(value, position), key, navigationX.current);
       if (result) {
         navigationX.current = result.x;
@@ -506,7 +548,6 @@ function TouchArea({
     navigationAnchor.current = null;
     navigationX.current = undefined;
     sendKeyPress(key, modifiers);
-    // Without native context, the new caret position and shell history are unknown.
     if (!view?.available) dismissDraft();
     showDraftIndicator();
   };
@@ -515,11 +556,13 @@ function TouchArea({
     const root = previewRef.current;
     const view = remoteModel.current!.view;
     if (phase === "end") { dragOrigin.current = null; setCursorDrag(null); return false; }
-    if (!root || !view?.available || !view.editable || view.password || view.protected) return false;
+    if (!root || view?.password || view?.protected || (view?.available && !view.editable)) return false;
+    const value = view?.available ? view.value : draftRef.current;
+    const windowStart = view?.available ? view.windowStart : 0;
+    const position = view?.available ? view.selectionEnd : remoteCursor.current;
     const bounds = root.getBoundingClientRect();
     if (phase === "start") {
-      const value = view.value;
-      const offset = utf16Offset(value, view.selectionEnd - view.windowStart);
+      const offset = utf16Offset(value, position - windowStart);
       const positions = previewPositions(root);
       const point = positions.find(point => point.offset === offset);
       if (!point) return false;
@@ -548,8 +591,7 @@ function TouchArea({
     if (!settings.previewNavigation || modifiers.some(modifier => modifier !== Modifier.SHIFT)) return false;
     const offset = previewHit(root, bounds.left + left, bounds.top + top + origin.height / 2);
     if (offset !== undefined) {
-      const value = view.value;
-      const current = utf16Offset(value, (navigationAnchor.current === view.selectionEnd ? view.selectionStart : view.selectionEnd) - view.windowStart);
+      const current = utf16Offset(value, position - windowStart);
       if (offset !== current) {
         selectPreview(offset, modifiers.includes(Modifier.SHIFT));
         consumeModifiers();
@@ -1190,7 +1232,6 @@ function TouchArea({
             {nativePreview && <div ref={previewRef} aria-hidden="true" className="native-preview-ruler">
               <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} variant="preview" dragging={cursorDrag !== null} className="whitespace-pre-wrap break-words px-[10px] py-2 text-base leading-6 [overflow-wrap:anywhere]" />
             </div>}
-            {nativePreview && cursorDrag && <span aria-hidden="true" data-drag-caret className="native-drag-caret" style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} />}
             {!nativePreview && <PreviewViewport interactive={settings.interactivePreview}>
               <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
                 onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
@@ -1227,12 +1268,18 @@ function TouchArea({
             aria-label="Remote text"
             className={nativePreview && hasPreview && connected ? "remote-native-text" : "remote-native-text remote-native-hidden"}
             data-native-preview={nativePreview && hasPreview && connected || undefined}
+            data-cursor-dragging={cursorDrag !== null || undefined}
             inputMode={settings.customKeyboard ? "none" : "text"}
             autoComplete={remote?.password ? "off" : "on"}
             autoCapitalize={remote?.password ? "none" : "sentences"}
             autoCorrect={remote?.password ? "off" : "on"}
             spellCheck={!remote?.password}
             enterKeyHint="enter"
+            onTouchStart={event => event.stopPropagation()}
+            onTouchMove={event => event.stopPropagation()}
+            onTouchEnd={event => event.stopPropagation()}
+            onPointerDown={event => event.stopPropagation()}
+            onContextMenu={event => event.stopPropagation()}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={handleInputKeyDown}
@@ -1255,6 +1302,7 @@ function TouchArea({
             onScroll={e => { if (previewRef.current && nativePreview) previewRef.current.scrollTop = e.currentTarget.scrollTop; }}
           />
         )}
+        {nativePreview && hasPreview && cursorDrag && <div className="native-caret-overlay" aria-hidden="true"><span data-drag-caret className="native-drag-caret" style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} /></div>}
       </div>
       </div>
       <div className={docked ? "shrink-0" : "relative"}>

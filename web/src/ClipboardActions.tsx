@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { ActionKey } from "./KeyboardKeys";
 import { ImagePasteButton } from "./ImagePasteButton";
 
-export function ClipboardActions({ connected, onPaste }: { connected: boolean; onPaste: () => void }) {
+export function ClipboardActions({ connected, onPaste, onCopy }: { connected: boolean; onPaste: () => void; onCopy: () => void }) {
   const [mode, setMode] = useState<"paste" | "copy" | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,11 +57,11 @@ export function ClipboardActions({ connected, onPaste }: { connected: boolean; o
       }
     }}>
       <header><span>{mode === "copy" ? "PC clipboard" : "Paste from phone"}</span><button aria-label="Close clipboard" onClick={close}><X /></button></header>
-      <textarea ref={input} aria-label="Clipboard text" value={text} readOnly={mode === "copy"} onChange={e => setText(e.target.value)} placeholder="Touch and hold to paste" />
+      <textarea ref={input} aria-label="Clipboard text" value={text} readOnly={mode === "copy"} onCopy={() => { if (mode === "copy") setTimeout(() => { close(); onCopy(); }, 0); }} onChange={e => setText(e.target.value)} placeholder="Touch and hold to paste" />
       {message && <p role="status">{message}</p>}
       <button className="clipboard-primary" disabled={busy || !connected || !text} onClick={() => {
         if (mode === "paste") void transfer("paste", text);
-        else { void navigator.clipboard?.writeText(text).then(() => { setMessage("Copied"); }).catch(() => { input.current?.select(); setMessage("Touch and hold to copy."); }); if (!navigator.clipboard) { input.current?.select(); setMessage("Touch and hold to copy."); } }
+        else { void navigator.clipboard?.writeText(text).then(() => { close(); onCopy(); }).catch(() => { input.current?.select(); setMessage("Touch and hold to copy."); }); if (!navigator.clipboard) { input.current?.select(); setMessage("Touch and hold to copy."); } }
       }}>{busy ? "Sending…" : mode === "copy" ? "Copy to phone" : "Paste on PC"}</button>
     </div>}
   </>;

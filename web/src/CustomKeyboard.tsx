@@ -106,11 +106,12 @@ function KeyboardSession({
     const preventNativeHold = (event: TouchEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
+      if (target.closest(".keyboard-clipboard-dialog")) return;
       const key = target.closest("button");
       if (key && !key.closest(".keyboard-scroll")) event.preventDefault();
     };
     const preventKeyMenu = (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest("button")) event.preventDefault();
+      if (event.target instanceof Element && event.target.closest("button") && !event.target.closest(".keyboard-clipboard-dialog")) event.preventDefault();
     };
     keyboard.addEventListener("touchstart", preventNativeHold, { passive: false });
     keyboard.addEventListener("contextmenu", preventKeyMenu);
@@ -331,8 +332,8 @@ function KeyboardSession({
     : swipe.candidates.length ? swipe.candidates : currentWord ? [currentWord, ...predictions.slice(0, 2)] : predictions.length ? predictions : acceptedWord ? [acceptedWord] : [];
 
   const suggestionBar = (
-        <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
-          {clipboardActive ? <ClipboardActions connected={connected} onPaste={onPaste} /> : fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
+        <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={clipboardActive ? "Clipboard actions" : fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
+          {clipboardActive ? <ClipboardActions connected={connected} onPaste={() => { setClipboardActive(false); onPaste(); }} onCopy={() => setClipboardActive(false)} /> : fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
             <ActionKey key={key} type="button" onPress={() => { navigate(key); }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center rounded border border-white/10 text-[10px] sm:text-xs">{key}</ActionKey>
           )) : mode === "letters" ? (
             wordChoices.map((word) => (
@@ -398,7 +399,7 @@ function KeyboardSession({
         )}
         <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Clipboard" aria-pressed={clipboardActive}
-          onPress={() => { haptic(settings.haptics); setFnActive(true); setClipboardActive(value => !value); }}
+          onPress={() => { haptic(settings.haptics); setFnActive(false); setClipboardActive(value => !value); }}
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${clipboardActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}><Clipboard className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
           onPress={() => { haptic(settings.haptics); setClipboardActive(false); setFnActive(active => !active); }}

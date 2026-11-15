@@ -216,7 +216,7 @@ html { touch-action: pan-x pan-y; }
 .native-preview-ruler{position:absolute;top:calc(100% + 4px);left:0;right:0;height:64px;overflow:hidden;opacity:0;pointer-events:none}
 .custom-keyboard-shell button svg{flex-shrink:0}.remote-content [inert]{pointer-events:none}
 
-html{font-family:Inter,ui-sans-serif,system-ui,sans-serif}.native-drag-caret{position:absolute;top:calc(100% + 4px);left:0;width:2px;background:#60a5fa;box-shadow:0 0 8px #60a5fa80;z-index:30;border-radius:2px}
+html{font-family:Inter,ui-sans-serif,system-ui,sans-serif}.native-drag-caret{position:absolute;top:0;left:0;width:2px;background:#60a5fa;box-shadow:0 0 8px #60a5fa80;z-index:30;border-radius:2px}
 
 .remote-now-playing{display:grid;grid-template-columns:36px minmax(0,1fr);align-items:center;gap:10px;margin-top:22px}.remote-media-art{width:36px;height:36px;border-radius:7px;background:#26374d;color:#a2bde4;display:grid;place-items:center}.remote-media-track strong{display:block;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.remote-media-track span{font-size:11px;color:#9292a0}.remote-media-controls{grid-column:1/-1;display:flex;justify-content:center;gap:22px;align-items:center}.remote-media-controls button{width:36px;height:36px;display:grid;place-items:center;color:#c5c5d2}.remote-media-controls button:nth-child(2){background:#303644;border-radius:50%}.remote-media-controls button:disabled{opacity:.35}.remote-now-playing p{grid-column:1/-1;color:#bba67f;font-size:11px}
 
@@ -256,3 +256,12 @@ html{font-family:Inter,ui-sans-serif,system-ui,sans-serif}.native-drag-caret{pos
 .computer-power-cancel{width:100%;min-height:42px;margin-top:12px;color:#a1a1aa;font-size:14px}
 .computer-power-dialog button:disabled{opacity:.45}
 .computer-power-dialog p{font-size:14px;color:#a1a1aa;margin:16px 0}
+
+.remote-layout{display:flex;align-items:center;gap:12px}
+.remote-layout>span{flex-shrink:0;font-size:12px}
+.remote-layout select{min-width:0;flex:1;width:auto;margin-top:0}
+.remote-native-text{-webkit-touch-callout:default;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;cursor:text}
+.remote-native-text[data-cursor-dragging]{caret-color:#a1a1aa}
+.native-caret-overlay{position:absolute;z-index:30;left:12px;right:56px;bottom:12px;height:64px;pointer-events:none;overflow:hidden;border-radius:8px}
+
+.keyboard-clipboard-dialog textarea{-webkit-touch-callout:default}

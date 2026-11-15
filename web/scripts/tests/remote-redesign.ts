@@ -1,3 +1,4 @@
+import { checkPhoneText } from "./phone-text-checks";
 import { createServer } from "vite";
 import { chromium } from "playwright";
 import { createServer as probe } from "node:net";
@@ -40,6 +41,7 @@ try {
   assert(await page.locator('.custom-keyboard-shell [aria-label="Keyboard settings"]').count() === 0, "Settings must be outside the keyboard");
   assert(await page.getByRole("button", { name: "Tab", exact: true }).count() === 0 && await page.getByRole("button", { name: "Comma", exact: true }).count() === 0 && await page.getByRole("button", { name: "Period", exact: true }).count() === 0, "Optional keys must default off");
   const field = page.getByLabel("Remote text", { exact: true }); const pad = page.getByLabel(/Trackpad\. Tap to click/);
+  await checkPhoneText(page, out);
   await field.fill("Select and edit this text normally.");
   assert(await fixture("context.value") === "Select and edit this text normally.", "Native edits must reach the desktop text model");
   const before = (await pad.boundingBox())!; await page.getByRole("button", { name: "Dismiss preview" }).click();
@@ -52,6 +54,12 @@ try {
   await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
   assert(await page.getByRole("button", { name: "Next track", exact: true }).isDisabled(), "Unsupported media actions must be disabled");
   await page.getByRole("button", { name: "Pause", exact: true }).click(); assert(mediaActions.length === 1, "Playback must target the desktop player only on request");
+  const layoutRow = await page.locator(".remote-layout").evaluate(element => {
+    const label = element.querySelector("span")!.getBoundingClientRect();
+    const select = element.querySelector("select")!.getBoundingClientRect();
+    return Math.abs((label.top + label.bottom) / 2 - (select.top + select.bottom) / 2) < 2;
+  });
+  assert(layoutRow, "Layout label and dropdown must share one row");
   await page.getByLabel("Display layout", { exact: true }).selectOption("desk");
   assert(await fixture("context.value") === "Select and edit this text normally.q", "Layout selection must preserve the text field");
   await page.getByRole("button", { name: "TV power", exact: true }).click();
@@ -77,18 +85,24 @@ try {
   await fixture('setStatus("online")');
   await closeMenu(page);
   await page.getByRole("button", { name: "Clipboard", exact: true }).click();
+  assert(await page.getByRole("button", { name: "Function keys", exact: true }).getAttribute("aria-pressed") === "false", "Clipboard must not activate Fn");
   await page.getByRole("button", { name: "Copy from PC", exact: true }).click();
   await page.getByRole("dialog", { name: "PC clipboard" }).waitFor();
   assert(await page.getByLabel("Clipboard text").inputValue() === "From PC £", "Copy must load PC clipboard text into a preview");
-  await page.getByRole("button", { name: "Copy to phone", exact: true }).click();
+  await page.getByRole("button", { name: "Close clipboard", exact: true }).tap();
+  await page.getByRole("dialog", { name: "PC clipboard" }).waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "Copy from PC", exact: true }).click();
+  await page.getByRole("button", { name: "Copy to phone", exact: true }).tap();
+  await page.getByRole("dialog", { name: "PC clipboard" }).waitFor({ state: "hidden" });
+  assert(await page.getByRole("button", { name: "Clipboard", exact: true }).getAttribute("aria-pressed") === "false", "Successful copy must deselect Clipboard");
   assert(await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText) === "From PC £", "Copy to phone must happen on an explicit tap");
-  await page.getByRole("button", { name: "Close clipboard", exact: true }).click();
+  await page.getByRole("button", { name: "Clipboard", exact: true }).click();
   await page.getByRole("button", { name: "Paste from phone", exact: true }).click();
   await page.waitForFunction(() => (document.querySelector('textarea[aria-label="Clipboard text"]') as HTMLTextAreaElement)?.value === "From phone 👋");
-  await page.getByRole("button", { name: "Paste on PC", exact: true }).click();
+  await page.getByRole("button", { name: "Paste on PC", exact: true }).tap();
   await page.getByRole("dialog", { name: "Paste from phone" }).waitFor({ state: "hidden" });
   assert(clipboard === "From phone 👋", "Paste must transfer text before sending the paste shortcut");
-  await page.getByRole("button", { name: "Clipboard", exact: true }).click(); await page.getByRole("button", { name: "Function keys", exact: true }).click();
+  assert(await page.getByRole("button", { name: "Clipboard", exact: true }).getAttribute("aria-pressed") === "false", "Successful paste must deselect Clipboard");
   await openSettings(page); await page.screenshot({ path: `${out}/settings@2x.png` });
   await page.getByRole("tab", { name: "Trackpad", exact: true }).click();
   await page.getByLabel("Hold duration", { exact: true }).fill("300"); await page.getByLabel("Movement tolerance", { exact: true }).fill("8");
@@ -120,6 +134,7 @@ try {
     if (width === 1280) await page.screenshot({ path: `${out}/desktop@2x.png` });
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector("#remote-menu")?.getAttribute("role") === "dialog");
   await openSettings(page);
   await openMenu(page);
   await page.getByRole("link", { name: "Ottoman home", exact: true }).click();

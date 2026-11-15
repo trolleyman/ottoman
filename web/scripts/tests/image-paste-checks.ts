@@ -32,8 +32,9 @@ export async function checkImagePaste(page: Page) {
   assert(uploads === 1 && (await keydowns()).length === before, "Image upload must start immediately but paste must wait for acknowledgement");
   assert(await page.getByRole("button", { name: "Paste", exact: true }).count() === 0, "Image paste must not ask for confirmation");
   release!();
-  await photo.waitFor({ state: "visible" });
-  await page.waitForFunction(() => !document.querySelector('button[aria-label="Paste image"]:disabled'));
+  await photo.waitFor({ state: "hidden" });
+  assert(await clipboard.getAttribute("aria-pressed") === "false", "Successful image paste must deselect Clipboard");
+  await clipboard.click();
   assert((await keydowns()).length === before + 1, "Successful image upload must send one paste shortcut");
   fail = true; await choose();
   await page.getByRole("alert").filter({ hasText: "Desktop clipboard unavailable" }).waitFor();
@@ -41,6 +42,5 @@ export async function checkImagePaste(page: Page) {
   await page.getByRole("button", { name: "Dismiss image error" }).click();
   await page.unroute("**/api/clipboard/image");
   await clipboard.click();
-  await page.getByRole("button", { name: "Function keys", exact: true }).click();
   console.log("PASS: fixed-height clipboard row, immediate image upload, acknowledgement and error handling");
 }
