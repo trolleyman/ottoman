@@ -10,6 +10,15 @@ function setup() {
  const sent: TrackpadMessage[]=[];const model=new RemoteText(v=>sent.push(v));model.receive(context);return {model,sent};
 }
 describe("native text synchronization",()=>{
+ test("terminal snapshots cannot be changed by native edits or selection writes",()=>{
+  const {model,sent}=setup();
+  const terminal={...context,terminal:true,editable:true,value:"❯ ",selectionStart:2,selectionEnd:2};
+  model.receive(terminal);
+  expect(model.replace(0,2,"",false)).toBe(false);
+  expect(model.replace(0,0,"",true)).toBe(false);
+  expect(model.view).toEqual(terminal);
+  expect(sent).toEqual([]);
+ });
  test("serializes rapid edits using the acknowledged revision",()=>{
   const {model,sent}=setup();model.replace(2,2,"x");model.replace(3,3,"y");expect(sent.length).toBe(1);
   model.receive({...context,value:"a😀xb",selectionStart:3,selectionEnd:3,revision:2,requestId:1});

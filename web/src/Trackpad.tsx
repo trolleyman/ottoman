@@ -480,7 +480,7 @@ function TouchArea({
 
   const updateNativePreview = useCallback((start: number, end: number, text: string) => {
     const view = remoteModel.current!.view;
-    if (!view?.available || view.editable || view.password || view.protected) return;
+    if (!view?.available || view.editable || view.terminal || view.password || view.protected) return;
     const chars = Array.from(view.value);
     const value = chars.slice(0, start - view.windowStart).join("") + text + chars.slice(end - view.windowStart).join("");
     const caret = start + characterCount(text);
@@ -522,6 +522,11 @@ function TouchArea({
   const backspace = useCallback(() => {
     const view = remoteModel.current!.view;
     const modifiers = modifierState.current.active;
+    if (view?.terminal) {
+      sendKeyPress("Backspace", modifiers);
+      navigationAnchor.current = null;
+      return;
+    }
     const position = view?.available ? view.selectionStart : remoteCursor.current;
     const memory = typingMemory.current;
     if (memory.period === position - 1 && Array.from(view?.available ? view.value : draftRef.current)[position - 1 - (view?.available ? view.windowStart : 0)] === ".") { memory.suppress = true; memory.period = null; }

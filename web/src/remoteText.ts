@@ -76,7 +76,7 @@ export class RemoteText {
   }
   replace(start: number, end: number, text: string, selectionOnly = false) {
     const view = this.view;
-    if (!view?.available || !view.editable || view.protected || view.password) return false;
+    if (!view?.available || !view.editable || view.terminal || view.protected || view.password) return false;
     const chars = Array.from(view.value);
     const low = start - view.windowStart, high = end - view.windowStart;
     if (low < 0 || high < low || high > chars.length) return false;

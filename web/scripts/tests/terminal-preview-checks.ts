@@ -35,6 +35,26 @@ export async function checkTerminalPreview(page: Page) {
   const wholeBranchHighlighted = await page.locator("[data-terminal-color]").evaluateAll(elements => elements.some(element =>
     element.textContent === "main" && getComputedStyle(element).color === "rgb(232, 121, 249)"));
   if (!wholeBranchHighlighted) throw Error("Branch colour must include the entire name, including the first letter");
+  const terminalText = page.locator("[data-terminal-preview] [data-caret-text]");
+  const snapshot = await terminalText.textContent();
+  const colours = await page.locator("[data-terminal-color]").evaluateAll(elements => elements.map(element => ({ text: element.textContent, color: (element as HTMLElement).style.color })));
+  await page.evaluate("window.fixture.log.length = 0");
+  const backspace = page.getByRole("button", { name: "Backspace", exact: true });
+  const key = (await backspace.boundingBox())!;
+  await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2); await page.mouse.down();
+  await page.waitForTimeout(620); await page.mouse.up();
+  await page.locator('[data-letter="q"]').click();
+  const messages = await page.evaluate<{ type: string; key?: string; text?: string }[]>("window.fixture.log");
+  if (messages.filter(message => message.type === "keydown" && message.key === "Backspace").length < 2 || !messages.some(message => message.type === "text" && message.text === "q")) throw Error("Terminal typing and held Backspace must still send host input");
+  if (messages.some(message => message.type === "textedit")) throw Error("Terminal input must never use native range edits");
+  if (await terminalText.textContent() !== snapshot) throw Error("Unacknowledged terminal input must not erase the prompt or change preview text");
+  const afterColours = await page.locator("[data-terminal-color]").evaluateAll(elements => elements.map(element => ({ text: element.textContent, color: (element as HTMLElement).style.color })));
+  if (JSON.stringify(colours) !== JSON.stringify(afterColours)) throw Error("Unacknowledged terminal input must not shift colours onto different characters");
+  await page.evaluate(() => (window as unknown as { fixture: { setField: (value: object) => void } }).fixture.setField({ terminal: true, editable: true, value: "❯ ", selectionStart: 2, selectionEnd: 2, terminalColors: [{ start: 0, end: 1, color: "#4ade80" }] }));
+  await backspace.click(); await backspace.click(); await backspace.click();
+  if (await terminalText.textContent() !== "❯ \u200b") throw Error("Backspace at the terminal input boundary must preserve the host prompt even with editable metadata");
+  await page.evaluate(value => (window as unknown as { fixture: { setField: (value: object) => void } }).fixture.setField({ terminal: true, editable: false, value, selectionStart: Array.from(value).length, selectionEnd: Array.from(value).length, terminalColors: [{ start: 0, end: 13, color: "#00cdd8" }] }), value);
+  await page.waitForFunction(value => document.querySelector("[data-terminal-preview] [data-caret-text]")?.textContent === value + "\u200b", value);
   const viewport = page.locator("[data-preview-scroll]");
   if (await viewport.getAttribute("data-preview-hidden-above")) throw Error("Short terminal preview must not fade");
   await page.locator("[data-text-preview]").screenshot({ path: "/tmp/terminal-command@2x.png" });
