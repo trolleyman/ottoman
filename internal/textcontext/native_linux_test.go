@@ -327,6 +327,12 @@ func (f *lazyChromeFrame) GetChildren() ([]reference, *dbus.Error) {
 	return []reference{{f.app.bus, "/field"}}, nil
 }
 
+type fakeFocusWithoutText struct{ fakeAccessible }
+
+func (*fakeFocusWithoutText) GetInterfaces() ([]string, *dbus.Error) {
+	return []string{accessible}, nil
+}
+
 func TestChromeAccessibilityActivationAndFocusedWindowRecovery(t *testing.T) {
 	registry, ctx, address := privateTextBus(t)
 	chrome, err := dbus.Connect(address)
@@ -368,6 +374,17 @@ func TestChromeAccessibilityActivationAndFocusedWindowRecovery(t *testing.T) {
 	}
 	// A window focus signal must not pin the provider to a non-editable frame.
 	provider := backend.(*atspi)
+	wrapper := &fakeFocusWithoutText{}
+	exportTextObject(t, chrome, wrapper, "/focus_wrapper", accessible)
+	exportTextObject(t, chrome, wrapper, "/focus_wrapper", "org.freedesktop.DBus.Properties")
+	provider.focused = reference{bus, "/focus_wrapper"}
+	if _, err = backend.Snapshot(ctx, 128); err != nil {
+		t.Fatal(err)
+	}
+	wrapperRecovered, err := backend.Snapshot(ctx, 128)
+	if err != nil || !wrapperRecovered.Available || wrapperRecovered.Value != "Chrome field" {
+		t.Fatalf("focused wrapper without Text prevented discovery without refocus: %+v %v", wrapperRecovered, err)
+	}
 	provider.focused = reference{bus, "/frame"}
 	if _, err = backend.Snapshot(ctx, 128); err != nil {
 		t.Fatal(err)

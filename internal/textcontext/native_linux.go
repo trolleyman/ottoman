@@ -220,6 +220,10 @@ func (a *atspi) Snapshot(ctx context.Context, window int) (Snapshot, error) {
 		}
 	}
 	if !hasText {
+		// Chromium can report a focused wrapper before its editable descendant
+		// is ready. Re-discover instead of pinning that wrapper until refocus.
+		a.focused = reference{}
+		a.searched = time.Time{}
 		return Snapshot{}, nil
 	}
 	count, err := a.property(ctx, r, "CharacterCount")
