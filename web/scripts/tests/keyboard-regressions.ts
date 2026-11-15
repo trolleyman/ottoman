@@ -144,38 +144,40 @@ try {
   for (const gap of [30, 150, 250]) {
     await reset(`drag after ${gap}ms`);
     await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
-    assert(await mouseEvents() === "mousedown,mouseup", "The first tap must complete a click immediately");
+    assert(await mouseEvents() === "mousedown", "First tap feedback must press immediately while reserving the retouch window");
     await page.waitForTimeout(gap);
     await touchEvent("touchstart", [first]);
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown", "Second contact must press before any movement");
+    assert(await mouseEvents() === "mousedown", "Second contact must reuse the first press instead of double-clicking");
     await page.waitForTimeout(1200);
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown", "A stationary second contact must stay pressed beyond the recognition window");
+    assert(await mouseEvents() === "mousedown", "A stationary second contact must keep the original press beyond the recognition window");
     await touchEvent("touchmove", [second]);
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mousemoverel", "Movement after a long hold must drag with the button still down");
+    assert(await mouseEvents() === "mousedown,mousemoverel", "Movement after a long hold must drag with the button still down");
     await touchEvent("touchend", [], [second]);
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mousemoverel,mouseup", "A drag must release as soon as the finger lifts");
+    assert(await mouseEvents() === "mousedown,mousemoverel,mouseup", "A drag must release as soon as the finger lifts");
     await page.waitForTimeout(350);
-    assert(await count("mousedown") === 2 && await count("mouseup") === 2 && await count("mouseclick") === 0, "Dragging must not generate delayed clicks or leave a held button");
+    assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "A drag must contain exactly one native press, with no titlebar/word double-click or delayed input");
   }
   await reset("tap");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
-  assert(await mouseEvents() === "mousedown,mouseup", "Single tap must finish without a release grace period");
+  assert(await mouseEvents() === "mousedown", "A single tap must give immediate press feedback");
   await page.waitForTimeout(350);
-  assert(await mouseEvents() === "mousedown,mouseup", "Single tap must not generate delayed events");
+  assert(await mouseEvents() === "mousedown,mouseup", "A single tap must release once the 300ms retouch window closes");
   const jitter = { x: first.x + 2, y: first.y + 1 };
-  for (const gap of [30, 150]) {
+  for (const gap of [30, 150, 250]) {
     await reset(`double tap after ${gap}ms`);
     await touchEvent("touchstart", [first]); await touchEvent("touchmove", [jitter]); await touchEvent("touchend", [], [jitter]);
     await page.waitForTimeout(gap);
     await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "Stationary taps must produce two complete native clicks without pointer jitter");
+    assert(await mouseEvents() === "mousedown,mouseup", "Only a completed stationary second tap may request the second click");
+    await page.waitForTimeout(60);
+    assert(await mouseEvents() === "mousedown,mouseup,mouseclick", "A real double-tap must preserve two native clicks separated by a real interval, without pointer jitter");
   }
   await reset("stationary hold");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await touchEvent("touchstart", [first]);
   await page.waitForTimeout(1200);
   await touchEvent("touchend", [], [first]);
-  assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "Lifting after a stationary hold must release without requiring movement");
+  assert(await mouseEvents() === "mousedown,mouseup", "A long stationary second hold must release the original press without double-clicking");
   await reset("separate taps");
   await page.waitForTimeout(350);
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
@@ -183,6 +185,7 @@ try {
   await touchEvent("touchstart", [first]);
   assert(await mouseEvents() === "mousedown,mouseup", "A contact outside the double-tap window must not press on contact");
   await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(350);
   assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "Separate taps must finish independently");
   for (const ending of ["cancel", "blur", "two fingers"]) {
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));
@@ -198,7 +201,35 @@ try {
       await touchEvent("touchstart", [first, second]);
       await touchEvent("touchcancel", [], [first, second]);
     }
-    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", `${ending} must release the held second press without another click`);
+    assert(await mouseEvents() === "mousedown,mouseup", `${ending} must release the original held press without another click`);
+    await page.waitForTimeout(350);
+    assert(await mouseEvents() === "mousedown,mouseup", `${ending} must cancel all delayed click/release callbacks`);
+  }
+  await reset("short drag");
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  await page.waitForTimeout(150);
+  await touchEvent("touchstart", [first]);
+  await touchEvent("touchmove", [second]); await touchEvent("touchend", [], [second]);
+  assert(await mouseEvents() === "mousedown,mousemoverel,mouseup", "A short drag must move immediately within one press, without waiting for a double-click timeout");
+  await page.waitForTimeout(350);
+  assert(await count("mousedown") === 1 && await count("mouseclick") === 0, "Short drags must never replay a delayed click");
+  await reset("distant retouch");
+  await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+  const distant = { x: first.x + 80, y: first.y };
+  await touchEvent("touchstart", [distant]);
+  assert(await mouseEvents() === "mousedown,mouseup", "Distant retouch must release the original click without arming a drag");
+  await touchEvent("touchmove", [{ x: distant.x + 20, y: distant.y }]);
+  assert(await count("mousedown") === 1, "Movement after a distant retouch must not press a second button");
+  await touchEvent("touchcancel", [], [distant]);
+  for (const ending of ["blur", "cancel", "two fingers"]) {
+    await reset(`double click interrupted by ${ending}`);
+    await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+    await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+    if (ending === "blur") await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    else if (ending === "cancel") await touchEvent("touchcancel", [], [first]);
+    else { await touchEvent("touchstart", [first, second]); await touchEvent("touchcancel", [], [first, second]); }
+    await page.waitForTimeout(80);
+    assert(await mouseEvents() === "mousedown,mouseup", `${ending} must suppress a pending synthetic double-click`);
   }
   await reset("ordinary cursor movement");
   await touchEvent("touchstart", [first]); await touchEvent("touchmove", [second]); await touchEvent("touchend", [], [second]);
@@ -230,8 +261,8 @@ try {
   await reset("preview after settings");
   await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
   const dotBox = (await page.locator("[data-native-text-status]").boundingBox())!;
-  const eraserBox = (await page.getByRole("button", { name: "Clear preview", exact: true }).boundingBox())!;
-  assert(dotBox.x + dotBox.width <= eraserBox.x && Math.abs(dotBox.y - eraserBox.y) < 2, "Preview status must sit directly left of the eraser");
+  const dismissBox = (await page.getByRole("button", { name: "Dismiss preview", exact: true }).boundingBox())!;
+  assert(dotBox.x + dotBox.width <= dismissBox.x && Math.abs(dotBox.y - dismissBox.y) < 2, "Preview status must sit directly left of the dismiss button");
   await page.getByRole("switch", { name: "Interact with text preview", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert(await page.locator("[data-preview-scroll]").evaluate(element => getComputedStyle(element).pointerEvents) === "none", "Disabling preview interaction must let gestures pass to the trackpad");
@@ -246,6 +277,24 @@ try {
   await page.waitForTimeout(350);
   const passThroughMessages = await fixture("log") as { type: string; selectionOnly?: boolean }[];
   assert(passThroughMessages.some(message => message.type === "mousedown") && passThroughMessages.some(message => message.type === "mouseup") && !passThroughMessages.some(message => message.type === "textedit" && message.selectionOnly), "A tap over the default read-only preview must click the trackpad without moving the text caret");
+  await reset("dismiss keeps this text");
+  await page.getByRole("button", { name: "Dismiss preview", exact: true }).click();
+  assert(!await preview.isVisible() && await value() === "dismiss keeps this text", "Dismissing must hide the preview without clearing the remote field");
+  assert((await fixture("log") as unknown[]).length === 0, "Dismissing must send no desktop input");
+  await key("q").click();
+  assert(await value() === "dismiss keeps this textq" && await preview.isVisible(), "Typing must restore the dismissed preview at the same insertion point");
+  for (const gesture of ["pending tap", "stationary retouch", "active drag", "pending double click"]) {
+    await reset(`disconnect during ${gesture}`);
+    await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+    if (gesture !== "pending tap") await touchEvent("touchstart", [first]);
+    if (gesture === "active drag") await touchEvent("touchmove", [second]);
+    if (gesture === "pending double click") await touchEvent("touchend", [], [first]);
+    await fixture("setConnected(false)");
+    await page.waitForTimeout(350);
+    assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, `Disconnect during ${gesture} must release once and leave no delayed click`);
+    await fixture("setConnected(true)");
+    await pad.waitFor();
+  }
   await checkSettingsPreview(page, reset);
   await checkTerminalPreview(page);
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);

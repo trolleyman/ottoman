@@ -41,6 +41,7 @@ client.default.setMonitorVolume = ({ edid, volume } = { edid: "" }) => new Cance
 export function Fixture() {
   const log = useRef<TrackpadMessage[]>([]);
   const [epoch, setEpoch] = useState(0);
+  const [connected, setConnected] = useState(true);
   const [context, setContext] = useState(initial);
   const send = React.useCallback((message: TrackpadMessage) => {
     log.current.push(message);
@@ -56,13 +57,14 @@ export function Fixture() {
     setField(patch: Partial<TrackpadMessageTextContext>) { log.current.length = 0; setContext(current => ({ ...initial, ...patch, revision: current.revision + 1 })); },
     setOS(os: string) { useStore.setState({ agentInfo: { os, status: "online", version: "fixture", uptime: "0", hostname: "Fixture", ip_address: "127.0.0.1", port: "0" } }); },
     volumeWrites,
+    setConnected,
     addTV() { useStore.setState(state => ({ monitors: [...state.monitors, { edid: "fixture-tv", port: "HDMI-1", name: "TV", manufacturer: "Fixture", capabilities: { brightness: false, power: true, volume: true }, tv_state: { paired: true, pairing: false, on: true, volume: 12, muted: false } }] })); },
     removeTV() { useStore.setState(state => ({ monitors: state.monitors.filter(item => item.edid !== "fixture-tv") })); },
     brightness: () => useStore.getState().monitors[0].brightness,
     reset(value: string, cursor = value.length) { log.current.length = 0; setContext(current => ({ ...initial, revision: current.revision + 1, value, selectionStart: codePointOffset(value, cursor), selectionEnd: codePointOffset(value, cursor) })); },
     configure(patch: Partial<typeof DEFAULT_SETTINGS>) { localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ ...DEFAULT_SETTINGS, mirrorFocusedText: true, swipeTyping: false, ...patch })); setEpoch(value => value + 1); },
   } }); }, [context]);
-  return <RemotePage key={epoch} connected connecting={false} textContext={context} cursorPos={null} cursorSupported={false} send={send} />;
+  return <RemotePage key={epoch} connected={connected} connecting={false} textContext={context} cursorPos={null} cursorSupported={false} send={send} />;
 }
 
 createRoot(document.getElementById("root")!).render(<Fixture />);

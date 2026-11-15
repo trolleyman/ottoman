@@ -3,7 +3,6 @@ import { TERMINAL_FONTS } from "./trackpadSettings";
 import { createPortal } from "react-dom";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Eraser,
   Settings,
   X,
 } from "lucide-react";
@@ -21,6 +20,7 @@ import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
 import { loadSettings, savePreference } from "./preferences";
 
 const DOUBLE_TAP_WINDOW_MS = 300;
+const DOUBLE_CLICK_INTERVAL_MS = 40;
 
 function getModifiers(e: {
   shiftKey: boolean;
@@ -132,7 +132,10 @@ function TouchArea({
   }, [send]);
   const consumeModifiers = useCallback(() => { modifierState.current.consume(); syncModifiers(); }, [syncModifiers]);
   const previewRef = useRef<HTMLDivElement>(null);
+  const tapReleaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doubleClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapMouseDown = useRef(false);
+  const secondTap = useRef(false);
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftSelection, setDraftSelection] = useState<[number, number] | null>(null);
@@ -539,6 +542,10 @@ function TouchArea({
 
   useEffect(() => {
     const release = () => {
+      if (tapReleaseTimer.current) clearTimeout(tapReleaseTimer.current);
+      if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
+      tapReleaseTimer.current = null; doubleClickTimer.current = null;
+      secondTap.current = false;
       lastGestureAllowsDrag.current = false;
       if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
       tapMouseDown.current = false; isDragging.current = false;
@@ -549,6 +556,8 @@ function TouchArea({
   }, [send, connected]);
 
   const releaseTap = () => {
+    if (tapReleaseTimer.current) clearTimeout(tapReleaseTimer.current);
+    tapReleaseTimer.current = null;
     if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
     tapMouseDown.current = false;
   };
@@ -559,6 +568,12 @@ function TouchArea({
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
+    if (doubleClickTimer.current) {
+      clearTimeout(doubleClickTimer.current); doubleClickTimer.current = null;
+      // A third tap completes the previous double-click first. A multi-finger
+      // gesture cancels delayed input instead of inserting a stray left click.
+      if (e.touches.length === 1) send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+    }
     e.preventDefault();
     dismissDraft();
 
@@ -574,7 +589,7 @@ function TouchArea({
 
     // Two-finger scroll detection
     if (e.touches.length === 2) {
-      releaseTap(); isDragging.current = false;
+      releaseTap(); secondTap.current = false; isDragging.current = false;
       lastGestureAllowsDrag.current = false;
       twoFingerRef.current = true;
       twoFingerStartTime.current = performance.now();
@@ -612,15 +627,16 @@ function TouchArea({
         )
       : Infinity;
 
-    isDragging.current = lastGestureAllowsDrag.current &&
+    secondTap.current = tapReleaseTimer.current !== null && tapMouseDown.current && lastGestureAllowsDrag.current &&
       touchStartTime.current - lastTouchEndTime.current < DOUBLE_TAP_WINDOW_MS && dist < 40;
     lastGestureAllowsDrag.current = false;
-    if (isDragging.current) {
-      // The first tap is already a complete click. Hold the second press from
-      // contact until lift, even if the finger stays still before moving.
-      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
-      tapMouseDown.current = true;
-    }
+    isDragging.current = false;
+    if (secondTap.current) {
+      // Continue the original press: a new down here would double-click a
+      // titlebar or select a whole word before the finger even starts dragging.
+      clearTimeout(tapReleaseTimer.current!);
+      tapReleaseTimer.current = null;
+    } else releaseTap();
 
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
@@ -691,6 +707,10 @@ function TouchArea({
       // Stationary taps must not nudge the pointer out of the desktop's
       // double-click hit region. Begin cursor movement only after tap slop.
       if (!gestureMoved.current) return;
+      if (secondTap.current) {
+        secondTap.current = false;
+        isDragging.current = true;
+      }
       send({ type: "mousemoverel", dx, dy });
       lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
 
@@ -768,6 +788,24 @@ function TouchArea({
     const now = performance.now();
     lastTouchEndTime.current = now;
 
+    if (secondTap.current) {
+      secondTap.current = false;
+      releaseTap();
+      if (!gestureMoved.current && now - touchStartTime.current < 200) {
+        // Only a completed, stationary second tap is a double-click. Leave a
+        // real interval between click pairs; some desktops ignore a burst.
+        doubleClickTimer.current = setTimeout(() => {
+          doubleClickTimer.current = null;
+          send({ type: "mouseclick", btn: MouseButton.LEFT, modifiers: activeModifiers });
+        }, DOUBLE_CLICK_INTERVAL_MS);
+      }
+      lastGestureAllowsDrag.current = false;
+      const touch = e.changedTouches[0];
+      if (touch) lastTapEndPos.current = { x: touch.clientX, y: touch.clientY };
+      touchStartPos.current = null; lastTouchRef.current = null;
+      return;
+    }
+
     if (isDragging.current) {
       releaseTap();
       isDragging.current = false;
@@ -817,7 +855,15 @@ function TouchArea({
         const dy = touch.clientY - touchStartPos.current.y;
         if (Math.sqrt(dx * dx + dy * dy) < 6) {
           send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
-          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+          tapMouseDown.current = true;
+          // Give a naturally spaced retouch the full recognition window. A
+          // 100ms grace misses ordinary 150–250ms tap-and-drag gestures. Only
+          // release is delayed; movement is never buffered or replayed later.
+          tapReleaseTimer.current = setTimeout(() => {
+            tapReleaseTimer.current = null;
+            if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+            tapMouseDown.current = false;
+          }, DOUBLE_TAP_WINDOW_MS);
           wasTap = true;
         }
       }
@@ -1053,6 +1099,8 @@ function TouchArea({
           onTouchEnd={connected ? onTouchEnd : undefined}
           onTouchCancel={() => {
             releaseTap();
+            if (doubleClickTimer.current) clearTimeout(doubleClickTimer.current);
+            doubleClickTimer.current = null; secondTap.current = false;
             isDragging.current = false;
             lastGestureAllowsDrag.current = false;
             touchStartPos.current = null; lastTouchRef.current = null;
@@ -1080,8 +1128,11 @@ function TouchArea({
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
             <div className="flex items-center justify-end gap-1">
               {previewStatus}
-              <button type="button" aria-label="Clear preview" title="Clear preview" onClick={dismissDraft}
-                className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><Eraser className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label="Dismiss preview" title="Dismiss preview" onClick={() => {
+                dragOrigin.current = null;
+                setCursorDrag(null);
+                setDraftVisible(false);
+              }} className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>
             </div>
             <PreviewViewport interactive={settings.interactivePreview}>
               <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
