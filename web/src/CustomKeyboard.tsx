@@ -560,9 +560,9 @@ function KeyboardSession({
               else setMode(mode === "symbols" ? "letters" : "symbols");
             }}
           >
-            {emojiSearching || symbolSearching ? <ArrowLeft className="h-5 w-5" /> : mode === "symbols" ? "ABC" : "?123"}
+            {emojiSearching || symbolSearching ? <ArrowLeft className="h-5 w-5" /> : mode === "symbols" ? "ABC" : "#+="}
           </UtilityKey>
-          <UtilityKey
+          {(mode !== "letters" || settings.emojiKey) && <UtilityKey
             label={mode === "emoji" ? "Letters" : "Emoji"}
             onPress={() => {
               if (mode === "emoji") {
@@ -575,7 +575,7 @@ function KeyboardSession({
             }}
           >
             {mode === "emoji" ? "ABC" : <Smile className="h-5 w-5" />}
-          </UtilityKey>
+          </UtilityKey>}
           {settings.tabKey && <UtilityKey label="Tab" onPress={onTab}>
             <ArrowRightToLine className="h-5 w-5" />
           </UtilityKey>}

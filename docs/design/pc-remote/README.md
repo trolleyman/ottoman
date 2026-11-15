@@ -12,12 +12,16 @@ Move the selected display layout out of the right edge of the navigation row.
 Give it a labeled full-width selector immediately below the menu header, above
 PC and TV. The updated layout board shows the field, dismissed state and menu.
 
-Unlike the broader redesign, the tap-and-drag correction and the × dismiss
-control have now been implemented in the application. Dragging reuses one held
-native press across the existing 300 ms retouch window, preserving long holds
+Unlike the broader redesign, tap-chain dragging, the × dismiss control, the
+#+= label and optional emoji key on letters have now been implemented in the
+application. The main-page emoji key is hidden by default but remains available
+from symbols; its visibility switch can restore it on letters. Dragging reuses
+one held native press across the existing 300 ms retouch window, preserving long holds
 and immediate movement while preventing accidental titlebar/word double-clicks.
 A single tap has immediate button-down feedback but delays release up to 300 ms;
-a short stationary second tap completes a true double-click. The previous
+each short stationary lift advances the native click count and reserves the
+next press. Tap chains have no fixed length limit: two/three/four contacts
+ending in a drag produce single/double/triple click-drags. The previous
 100 ms retouch and 600 ms movement-buffer approaches are deliberately avoided.
 
 ## Revision 2

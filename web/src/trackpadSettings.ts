@@ -17,6 +17,7 @@ export interface KeyboardSettings {
   keyboardLayout: "en-GB" | "en-US" | "auto";
   keyboardTheme: "dark" | "light" | "system";
   tabKey: boolean;
+  emojiKey: boolean;
   periodKey: boolean;
   commaKey: boolean;
   swipeTyping: boolean;
@@ -56,6 +57,7 @@ export const DEFAULT_SETTINGS: TrackpadSettings = {
   keyboardLayout: "en-GB",
   keyboardTheme: "dark",
   tabKey: true,
+  emojiKey: false,
   periodKey: true,
   commaKey: true,
   swipeTyping: true,
@@ -100,7 +102,7 @@ export function parseSettings(value: unknown): TrackpadSettings {
   const settings = { ...DEFAULT_SETTINGS };
   if (!value || typeof value !== "object" || Array.isArray(value)) return settings;
   const saved = value as Record<string, unknown>;
-  for (const key of ["terminalScrollback", "tabKey", "interactivePreview", "autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "volumeKeysControlOutput", "periodKey", "commaKey", "swipeTyping"] as const) {
+  for (const key of ["terminalScrollback", "tabKey", "emojiKey", "interactivePreview", "autocorrect", "adaptiveKeys", "debugKeySizes", "previewNavigation", "suggestionsAboveControls", "mirrorFocusedText", "numberRow", "tallerKeys", "symbolHints", "doubleSpacePeriod", "haptics", "clickAndDrag", "customKeyboard", "volumeKeysControlOutput", "periodKey", "commaKey", "swipeTyping"] as const) {
     if (typeof saved[key] === "boolean") settings[key] = saved[key];
   }
   for (const { key, min, max } of [...KEYBOARD_TIMINGS, ...TRACKPAD_RANGES, { key: "spaceCursorSensitivity", min: 0.5, max: 5 } as const]) {

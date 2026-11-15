@@ -134,7 +134,7 @@ export function KeyboardSettingsPanel({ settings, onSettingsChange, onUseCustomK
             {([
               ["Typing", [["Autocorrect", "autocorrect"], ["Double-space period", "doubleSpacePeriod"], ["Swipe typing", "swipeTyping"]]],
               ["Preview & navigation", [["Mirror focused text", "mirrorFocusedText"], ["Show terminal scrollback", "terminalScrollback"], ["Interact with text preview", "interactivePreview"], ["Navigate by preview lines", "previewNavigation"]]],
-              ["Key layout", [["Tab beside space", "tabKey"], ["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
+              ["Key layout", [["Show emoji key on letters", "emojiKey"], ["Tab beside space", "tabKey"], ["Number row", "numberRow"], ["Taller keys", "tallerKeys"], ["Long-press symbols", "symbolHints"], ["Period beside space", "periodKey"], ["Comma beside space", "commaKey"], ["Suggestions above Ctrl row", "suggestionsAboveControls"]]],
               ["Prediction & feedback", [["Adaptive key sizes", "adaptiveKeys"], ["Debug key sizes", "debugKeySizes"], ["Key haptics", "haptics"]]],
             ] as const).map(([title, fields]) => <fieldset key={title} className="mb-3 shrink-0">
               <legend className="mb-2 text-xs font-semibold text-zinc-400">{title}</legend>

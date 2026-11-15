@@ -250,6 +250,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.getByRole("button", { name: "Back to symbols", exact: true }).click();
   await page.getByRole("button", { name: "Letters", exact: true }).click();
 
+  await page.getByRole("button", { name: "Symbols", exact: true }).click();
   await page.getByRole("button", { name: "Emoji", exact: true }).click();
   const emojiList = page.getByRole("region", { name: "All emoji" });
   await emojiList.waitFor();

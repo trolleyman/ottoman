@@ -20,6 +20,7 @@ export async function checkKeyboardTouchDefaults(page: Page) {
   });
   if (!blocked) throw Error('Keys and their glyphs must suppress native iOS hold/magnifier gestures');
 
+  await page.getByRole('button', { name: 'Symbols', exact: true }).click();
   await page.getByRole('button', { name: 'Emoji', exact: true }).click();
   const pickerScrolls = await page.getByRole('region', { name: 'All emoji', exact: true }).getByRole('button').first().evaluate(button => {
     const touch = new Event('touchstart', { bubbles: true, cancelable: true });

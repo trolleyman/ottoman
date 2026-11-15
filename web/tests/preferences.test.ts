@@ -114,3 +114,12 @@ test("selected-output volume keys default on and preserve an explicit opt-out", 
   expect(loadSettings().volumeKeysControlOutput).toBe(false);
   expect(parseSettings({ volumeKeysControlOutput: "false" }).volumeKeysControlOutput).toBe(true);
 });
+
+test("emoji key is hidden on letters by default and preserves an explicit choice", () => {
+  expect(loadSettings().emojiKey).toBe(false);
+  expect(parseSettings({ emojiKey: true }).emojiKey).toBe(true);
+  expect(parseSettings({ emojiKey: false }).emojiKey).toBe(false);
+  expect(parseSettings({ emojiKey: "true" }).emojiKey).toBe(false);
+  savePreference("ottoman-trackpad-settings", { emojiKey: true });
+  expect(loadSettings().emojiKey).toBe(true);
+});

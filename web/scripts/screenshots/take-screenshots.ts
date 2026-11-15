@@ -246,6 +246,7 @@ async function main() {
             }
           }
         } else if (shot.keyboard === 'emoji' || shot.keyboard === 'emoji-search') {
+          await page.getByRole('button', { name: 'Symbols', exact: true }).click();
           await page.getByRole('button', { name: 'Emoji' }).click()
           await page.getByRole('region', { name: 'All emoji' }).waitFor()
           if (shot.keyboard === 'emoji-search') {

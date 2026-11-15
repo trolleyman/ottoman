@@ -43,12 +43,19 @@ function Phone({ variant = 'overlay', menu = false, offline = false, emoji = fal
     setSuggestions(el.querySelector('.keyboard-suggestion-bar'));
     const button = el.querySelector<HTMLButtonElement>('button[aria-label="Function keys"]');
     if (clip) button?.click();
-    if (emoji) el.querySelector<HTMLButtonElement>('button[aria-label="Emoji"]')?.click();
+    const emojiObserver = new MutationObserver(() => {
+      const emojiKey = el.querySelector<HTMLButtonElement>('button[aria-label="Emoji"]');
+      if (emoji && emojiKey) { emojiObserver.disconnect(); emojiKey.click(); }
+    });
+    if (emoji) {
+      emojiObserver.observe(el, { childList: true, subtree: true });
+      el.querySelector<HTMLButtonElement>('button[aria-label="Symbols"]')?.click();
+    }
     const observer = new MutationObserver(() => {
       if (button?.getAttribute('aria-pressed') === 'false') setClipboardMode(false);
     });
     if (button) observer.observe(button, { attributes: true, attributeFilter: ['aria-pressed'] });
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); emojiObserver.disconnect(); };
   }, [clip, emoji, showSettings]);
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo); }, [photo]);
   function insert(value: string) {
@@ -126,10 +133,10 @@ function InputSettings({ preferences, onChange, onBack, holdEnabled, setHoldEnab
   holdDelay: number; setHoldDelay: (value: number) => void; holdSlop: number; setHoldSlop: (value: number) => void;
 }) {
   const [tab, setTab] = useState(new URLSearchParams(location.search).get('view') === 'gestures' ? 'Trackpad' : 'Keyboard');
-  const toggle = (label: string, name: 'tabKey' | 'commaKey' | 'periodKey' | 'numberRow' | 'tallerKeys' | 'swipeTyping' | 'haptics') => <label className="v2-setting"><span>{label}</span><input type="checkbox" role="switch" checked={preferences[name]} onChange={e => onChange({ ...preferences, [name]: e.target.checked })} /></label>;
+  const toggle = (label: string, name: 'tabKey' | 'commaKey' | 'periodKey' | 'numberRow' | 'tallerKeys' | 'emojiKey' | 'swipeTyping' | 'haptics') => <label className="v2-setting"><span>{label}</span><input type="checkbox" role="switch" checked={preferences[name]} onChange={e => onChange({ ...preferences, [name]: e.target.checked })} /></label>;
   return <div className="v2-settings"><header><button aria-label="Back to remote" onClick={onBack}><ArrowLeft /></button><b>Settings</b></header><div className="v2-tabs">{['Keyboard', 'Trackpad'].map(name => <button key={name} className={tab === name ? 'selected' : ''} onClick={() => setTab(name)}>{name}</button>)}</div>
     {tab === 'Keyboard' ? <><div className="v2-settings-group"><label className="v2-setting"><span>Keyboard</span><select><option>Ottoman</option><option>Device</option></select></label><label className="v2-setting"><span>Layout</span><select><option>British (UK)</option><option>English (US)</option></select></label><label className="v2-setting"><span>Appearance</span><select><option>Dark</option><option>Light</option><option>System</option></select></label></div>
-    <h3>Keys</h3><div className="v2-settings-group">{toggle('Number row', 'numberRow')}{toggle('Taller keys', 'tallerKeys')}{toggle('Tab beside space', 'tabKey')}{toggle('Comma beside space', 'commaKey')}{toggle('Period beside space', 'periodKey')}</div>
+    <h3>Keys</h3><div className="v2-settings-group">{toggle('Number row', 'numberRow')}{toggle('Taller keys', 'tallerKeys')}{toggle('Show emoji key on letters', 'emojiKey')}{toggle('Tab beside space', 'tabKey')}{toggle('Comma beside space', 'commaKey')}{toggle('Period beside space', 'periodKey')}</div>
     <div className="v2-settings-group">{toggle('Swipe typing', 'swipeTyping')}{toggle('Haptics', 'haptics')}</div><details><summary>Text & terminal</summary><label className="v2-setting">Terminal font<select><option>Iosevka Term</option><option>Fira Code</option></select></label></details><details><summary>Advanced</summary><span>Prediction · Gesture timing · Preview behavior</span></details></> : <><Slider label="Cursor sensitivity" value={30} sensitivity /><Slider label="Scroll sensitivity" value={30} sensitivity /><h3>Gestures</h3><div className="v2-settings-group"><label className="v2-setting"><span>Hold to right-click</span><input type="checkbox" role="switch" aria-label="Hold to right-click" checked={holdEnabled} onChange={e => setHoldEnabled(e.target.checked)} /></label><label className="v2-setting"><span>Hold duration</span><span className="v2-number"><input type="number" aria-label="Hold duration" min="250" max="1000" step="50" value={holdDelay} onChange={e => setHoldDelay(Math.max(250, Math.min(1000, Number(e.target.value))))} />ms</span></label><label className="v2-setting"><span>Movement tolerance</span><span className="v2-number"><input type="number" aria-label="Movement tolerance" min="2" max="20" step="1" value={holdSlop} onChange={e => setHoldSlop(Math.max(2, Math.min(20, Number(e.target.value))))} />px</span></label></div><details><summary>Advanced</summary><span>Cursor friction · Scroll friction</span></details></>}
   </div>;
 }

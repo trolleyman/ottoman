@@ -1,5 +1,7 @@
 // Isolated preview server: ephemeral localhost port, no desktop connection.
 import { createRequire } from 'node:module';
+import { createServer as createPortProbe } from 'node:net';
+import { once } from 'node:events';
 import { resolve } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -9,15 +11,19 @@ const { createServer } = await import(require.resolve('vite'));
 const { chromium } = require('playwright');
 const out = resolve(process.argv[2] || '/tmp/ottoman-remote-design-v2');
 await mkdir(out, { recursive: true });
+const portProbe = createPortProbe().listen(0, '127.0.0.1');
+await once(portProbe, 'listening');
+const port = portProbe.address().port;
+await new Promise((resolve, reject) => portProbe.close(error => error ? reject(error) : resolve()));
 const server = await createServer({
   root, cacheDir: resolve(root, 'web/node_modules/.vite/remote-design'), configFile: resolve(root, 'web/vite.config.ts'), publicDir: resolve(root, 'web/public'),
   resolve: { alias: { react: resolve(root, 'web/node_modules/react'), 'react-dom': resolve(root, 'web/node_modules/react-dom') } },
   optimizeDeps: { entries: ['docs/design/pc-remote/v2.html'] },
-  server: { host: '127.0.0.1', port: 0 },
+  server: { host: '127.0.0.1', port, strictPort: true },
 });
 let browser;
 try {
-  await server.listen(0);
+  await server.listen();
   const address = server.httpServer.address();
   const base = `http://127.0.0.1:${address.port}/docs/design/pc-remote/v2.html`;
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH });
@@ -36,6 +42,7 @@ try {
   await page.locator('.custom-keyboard-shell').waitFor();
   const keyboard = page.locator('.v2-keyboard');
   const before = await keyboard.boundingBox();
+  await page.getByRole('button', { name: 'Symbols', exact: true }).click();
   await page.getByRole('button', { name: 'Emoji', exact: true }).click();
   await page.getByRole('region', { name: 'All emoji' }).waitFor();
   const after = await keyboard.boundingBox();

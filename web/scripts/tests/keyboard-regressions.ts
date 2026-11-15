@@ -8,8 +8,14 @@ import { checkSettingsPreview } from "./settings-preview-checks";
 import { checkArrowRepeat, checkRawNavigation } from "./arrow-repeat-checks";
 import { checkPredictionAndCursor } from "./prediction-cursor-checks";
 import { chromium } from "playwright";
+import { createServer as createPortProbe } from "node:net";
+import { once } from "node:events";
 
-const server = await createServer({ server: { host: "127.0.0.1", port: 0 }, plugins: [{ name: "keyboard-fixture", configureServer(server) {
+const portProbe = createPortProbe().listen(0, "127.0.0.1");
+await once(portProbe, "listening");
+const port = (portProbe.address() as { port: number }).port;
+await new Promise<void>((resolve, reject) => portProbe.close(error => error ? reject(error) : resolve()));
+const server = await createServer({ server: { host: "127.0.0.1", port, strictPort: true }, plugins: [{ name: "keyboard-fixture", configureServer(server) {
   server.middlewares.use("/__keyboard", (_req, res, next) => { res.setHeader("Content-Type", "text/html"); void server.transformIndexHtml("/__keyboard", '<html><body><div id="root"></div><script type="module" src="/scripts/tests/keyboard-fixture.tsx"></script></body></html>').then(html => res.end(html)).catch(next); });
 } }] });
 await server.listen();
@@ -33,6 +39,28 @@ try {
   const value = () => fixture("context.value");
   const key = (letter: string) => page.locator(`[data-letter="${letter}"]`);
   const space = page.getByRole("button", { name: "Space. Hold and drag to move the cursor", exact: true });
+  assert(await page.getByRole("button", { name: "Emoji", exact: true }).count() === 0, "Letters must hide the emoji button by default");
+  const symbols = page.getByRole("button", { name: "Symbols", exact: true });
+  assert(await symbols.textContent() === "#+=", "The symbols page must not advertise a duplicate number keyboard");
+  await symbols.click();
+  await page.getByRole("button", { name: "Emoji", exact: true }).click();
+  await page.getByRole("region", { name: "All emoji", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Letters", exact: true }).click();
+  assert(await page.getByRole("button", { name: "Emoji", exact: true }).count() === 0, "Returning from emoji must restore the hidden main-page button");
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  const emojiSetting = page.getByRole("switch", { name: "Show emoji key on letters", exact: true });
+  assert(await emojiSetting.getAttribute("aria-checked") === "false", "Main-page emoji must be opt-in");
+  await emojiSetting.click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  assert(await page.getByRole("button", { name: "Emoji", exact: true }).isVisible(), "Enabling the preference must restore the main-page emoji button");
+  assert(await page.evaluate(() => (JSON.parse(localStorage.getItem("ottoman-trackpad-settings")!) as { emojiKey?: boolean }).emojiKey) === true, "The emoji-button preference must persist");
+  await page.getByRole("button", { name: "Emoji", exact: true }).click();
+  await page.getByRole("region", { name: "All emoji", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Letters", exact: true }).click();
+  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await emojiSetting.click();
+  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
+  assert(await page.getByRole("button", { name: "Emoji", exact: true }).count() === 0, "Disabling the preference must hide only the main-page emoji button");
   await checkImagePaste(page);
   await checkEnter(page);
   await checkModifierRelease(page);
@@ -157,6 +185,56 @@ try {
     await page.waitForTimeout(350);
     assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, "A drag must contain exactly one native press, with no titlebar/word double-click or delayed input");
   }
+  // N physical contacts ending in a drag must produce N-1 native presses:
+  // down/up/down/drag is one click-drag; down/up/down/up/down/drag is two.
+  // Include six contacts to catch implementations hard-coded to triples/quads.
+  for (const contacts of [3, 4, 6]) {
+    for (const gap of [30, 150, 250]) {
+      await reset(`${contacts}-contact drag after ${gap}ms`);
+      for (let tap = 0; tap < contacts - 1; tap++) {
+        await touchEvent("touchstart", [first]);
+        await touchEvent("touchend", [], [first]);
+        await page.waitForTimeout(gap);
+      }
+      await touchEvent("touchstart", [first]);
+      const beforeDrag = [...Array.from({ length: contacts - 2 }, () => ["mousedown", "mouseup"]).flat(), "mousedown"].join(",");
+      assert(await mouseEvents() === beforeDrag, `${contacts} contacts must hold press ${contacts - 1}, including retouches before the 40ms press timer`);
+      if (gap === 150) {
+        await page.waitForTimeout(700);
+        assert(await mouseEvents() === beforeDrag, "A late-chain hold must not expire or add another native click");
+      }
+      await touchEvent("touchmove", [second]);
+      assert(await mouseEvents() === `${beforeDrag},mousemoverel`, "Multi-tap dragging must move immediately with the final native press already held");
+      await touchEvent("touchend", [], [second]);
+      await page.waitForTimeout(350);
+      assert(await mouseEvents() === `${beforeDrag},mousemoverel,mouseup`, "Multi-tap dragging must release once and leave no delayed clicks");
+      assert(await count("mousedown") === contacts - 1 && await count("mouseup") === contacts - 1 && await count("mouseclick") === 0, "A chain must preserve its exact native click count");
+    }
+  }
+  for (const contacts of [3, 4]) {
+    await reset(`${contacts} stationary taps`);
+    for (let tap = 0; tap < contacts; tap++) {
+      await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+      if (tap < contacts - 1) await page.waitForTimeout(30);
+    }
+    await page.waitForTimeout(350);
+    assert(await mouseEvents() === Array.from({ length: contacts }, () => ["mousedown", "mouseup"]).flat().join(","), "Stationary tap chains must complete every click without a stuck press");
+  }
+  for (const ending of ["cancel", "blur", "two fingers", "disconnect"]) {
+    await reset(`tap chain interrupted by ${ending}`);
+    for (let tap = 0; tap < 2; tap++) {
+      await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
+      await page.waitForTimeout(150);
+    }
+    await touchEvent("touchstart", [first]);
+    if (ending === "blur") await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    else if (ending === "disconnect") await fixture("setConnected(false)");
+    else if (ending === "two fingers") { await touchEvent("touchstart", [first, second]); await touchEvent("touchcancel", [], [first, second]); }
+    else await touchEvent("touchcancel", [], [first]);
+    await page.waitForTimeout(350);
+    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "Interrupting a tap chain must release its final press without creating another click");
+    if (ending === "disconnect") { await fixture("setConnected(true)"); await pad.waitFor(); }
+  }
   await reset("tap");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   assert(await mouseEvents() === "mousedown", "A single tap must give immediate press feedback");
@@ -170,7 +248,9 @@ try {
     await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
     assert(await mouseEvents() === "mousedown,mouseup", "Only a completed stationary second tap may request the second click");
     await page.waitForTimeout(60);
-    assert(await mouseEvents() === "mousedown,mouseup,mouseclick", "A real double-tap must preserve two native clicks separated by a real interval, without pointer jitter");
+    assert(await mouseEvents() === "mousedown,mouseup,mousedown", "A real double-tap must start its second native press after a real interval, reserving it for another retouch");
+    await page.waitForTimeout(300);
+    assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "A stationary double-tap must complete exactly two native clicks");
   }
   await reset("stationary hold");
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
@@ -183,7 +263,7 @@ try {
   await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(350);
   await touchEvent("touchstart", [first]);
-  assert(await mouseEvents() === "mousedown,mouseup", "A contact outside the double-tap window must not press on contact");
+  assert(await mouseEvents() === "mousedown,mouseup", "A contact outside the tap continuation window must not press on contact");
   await touchEvent("touchend", [], [first]);
   await page.waitForTimeout(350);
   assert(await mouseEvents() === "mousedown,mouseup,mousedown,mouseup", "Separate taps must finish independently");
@@ -229,7 +309,7 @@ try {
     else if (ending === "cancel") await touchEvent("touchcancel", [], [first]);
     else { await touchEvent("touchstart", [first, second]); await touchEvent("touchcancel", [], [first, second]); }
     await page.waitForTimeout(80);
-    assert(await mouseEvents() === "mousedown,mouseup", `${ending} must suppress a pending synthetic double-click`);
+    assert(await mouseEvents() === "mousedown,mouseup", `${ending} must suppress a pending next press`);
   }
   await reset("ordinary cursor movement");
   await touchEvent("touchstart", [first]); await touchEvent("touchmove", [second]); await touchEvent("touchend", [], [second]);
@@ -254,7 +334,7 @@ try {
   await page.getByRole("button", { name: "Symbols", exact: true }).click();
   const relocatedTab = page.getByRole("button", { name: "Tab", exact: true });
   const tabBox = (await relocatedTab.boundingBox())!;
-  assert(Math.abs(tabBox.x - shiftBox.x) < 1 && Math.abs(tabBox.y - shiftBox.y) < 1, "The relocated Tab must occupy Shift's position on ?123");
+  assert(Math.abs(tabBox.x - shiftBox.x) < 1 && Math.abs(tabBox.y - shiftBox.y) < 1, "The relocated Tab must occupy Shift's position on #+=");
   await relocatedTab.click();
   assert((await fixture("log") as { type: string; key?: string }[]).some(message => message.type === "keydown" && message.key === "Tab"), "Relocated Tab must send Tab");
   await page.getByRole("button", { name: "Letters", exact: true }).click();
@@ -283,12 +363,12 @@ try {
   assert((await fixture("log") as unknown[]).length === 0, "Dismissing must send no desktop input");
   await key("q").click();
   assert(await value() === "dismiss keeps this textq" && await preview.isVisible(), "Typing must restore the dismissed preview at the same insertion point");
-  for (const gesture of ["pending tap", "stationary retouch", "active drag", "pending double click"]) {
+  for (const gesture of ["pending tap", "stationary retouch", "active drag", "pending next press"]) {
     await reset(`disconnect during ${gesture}`);
     await touchEvent("touchstart", [first]); await touchEvent("touchend", [], [first]);
     if (gesture !== "pending tap") await touchEvent("touchstart", [first]);
     if (gesture === "active drag") await touchEvent("touchmove", [second]);
-    if (gesture === "pending double click") await touchEvent("touchend", [], [first]);
+    if (gesture === "pending next press") await touchEvent("touchend", [], [first]);
     await fixture("setConnected(false)");
     await page.waitForTimeout(350);
     assert(await count("mousedown") === 1 && await count("mouseup") === 1 && await count("mouseclick") === 0, `Disconnect during ${gesture} must release once and leave no delayed click`);
@@ -298,5 +378,5 @@ try {
   await checkSettingsPreview(page, reset);
   await checkTerminalPreview(page);
   assert(errors.length === 0, `Browser errors: ${errors.join("; ")}`);
-  console.log("PASS: navigation, period undo, suggestion spacing, blank lines, settings preview, autocorrect, adaptive keys, held Shift, selection, scrolling, brightness, single/double taps and dragging");
+  console.log("PASS: navigation, period undo, suggestion spacing, blank lines, settings preview, autocorrect, adaptive keys, held Shift, selection, scrolling, brightness, emoji-key preference, single/double taps and arbitrary tap-chain dragging");
 } finally { await browser.close(); await server.close(); }
