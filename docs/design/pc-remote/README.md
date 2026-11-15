@@ -1,5 +1,28 @@
 # PC remote design review
 
+## Implemented outcome
+
+The approved in-trackpad design is implemented. The application home page now
+uses the remote surface with a full-width phone keyboard, preserved scroll rail,
+fixed two-line native field and dismiss button, mobile drawer, and collapsible
+desktop sidebar. Settings live in the menu. The layout selector has its own
+full-width row above PC and TV controls. Clipboard replaces the existing function
+row; image selection pastes immediately. Text sharing is explicit, with browser
+permission/manual fallbacks. Linux MPRIS supplies optional capability-based media
+controls. No background clipboard synchronization is attempted.
+
+Emoji containment and wrapped-endpoint caret rendering are fixed and covered by
+browser regressions. Hold-to-right-click defaults to 500 ms / 6 CSS px and is
+configurable. Tab, comma, period and main-page emoji default off. Generic
+multi-tap dragging retains the prior continuous native press behavior.
+
+The sections below record the design process; the old HTML prototypes are
+historical. Current screenshots come from
+`web/scripts/screenshots/take-screenshots.ts`, which runs the real simulator.
+Native iPhone selection handles and permission prompts still need physical-device
+validation; Chromium emulation does not establish Safari behavior.
+
+
 ## Latest refinement
 
 Use the in-trackpad field (A), capped at two visible lines with native scrolling.

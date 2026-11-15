@@ -1,3 +1,4 @@
+import { openSettings } from "./settings-helpers";
 import { checkTerminalPreview } from "./terminal-preview-checks";
 import { checkImagePaste } from "./image-paste-checks";
 import { checkRemoteVolume } from "./remote-volume-checks";
@@ -25,13 +26,13 @@ try { browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_E
 try {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true });
   const errors: string[] = [];
-  page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
-  await page.addInitScript(() => localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false, interactivePreview: true })));
+  page.on("pageerror", error => { errors.push(error.message); console.error(error.stack); });
+  await page.addInitScript(() => localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false, interactivePreview: true, tabKey: true, commaKey: true, periodKey: true })));
   await page.goto(`http://127.0.0.1:${address.port}/__keyboard`);
   await page.locator('[data-letter="q"]').waitFor({ state: "visible" });
   if (await page.getByRole("button", { name: "Close keyboard", exact: true }).count()) throw Error("PC remote must not offer an action to hide its always-visible keyboard");
   if (await page.getByLabel(/Trackpad\. Tap to click/).evaluate(element => element === document.activeElement)) throw Error("Remote keyboard visibility must not require trackpad focus");
-  await page.getByRole("button", { name: "Switch to brightness", exact: true }).focus();
+  await page.getByRole("button", { name: "Open menu", exact: true }).focus();
   if (!await page.locator('[data-letter="q"]').isVisible()) throw Error("Remote keyboard must stay visible when another control has focus");
   const fixture = (fn: string) => page.evaluate(`window.fixture.${fn}`);
   const reset = async (text: string, cursor = text.length) => { await fixture(`reset(${JSON.stringify(text)}, ${cursor})`); await page.waitForTimeout(50); };
@@ -47,7 +48,7 @@ try {
   await page.getByRole("region", { name: "All emoji", exact: true }).waitFor();
   await page.getByRole("button", { name: "Letters", exact: true }).click();
   assert(await page.getByRole("button", { name: "Emoji", exact: true }).count() === 0, "Returning from emoji must restore the hidden main-page button");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   const emojiSetting = page.getByRole("switch", { name: "Show emoji key on letters", exact: true });
   assert(await emojiSetting.getAttribute("aria-checked") === "false", "Main-page emoji must be opt-in");
   await emojiSetting.click();
@@ -57,7 +58,7 @@ try {
   await page.getByRole("button", { name: "Emoji", exact: true }).click();
   await page.getByRole("region", { name: "All emoji", exact: true }).waitFor();
   await page.getByRole("button", { name: "Letters", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await emojiSetting.click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert(await page.getByRole("button", { name: "Emoji", exact: true }).count() === 0, "Disabling the preference must hide only the main-page emoji button");
@@ -84,9 +85,9 @@ try {
   const text = preview.locator("[data-caret-text]");
   const heights: number[] = [];
   for (const lines of ["hello", "hello\n", "hello\n\n", "hello\n\n\n"]) { await reset(lines); heights.push(await text.evaluate(element => element.parentElement!.getBoundingClientRect().height)); }
-  assert(heights.every((height, i) => i === 0 || Math.abs(height - heights[i - 1] - 20) < 2), `Trailing blank lines must add one line each: ${JSON.stringify(heights)}`);
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
-  assert(await preview.isVisible(), "Opening settings must retain the preview");
+  assert(heights.every((height, i) => i === 0 || Math.abs(height - heights[i - 1] - 24) < 2), `Trailing blank lines must add one line each: ${JSON.stringify(heights)}`);
+  await openSettings(page);
+  assert(await page.getByLabel("Remote text", { exact: true }).inputValue() === "hello\n\n\n", "Opening settings must preserve the text field");
   await page.getByRole("switch", { name: "Autocorrect", exact: true }).click();
   await page.getByRole("switch", { name: "Adaptive key sizes", exact: true }).click();
   await page.getByRole("switch", { name: "Debug key sizes", exact: true }).click();
@@ -134,7 +135,7 @@ try {
   await page.getByRole("button", { name: "Arrow left", exact: true }).click();
   assert(await fixture("context.selectionEnd - window.fixture.context.selectionStart") === 1, "Shift + arrow must select one character");
   await reset(Array.from({ length: 30 }, (_, i) => `Line ${i}`).join("\n"));
-  const scrollable = page.locator("[data-preview-scroll]");
+  const scrollable = page.locator("[data-native-preview]");
   assert(await scrollable.evaluate(element => element.scrollHeight > element.clientHeight), "Long previews must scroll");
   await scrollable.evaluate(element => { element.scrollTop = 0; });
   assert(await scrollable.evaluate(element => element.scrollTop) === 0, "Preview scroll must allow earlier text");
@@ -148,17 +149,16 @@ try {
   await page.touchscreen.tap(point.x, point.y);
   assert(await fixture("context.selectionStart") === 2, "Tapping preview text must position the cursor");
   await page.screenshot({ path: "/tmp/keyboard-preview@2x.png" });
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.screenshot({ path: "/tmp/keyboard-settings@2x.png" });
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
-  await page.getByRole("button", { name: "Switch to brightness", exact: true }).click();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
   const brightness = page.getByRole("slider", { name: "Screen brightness", exact: true });
-  assert(await brightness.inputValue() === "55", "Brightness mode must show the monitor value");
+  assert(await brightness.inputValue() === "55", "Menu brightness must show the monitor value");
   await brightness.fill("72");
   await page.waitForTimeout(50);
-  assert(await fixture("brightness()") === 72, "Brightness slider must address the selected monitor");
-  await page.getByRole("button", { name: "Switch to volume", exact: true }).click();
-  assert(await page.getByRole("slider", { name: "PC volume", exact: true }).inputValue() === "40", "Switching back must retain the audio value");
+  assert(await fixture("brightness()") === 72, "Brightness must address the selected display");
+  await page.getByRole("button", { name: "Close menu", exact: true }).last().click();
   await checkRemoteVolume(page);
   const pad = page.getByLabel(/Trackpad\. Tap to click/);
   const touchEvent = async (type: string, points: { x: number; y: number }[], changed = points) => pad.evaluate((element, { type, points, changed }) => {
@@ -325,7 +325,7 @@ try {
   assert(await count("mousescroll") === 1, "Scrolling must start from the settled midpoint");
   await touchEvent("touchcancel", [], [first, second]);
   await reset("preview after settings");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.screenshot({ path: "/tmp/keyboard-settings@2x.png" });
   await page.getByRole("switch", { name: "Tab beside space", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
@@ -339,24 +339,12 @@ try {
   assert((await fixture("log") as { type: string; key?: string }[]).some(message => message.type === "keydown" && message.key === "Tab"), "Relocated Tab must send Tab");
   await page.getByRole("button", { name: "Letters", exact: true }).click();
   await reset("preview after settings");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
   const dotBox = (await page.locator("[data-native-text-status]").boundingBox())!;
   const dismissBox = (await page.getByRole("button", { name: "Dismiss preview", exact: true }).boundingBox())!;
   assert(dotBox.x + dotBox.width <= dismissBox.x && Math.abs(dotBox.y - dismissBox.y) < 2, "Preview status must sit directly left of the dismiss button");
+  await openSettings(page);
   await page.getByRole("switch", { name: "Interact with text preview", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
-  assert(await page.locator("[data-preview-scroll]").evaluate(element => getComputedStyle(element).pointerEvents) === "none", "Disabling preview interaction must let gestures pass to the trackpad");
-  await fixture("configure({})");
-  await page.waitForTimeout(80);
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
-  assert(await page.getByRole("switch", { name: "Interact with text preview", exact: true }).getAttribute("aria-checked") === "false", "Preview interaction must default to off");
-  await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
-  await reset("preview tap passes through");
-  const passThrough = (await page.locator("[data-preview-scroll]").boundingBox())!;
-  await page.touchscreen.tap(passThrough.x + passThrough.width / 2, passThrough.y + passThrough.height / 2);
-  await page.waitForTimeout(350);
-  const passThroughMessages = await fixture("log") as { type: string; selectionOnly?: boolean }[];
-  assert(passThroughMessages.some(message => message.type === "mousedown") && passThroughMessages.some(message => message.type === "mouseup") && !passThroughMessages.some(message => message.type === "textedit" && message.selectionOnly), "A tap over the default read-only preview must click the trackpad without moving the text caret");
   await reset("dismiss keeps this text");
   await page.getByRole("button", { name: "Dismiss preview", exact: true }).click();
   assert(!await preview.isVisible() && await value() === "dismiss keeps this text", "Dismissing must hide the preview without clearing the remote field");

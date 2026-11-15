@@ -1,3 +1,4 @@
+import { openSettings } from "./settings-helpers";
 import type { Page } from 'playwright';
 
 export async function checkKeyboardTouchDefaults(page: Page) {
@@ -30,7 +31,7 @@ export async function checkKeyboardTouchDefaults(page: Page) {
   if (!pickerScrolls) throw Error('Emoji buttons must retain native touch scrolling');
   await page.getByRole('button', { name: 'Letters', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click();
+  await openSettings(page);
   const settingsScrolls = await page.getByRole('button', { name: 'Back to keyboard', exact: true }).evaluate(button => {
     const touch = new Event('touchstart', { bubbles: true, cancelable: true });
     button.dispatchEvent(touch);

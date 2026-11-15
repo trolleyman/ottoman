@@ -21,9 +21,9 @@ import {
   VolumeX,
   Option,
   Search,
-  Settings,
   Smile,
   X,
+  Clipboard,
 } from "lucide-react";
 import { Modifier } from "./api";
 import { type KeyboardSettings } from "./trackpadSettings";
@@ -37,8 +37,7 @@ const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ defau
 import { loadRecentEmoji, savePreference } from "./preferences";
 import { ActionKey, KeyPreview, WindowsIcon, ModifierButton, Key, UtilityKey, NavigationKey } from "./KeyboardKeys";
 import { haptic } from "./keyboardHaptics";
-import { ImagePasteButton } from "./ImagePasteButton";
-import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
+import { ClipboardActions } from "./ClipboardActions";
 
 type ShiftState = "off" | "once" | "locked";
 type KeyboardMode = "letters" | "symbols" | "emoji";
@@ -59,17 +58,12 @@ function KeyboardSession({
   onNavigate,
   onCursorDrag,
   onClose,
-  onSettingsChange,
-  onUseCustomKeyboard,
-  onUseDeviceKeyboard,
-  usingCustomKeyboard,
-  settingsPageOpen = false,
   modifiers,
   lockedModifiers,
   onModifierDown,
   onModifierUp,
   onSuperPress,
-  onPasteImage,
+  onPaste,
 }: {
   connected: boolean;
   docked?: boolean;
@@ -86,24 +80,19 @@ function KeyboardSession({
   onNavigate: (key: string) => void;
   onCursorDrag: (phase: "start" | "move" | "end", x: number, y: number) => boolean;
   onClose: () => void;
-  onSettingsChange: (patch: Partial<KeyboardSettings>) => void;
-  onUseCustomKeyboard: () => void;
-  onUseDeviceKeyboard: () => void;
-  usingCustomKeyboard: boolean;
-  settingsPageOpen?: boolean;
   modifiers: Modifier[];
   lockedModifiers: Modifier[];
   onModifierDown: (modifier: Modifier) => void;
   onModifierUp: (modifier: Modifier, cancelled?: boolean) => void;
   onSuperPress: () => void;
-  onPasteImage: () => void;
+  onPaste: () => void;
 }) {
   const [mode, setMode] = useState<KeyboardMode>("letters");
   const shift: ShiftState = lockedModifiers.includes(Modifier.SHIFT) ? "locked" : modifiers.includes(Modifier.SHIFT) ? "once" : "off";
   const [emojiSearching, setEmojiSearching] = useState(false);
   const [symbolSearching, setSymbolSearching] = useState(false);
   const [fnActive, setFnActive] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(settingsPageOpen);
+  const [clipboardActive, setClipboardActive] = useState(false);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [symbolQuery, setSymbolQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(loadRecentEmoji);
@@ -166,7 +155,7 @@ function KeyboardSession({
   // so choosing another swipe candidate replaces the complete accepted word.
   const swipeShift = useRef<ShiftState>("off");
   const swipe = useSwipeTyping(
-    !sensitiveInput && settings.swipeTyping && mode === "letters" && !settingsOpen && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
+    !sensitiveInput && settings.swipeTyping && mode === "letters" && !modifiers.some((modifier) => modifier !== Modifier.SHIFT),
     settings.longPressDelayMs,
     textContext,
     (word, previous) => {
@@ -343,7 +332,7 @@ function KeyboardSession({
 
   const suggestionBar = (
         <div className="keyboard-suggestion-bar flex h-8 shrink-0 items-center gap-1" aria-label={fnActive ? "Function keys" : mode === "letters" ? "Word suggestions" : `Search ${mode === "emoji" ? "Emoji" : "Symbols"}`}>
-          {fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
+          {clipboardActive ? <ClipboardActions connected={connected} onPaste={onPaste} /> : fnActive ? Array.from({ length: 12 }, (_, index) => `F${index + 1}`).map((key) => (
             <ActionKey key={key} type="button" onPress={() => { navigate(key); }} className="keyboard-suggestion flex h-8 min-w-0 flex-1 items-center justify-center rounded border border-white/10 text-[10px] sm:text-xs">{key}</ActionKey>
           )) : mode === "letters" ? (
             wordChoices.map((word) => (
@@ -376,7 +365,7 @@ function KeyboardSession({
 
   // The remote page owns its safe-area inset; a floating keyboard owns its own.
   return (
-    <div ref={keyboardTouchRef} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border pb-2 remote-keyboard" : "pb-[max(8px,env(safe-area-inset-bottom))] fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
+    <div ref={keyboardTouchRef} inert={!connected ? true : undefined} data-disconnected={!connected || undefined} data-taller-keys={settings.tallerKeys || undefined} data-keyboard-theme={settings.keyboardTheme === "system" ? (systemDark ? "dark" : "light") : settings.keyboardTheme} className={`custom-keyboard-shell z-50 border-white/10 bg-zinc-950/98 backdrop-blur-xl ${docked ? "relative shrink-0 rounded-2xl border pb-2 remote-keyboard" : "pb-[max(8px,env(safe-area-inset-bottom))] fixed inset-x-0 bottom-0 border-t shadow-[0_-16px_40px_rgba(0,0,0,.5)] md:absolute md:inset-x-auto md:bottom-auto md:left-0 md:top-full md:mt-2 md:w-[min(680px,calc(100vw-3rem))] md:rounded-xl md:border"}`}>
       {settings.suggestionsAboveControls && <div className="mx-auto max-w-3xl px-2 pt-1.5">{suggestionBar}</div>}
       <div className="mx-auto flex max-w-3xl items-center gap-1 px-2 pt-1.5 pb-0.5" aria-label="Keyboard controls">
         <ModifierButton
@@ -408,32 +397,17 @@ function KeyboardSession({
           </>
         )}
         <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
+        <ActionKey type="button" aria-label="Clipboard" aria-pressed={clipboardActive}
+          onPress={() => { haptic(settings.haptics); setFnActive(true); setClipboardActive(value => !value); }}
+          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${clipboardActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}><Clipboard className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Function keys" aria-pressed={fnActive}
-          onPress={() => { haptic(settings.haptics); setFnActive((active) => !active); }}
-          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
-          Fn
-        </ActionKey>
-        <div className={fnActive ? "contents" : "hidden"}><ImagePasteButton connected={connected} onPaste={onPasteImage} /></div>
-        {!fnActive && <ActionKey
-          type="button"
-          aria-label={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
-          title={settingsOpen ? "Hide keyboard settings" : "Keyboard settings"}
-          aria-pressed={settingsOpen}
-          onPress={() => setSettingsOpen((current) => !current)}
-          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${
-            settingsOpen
-              ? "border-blue-400/60 bg-blue-500 text-white"
-              : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-          }`}
-        >
-          {settingsOpen ? <ArrowLeft className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
-        </ActionKey>}
+          onPress={() => { haptic(settings.haptics); setClipboardActive(false); setFnActive(active => !active); }}
+          className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-xs ${fnActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>Fn</ActionKey>
         {!docked && <ActionKey
           type="button"
           aria-label="Close keyboard"
           title="Close keyboard"
           onPress={() => {
-            setSettingsOpen(false);
             onClose();
           }}
           className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
@@ -470,12 +444,7 @@ function KeyboardSession({
 
       <div className={`mx-auto mt-1.5 flex max-w-3xl flex-col gap-0 px-1.5 sm:px-2 ${settings.tallerKeys ? (settings.suggestionsAboveControls ? "h-[264px] sm:h-[286px]" : "h-[300px] sm:h-[322px]") : (settings.suggestionsAboveControls ? "h-[216px] sm:h-[238px]" : "h-[252px] sm:h-[274px]")}`}>
         {!settings.suggestionsAboveControls && suggestionBar}
-        {settingsOpen ? (
-          <KeyboardSettingsPanel settings={settings} onSettingsChange={onSettingsChange}
-            onUseCustomKeyboard={onUseCustomKeyboard} onUseDeviceKeyboard={onUseDeviceKeyboard}
-            usingCustomKeyboard={usingCustomKeyboard} onBack={() => setSettingsOpen(false)} />
-        ) : (
-          <>
+        <>
         {mode === "emoji" && !emojiSearching ? (
           <Suspense fallback={<div className="flex-1 text-center text-sm text-zinc-400">Loading emoji…</div>}><EmojiPicker recent={recentEmoji} onSelect={selectEmoji} /></Suspense>
         ) : (
@@ -619,7 +588,6 @@ function KeyboardSession({
           </ActionKey>
         </div>
           </>
-        )}
       </div>
     </div>
   );

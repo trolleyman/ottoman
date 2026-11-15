@@ -9,6 +9,7 @@ import type { TrackpadMessage, TrackpadMessageTextContext } from "../../src/api"
 import "../../src/index.css";
 
 const initial: TrackpadMessageTextContext = { type: "textcontext", fieldId: "fixture", revision: 1, value: "hello world", selectionStart: 11, selectionEnd: 11, windowStart: 0, available: true, editable: true, multiline: true, password: false, protected: false };
+const powerWrites: { edid: string; on: boolean }[] = [];
 const volumeWrites: { target: string; value: number }[] = [];
 const writeVolume = async (target: string, value: number, update: () => void) => {
   volumeWrites.push({ target, value });
@@ -16,8 +17,13 @@ const writeVolume = async (target: string, value: number, update: () => void) =>
   update();
 };
 useStore.setState({
+  layouts: [{ id: "tv", name: "TV", aliases: [], monitors: [] }, { id: "desk", name: "Desk", aliases: [], monitors: [] }],
+  currentLayout: "tv",
+  switchLayout: id => { useStore.setState({ currentLayout: id }); return Promise.resolve(); },
   monitors: [{ edid: "fixture-screen", port: "DP-1", name: "Screen", manufacturer: "Fixture", brightness: 55, capabilities: { brightness: true, power: true, volume: false } }],
   audioSinks: [{ id: 1, name: "fixture-audio", description: "Audio", default: true, volume: 0.4, muted: false }],
+  setMonitorPower: (edid, on) => { powerWrites.push({ edid, on }); useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid && item.tv_state ? { ...item, tv_state: { ...item.tv_state, on } } : item) })); return Promise.resolve(); },
+  probeMonitorPower: edid => Promise.resolve(!!useStore.getState().monitors.find(item => item.edid === edid)?.tv_state?.on),
   setMonitorBrightness: (edid, brightness) => { useStore.setState(state => ({ monitors: state.monitors.map(item => item.edid === edid ? { ...item, brightness } : item) })); return Promise.resolve(); },
 });
 // Exercise the production store actions, including a poll with the old value
@@ -57,12 +63,13 @@ export function Fixture() {
     setField(patch: Partial<TrackpadMessageTextContext>) { log.current.length = 0; setContext(current => ({ ...initial, ...patch, revision: current.revision + 1 })); },
     setOS(os: string) { useStore.setState({ agentInfo: { os, status: "online", version: "fixture", uptime: "0", hostname: "Fixture", ip_address: "127.0.0.1", port: "0" } }); },
     volumeWrites,
+    powerWrites,
     setConnected,
-    addTV() { useStore.setState(state => ({ monitors: [...state.monitors, { edid: "fixture-tv", port: "HDMI-1", name: "TV", manufacturer: "Fixture", capabilities: { brightness: false, power: true, volume: true }, tv_state: { paired: true, pairing: false, on: true, volume: 12, muted: false } }] })); },
+    addTV() { useStore.setState(state => ({ monitors: [...state.monitors, { edid: "fixture-tv", port: "HDMI-1", name: "TV", brightness: 65, manufacturer: "Fixture", capabilities: { brightness: true, power: true, volume: true }, tv_state: { paired: true, pairing: false, on: true, volume: 12, muted: false } }] })); },
     removeTV() { useStore.setState(state => ({ monitors: state.monitors.filter(item => item.edid !== "fixture-tv") })); },
     brightness: () => useStore.getState().monitors[0].brightness,
     reset(value: string, cursor = value.length) { log.current.length = 0; setContext(current => ({ ...initial, revision: current.revision + 1, value, selectionStart: codePointOffset(value, cursor), selectionEnd: codePointOffset(value, cursor) })); },
-    configure(patch: Partial<typeof DEFAULT_SETTINGS>) { localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ ...DEFAULT_SETTINGS, mirrorFocusedText: true, swipeTyping: false, ...patch })); setEpoch(value => value + 1); },
+    configure(patch: Partial<typeof DEFAULT_SETTINGS>) { localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ ...DEFAULT_SETTINGS, tabKey: true, commaKey: true, periodKey: true, mirrorFocusedText: true, swipeTyping: false, ...patch })); setEpoch(value => value + 1); },
   } }); }, [context]);
   return <RemotePage key={epoch} connected={connected} connecting={false} textContext={context} cursorPos={null} cursorSupported={false} send={send} />;
 }

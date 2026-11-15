@@ -1,3 +1,4 @@
+import { openSettings } from "./settings-helpers";
 // Run from web after `bun run build`, with a project-local Playwright Chromium.
 import { chromium, webkit } from 'playwright';
 import { checkAddressBar, installTestFont } from './address-bar-checks';
@@ -49,7 +50,7 @@ try {
     await Bun.sleep(100);
   }
   if (!ready) throw Error('Simulator did not become ready');
-  browser = await (process.env.TEXT_TEST_BROWSER === "webkit" ? webkit : chromium).launch();
+  browser = await (process.env.TEXT_TEST_BROWSER === "webkit" ? webkit : chromium).launch({ executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH });
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2 });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -60,7 +61,7 @@ try {
   page.on('websocket', () => { connections++; });
   await page.goto(base);
   await installTestFont(page);
-  const input = page.getByLabel('Type on the remote computer with the device keyboard');
+  const input = page.getByLabel('Remote text');
   await input.waitFor({ state: 'attached' });
   console.log("Checking initial native field");
   await page.waitForFunction(() => document.querySelector('textarea')?.value === 'Ottoman simulated text');
@@ -104,8 +105,8 @@ try {
   await page.keyboard.insertText('😀');
   await page.waitForFunction(() => document.querySelector('textarea')?.value === 'Ottoman 😀 text xyz');
   console.log("Checking live preview during spacebar navigation");
-  await page.getByRole('button', { name: 'Open keyboard settings' }).click();
-  await page.getByRole('button', { name: 'Ottoman', exact: true }).click();
+  await openSettings(page);
+  await page.getByRole('combobox', { name: 'Keyboard', exact: true }).selectOption('custom');
   await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click();
   const space = page.getByRole('button', { name: 'Space. Hold and drag to move the cursor' });
   await space.scrollIntoViewIfNeeded();
@@ -135,29 +136,27 @@ try {
   if (await page.evaluate(() => document.documentElement.dataset.previewRemoved)) throw Error('Live preview flickered during spacebar navigation');
   await checkKeyboardTouchDefaults(page);
   console.log("Checking disable clearing");
-  await page.getByRole('button', { name: 'Keyboard settings', exact: true }).click();
+  await openSettings(page);
   await page.getByRole('switch', { name: 'Mirror focused text' }).click();
-  await page.getByRole('button', { name: 'Device', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Keyboard', exact: true }).selectOption('device');
+  await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
   await page.getByRole('status', { name: 'Desktop text: mirroring is off', exact: true }).waitFor();
   console.log("Checking navigation without a reload or a new connection");
   await page.evaluate(() => { (window as Window & { navigationMarker?: string }).navigationMarker = 'same-document'; });
   const connectionsBefore = connections;
-  await page.getByRole('link', { name: 'PC remote', exact: true }).click();
-  await page.waitForURL('**/remote');
-  await page.locator('.pc-remote').waitFor();
-  if (!await page.locator('link[rel="manifest"]').getAttribute('href').then(href => href?.endsWith('/remote.webmanifest'))) throw Error('Remote manifest did not follow navigation');
-  await page.getByRole('button', { name: 'Enable focused text mirroring', exact: true }).click();
+  if (!await page.locator('link[rel="manifest"]').getAttribute('href').then(href => href?.endsWith('/remote.webmanifest'))) throw Error('Home page must use the remote manifest');
+  await openSettings(page);
+  await page.getByRole('switch', { name: 'Mirror focused text', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to keyboard', exact: true }).click();
   await page.getByRole('status', { name: 'Desktop text: connected', exact: true }).waitFor();
-  await page.getByRole('link', { name: 'Back to dashboard', exact: true }).click();
-  await page.waitForURL(base + '/');
-  await page.getByRole('link', { name: 'PC remote', exact: true }).waitFor();
-  await page.goBack();
-  await page.locator('.pc-remote').waitFor();
-  await page.goForward();
-  await page.getByRole('link', { name: 'PC remote', exact: true }).waitFor();
+  for (const label of ['Displays', 'Audio outputs', 'Display layouts', 'Connection & power']) {
+    await page.getByRole('button', { name: 'Open menu', exact: true }).click();
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await page.getByRole('button', { name: 'PC remote', exact: true }).click();
+  }
   if (connections !== connectionsBefore || !await page.evaluate(() => (window as Window & { navigationMarker?: string }).navigationMarker === 'same-document')) throw Error('Switching views reloaded the app or reconnected the socket');
-  console.log('PASS: text status is visible before typing, opt-in works, and navigation/back/forward preserve the page and connection');
+  console.log('PASS: text status is visible before typing, opt-in works, and panel navigation preserves the page and connection');
   if (errors.length) throw Error(errors.join('\n'));
   await checkAddressBar(browser, base);
   await checkDelayedTypingEcho(browser, base);
@@ -167,19 +166,17 @@ try {
     try {
       await emulation.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 59, bottom: 34, left: 0, right: 0 } });
       await insetPage.goto(base + '/remote');
-      await insetPage.locator('.pc-remote header .bg-emerald-400').waitFor();
+      await insetPage.locator('.remote-connection i[data-connected="true"]').waitFor();
       await insetPage.getByLabel(/Trackpad\. Tap to click/).focus();
       await insetPage.locator('.remote-keyboard').waitFor();
       const remotePadding = await insetPage.locator('.remote-keyboard').evaluate(element => getComputedStyle(element).paddingBottom);
       const pagePadding = await insetPage.locator('.pc-remote').evaluate(element => getComputedStyle(element).paddingBottom);
       if (remotePadding !== '8px' || pagePadding !== '34px') throw Error(`Remote safe area counted twice: keyboard=${remotePadding}, page=${pagePadding}`);
       await insetPage.screenshot({ path: '/tmp/ottoman-bottom-spacing@2x.png' });
-      await insetPage.getByRole('link', { name: 'Back to dashboard', exact: true }).click();
-      await insetPage.getByLabel(/Trackpad\. Tap to click/).focus();
-      await insetPage.locator('.custom-keyboard-shell').waitFor();
-      const floatingPadding = await insetPage.locator('.custom-keyboard-shell').evaluate(element => getComputedStyle(element).paddingBottom);
-      if (floatingPadding !== '34px') throw Error(`Floating keyboard lost its safe area: ${floatingPadding}`);
-      console.log('PASS: emulated iPhone insets apply once on remote and remain on the floating keyboard');
+      await openSettings(insetPage);
+      await insetPage.getByRole('button', { name: 'Back to keyboard', exact: true }).click();
+      if (await insetPage.locator('.pc-remote').evaluate(element => getComputedStyle(element).paddingBottom) !== '34px') throw Error('Settings navigation changed the safe area');
+      console.log('PASS: emulated iPhone insets apply once on remote across settings navigation');
     } finally { await emulation.detach(); await insetPage.close(); }
   }
   console.log('PASS: native typing, queued edits, Unicode selection replacement, stable caret geometry, spacebar preview stability, and disable clearing');

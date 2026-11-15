@@ -1,3 +1,4 @@
+import { openSettings } from "../tests/settings-helpers";
 import type { Page } from "playwright";
 import { checkKeyboardTouchDefaults } from "../tests/keyboard-touch-checks";
 import { Modifier, type TrackpadMessage } from "../../src/api";
@@ -213,11 +214,11 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   }
   await page.getByRole("button", { name: "Function keys", exact: true }).click();
   assert(await home.isVisible(), "Fn must restore navigation keys");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Suggestions above Ctrl row", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert((await suggestions.boundingBox())!.y > (await controls.boundingBox())!.y, "Suggestion placement preference must move the bar below navigation");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Suggestions above Ctrl row", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
 
@@ -361,13 +362,13 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   assert(!await page.locator("[data-text-preview]").isVisible(), "Scrolling must dismiss the typing preview");
 
   const regularKey = await key("q").boundingBox();
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Taller keys", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const tallKey = await key("q").boundingBox();
   assert(regularKey && tallKey && tallKey.height >= regularKey.height + 8 && tallKey.width === regularKey.width, "Taller keys must increase row height without changing the layout width");
   assert(await page.evaluate(() => (JSON.parse(localStorage.getItem("ottoman-trackpad-settings") ?? "{}") as { tallerKeys?: boolean }).tallerKeys) === true, "Taller-key preference must be saved");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Taller keys", exact: true }).click();
   await page.getByLabel("Keyboard appearance").selectOption("light");
   assert(await page.locator(".custom-keyboard-shell").getAttribute("data-keyboard-theme") === "light", "Explicit light theme must apply");
@@ -376,7 +377,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert(await key("e").isVisible(), "Back from settings must keep the keyboard open");
   assert(await page.getByRole("button", { name: "Period", exact: true }).count() === 0, "Period toggle must remove the bottom-row key");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Number row", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   assert(await page.getByRole("button", { name: "3, hold for £", exact: true }).count() === 0, "Digit-row preference must hide digits in letter mode");
@@ -386,7 +387,7 @@ export async function checkKeyboardInteractions(page: Page, sent: SentMessage[])
   await page.waitForTimeout(60);
   assert(textMessages().slice(beforeSymbol).some(({ message }) => message.type === "text" && message.text === "£"), "Symbol mode must still type sterling when the digit row is hidden");
   await page.getByRole("button", { name: "Letters", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Number row", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
 }

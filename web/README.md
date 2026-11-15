@@ -24,9 +24,8 @@ managed by `useTrackpadWebSocket.ts`.
 `src/api/` is generated; change `api/openapi.yaml` and use the repository's
 `mage generate:all` task rather than editing generated files.
 
-The browser regression script builds the UI and a temporary Go binary, starts
-the simulated controller on an available port, and checks keyboard interactions
-while capturing phone and desktop states:
+The screenshot artifact script builds the UI and a temporary Go binary, starts
+the simulated controller on an available port, and captures phone, desktop, menu, settings, clipboard and disconnected states:
 
 ```sh
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" bun x playwright install chromium --only-shell
@@ -51,7 +50,7 @@ For a launch without Safari's address bar, add Ottoman to the home screen.
 Run the focused keyboard browser regressions with `bun run test:keyboard`. This
 uses Vite on an OS-assigned localhost port and a simulated in-browser text field;
 it checks preview navigation, spacing and period undo, held modifiers, adaptive
-keys, autocorrect, tap dragging and volume/brightness switching. Set
+keys, autocorrect, generic tap dragging and menu volume/brightness controls. Set
 `PLAYWRIGHT_EXECUTABLE_PATH` to use an existing bundled Chromium executable, or
 install the project-local browser as shown above. The fixture closes its server
 and browser after the checks. Preview/settings screenshots are saved under
@@ -61,5 +60,17 @@ PC remote’s Trackpad settings include **Volume keys control selected output**
 (on by default). When enabled, the keyboard’s Fn volume up/down keys and volume
 key events delivered to the trackpad adjust the selected TV or PC slider in 1%
 steps. Tap the sidebar’s TV/PC label to change the target. Volume keys keep
-adjusting audio while brightness is shown; mute retains its OS behavior. The
+adjusting audio independently of brightness; mute retains its OS behavior. The
 choice is saved in this browser and adds no controls to the sidebar.
+
+`bun run test:remote` exercises the responsive shell, native field, default key
+visibility, menu focus, mocked clipboard/media actions, long-press cancellation,
+protected fields, emoji containment and disconnected keyboard. `bun run
+test:native-text` builds and exercises the real simulated controller and
+WebSocket text path. Tests never access the host clipboard or media players.
+
+The authenticated application starts at `RemotePage`. It owns shared settings
+and keeps `Trackpad` mounted while management panels are open. Phone menus
+suspend input; desktop menus become a collapsible sidebar. `ClipboardActions`
+uses on-demand text APIs and native/manual clipboard fallbacks. `NowPlaying`
+polls only while its menu is visible.

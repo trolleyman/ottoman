@@ -36,7 +36,7 @@ export async function checkEnter(page: Page) {
     }
   }
   await fixture("configure({ customKeyboard: false })");
-  const input = page.getByLabel("Type on the remote computer with the device keyboard");
+  const input = page.getByLabel("Remote text");
   for (const field of fields) {
     await setField(field);
     await input.press("Enter");

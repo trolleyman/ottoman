@@ -102,10 +102,10 @@ test("preview gestures are opt-in and persist only boolean choices", () => {
   expect(parseSettings({ interactivePreview: "true" }).interactivePreview).toBe(false);
 });
 
-test("Tab placement defaults to the main keyboard and preserves an explicit choice", () => {
-  expect(parseSettings({}).tabKey).toBe(true);
+test("Tab placement defaults off and preserves an explicit choice", () => {
+  expect(parseSettings({}).tabKey).toBe(false);
   expect(parseSettings({ tabKey: false }).tabKey).toBe(false);
-  expect(parseSettings({ tabKey: "false" }).tabKey).toBe(true);
+  expect(parseSettings({ tabKey: "false" }).tabKey).toBe(false);
 });
 
 test("selected-output volume keys default on and preserve an explicit opt-out", () => {
@@ -122,4 +122,20 @@ test("emoji key is hidden on letters by default and preserves an explicit choice
   expect(parseSettings({ emojiKey: "true" }).emojiKey).toBe(false);
   savePreference("ottoman-trackpad-settings", { emojiKey: true });
   expect(loadSettings().emojiKey).toBe(true);
+});
+
+test("optional bottom-row keys default off but retain explicit choices", () => {
+  expect(parseSettings({}).tabKey).toBe(false);
+  expect(parseSettings({}).commaKey).toBe(false);
+  expect(parseSettings({}).periodKey).toBe(false);
+  const saved = parseSettings({ tabKey: true, commaKey: true, periodKey: true });
+  expect([saved.tabKey, saved.commaKey, saved.periodKey]).toEqual([true, true, true]);
+});
+test("stationary right-click defaults and configurable bounds are validated", () => {
+  expect(loadSettings().holdRightClick).toBe(true);
+  expect(loadSettings().rightClickHoldMs).toBe(500);
+  expect(loadSettings().rightClickSlop).toBe(6);
+  expect(parseSettings({ holdRightClick: false }).holdRightClick).toBe(false);
+  expect(parseSettings({ rightClickHoldMs: 5, rightClickSlop: 99 })).toMatchObject({ rightClickHoldMs: 250, rightClickSlop: 20 });
+  expect(parseSettings({ rightClickHoldMs: Infinity, rightClickSlop: "wide" })).toMatchObject({ rightClickHoldMs: 500, rightClickSlop: 6 });
 });

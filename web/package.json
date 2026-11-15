@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "bun test",
+    "test:remote": "bun scripts/tests/remote-redesign.ts",
     "test:keyboard": "bun scripts/tests/keyboard-regressions.ts",
     "test:native-text": "bun run build && bun scripts/tests/native-text-smoke.ts"
   },

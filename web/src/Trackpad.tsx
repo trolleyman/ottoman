@@ -1,13 +1,10 @@
 import { PreviewViewport } from "./PreviewViewport";
 import { TERMINAL_FONTS } from "./trackpadSettings";
-import { createPortal } from "react-dom";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Settings,
   X,
 } from "lucide-react";
 import { ScrollRail } from "./ScrollRail";
-import { MonitorDisplay } from "./MonitorDisplay";
 import { useStore } from "./store";
 import { Modifier, MouseButton, type TrackpadMessage, type TrackpadMessageTextContext } from "./api";
 import { RemoteText, codePointOffset, utf16Offset, previousCharacterOffset, textPreview, textMirroringStatus } from "./remoteText";
@@ -16,8 +13,7 @@ import { KeyboardModifiers, spaceEdit } from "./keyboardEditing";
 import { previewHit, previewMove, previewPositions } from "./previewNavigation";
 import { CaretText } from "./CaretText";
 import { CustomKeyboard } from "./CustomKeyboard";
-import { TRACKPAD_RANGES, type TrackpadSettings } from "./trackpadSettings";
-import { loadSettings, savePreference } from "./preferences";
+import type { TrackpadSettings } from "./trackpadSettings";
 
 const DOUBLE_TAP_WINDOW_MS = 300;
 const TAP_PRESS_INTERVAL_MS = 40;
@@ -45,19 +41,19 @@ function TouchArea({
   docked = false,
   textContext,
   connected,
+  inputEnabled,
   connecting,
   send,
   settings,
-  onSettingsChange,
 }: {
   textContext: TrackpadMessageTextContext | null;
   connected: boolean;
+  inputEnabled: boolean;
   connecting: boolean;
   send: (msg: TrackpadMessage) => void;
   sideControls?: React.ReactNode;
   docked?: boolean;
   settings: TrackpadSettings;
-  onSettingsChange: (patch: Partial<TrackpadSettings>) => void;
 }) {
   const [typingContext, setTypingContext] = useState(0);
   const [remote, setRemote] = useState<TrackpadMessageTextContext | null>(null);
@@ -109,11 +105,9 @@ function TouchArea({
   const lastTouchEndTime = useRef(0);
   const isDragging = useRef(false);
   const mouseHeld = useRef(false);
-  const dragLocked = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [keyboardSettingsOpen, setKeyboardSettingsOpen] = useState(false);
   const [activeModifiers, setActiveModifiers] = useState<Modifier[]>([]);
   const modifierState = useRef(new KeyboardModifiers());
   const syncedModifiers = useRef<Modifier[]>([]);
@@ -136,6 +130,9 @@ function TouchArea({
   const tapPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapMouseDown = useRef(false);
   const continuingTap = useRef(false);
+  const rightClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rightClicked = useRef(false);
+  const cancelRightClick = () => { if (rightClickTimer.current) clearTimeout(rightClickTimer.current); rightClickTimer.current = null; };
   const [draft, setDraft] = useState("");
   const [draftCursor, setDraftCursor] = useState(0);
   const [draftSelection, setDraftSelection] = useState<[number, number] | null>(null);
@@ -284,21 +281,21 @@ function TouchArea({
     if (remote?.available || remote?.password) showDraftIndicator();
   }, [remote, showDraftIndicator]);
   useEffect(() => {
-    if (!remote?.available || composing.current || !inputRef.current) return;
+    if (composing.current || !inputRef.current || remote?.password || remote?.protected) return;
     const input = inputRef.current;
-    const start = utf16Offset(remote.value, remote.selectionStart - remote.windowStart);
-    const end = utf16Offset(remote.value, remote.selectionEnd - remote.windowStart);
+    const start = remote?.available ? utf16Offset(remote.value, remote.selectionStart - remote.windowStart) : draftSelection ? utf16Offset(draft, draftSelection[0]) : draftCursor;
+    const end = remote?.available ? utf16Offset(remote.value, remote.selectionEnd - remote.windowStart) : draftSelection ? utf16Offset(draft, draftSelection[1]) : draftCursor;
     // Reapplying an unchanged range resets the browser's selection anchor;
     // repeated Shift+Left would alternate between extending and collapsing it.
     if (input.selectionStart !== start || input.selectionEnd !== end) {
       input.setSelectionRange(start, end, input.selectionDirection);
     }
-  }, [remote]);
+  }, [remote, draft, draftCursor, draftSelection]);
 
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.nativeEvent.isComposing || composing.current) return;
-      if (remoteModel.current!.view?.editable && e.key.startsWith("Arrow")) return;
+      if (remoteModel.current!.view?.editable && !remoteModel.current!.view?.password && !remoteModel.current!.view?.protected && e.key.startsWith("Arrow")) return;
       if (
         e.key === "Unidentified" ||
         e.key === "Process" ||
@@ -326,7 +323,7 @@ function TouchArea({
         return;
       }
       const view = remoteModel.current!.view;
-      if (view?.available && view.editable) {
+      if (view?.available && view.editable && !view.password && !view.protected) {
         const edit = diffText(view.value, next);
         if (edit) replaceRemote(
           view.windowStart + codePointOffset(view.value, edit.start),
@@ -338,6 +335,10 @@ function TouchArea({
       if (edit) {
         const editStart = characterCount(draftRef.current.slice(0, edit.start));
         const removedCount = characterCount(edit.removed);
+        if (draftSelection) {
+          sendKeyPress("ArrowRight"); remoteCursor.current = Math.max(...draftSelection);
+          setDraftSelection(null);
+        }
         moveRemoteCursor(editStart + removedCount);
         for (let i = 0; i < removedCount; i++) sendKeyPress("Backspace");
         remoteCursor.current = editStart;
@@ -353,7 +354,7 @@ function TouchArea({
       showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft],
+    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft, draftSelection],
   );
 
   const handleSelection = useCallback(
@@ -361,7 +362,7 @@ function TouchArea({
       const input = e.currentTarget;
       if (composing.current) return;
       const view = remoteModel.current!.view;
-      if (view?.available && view.editable) {
+      if (view?.available && view.editable && !view.password && !view.protected) {
         // A delayed selection event can describe an older controlled value.
         if (input.value !== view.value) return;
         const start = view.windowStart + codePointOffset(input.value, input.selectionStart);
@@ -369,13 +370,29 @@ function TouchArea({
         if (start !== view.selectionStart || end !== view.selectionEnd) replaceRemote(start, end, "", true);
         return;
       }
-      if (input.selectionStart === input.selectionEnd) {
+      if (view?.password || view?.protected) return;
+      const start = codePointOffset(input.value, input.selectionStart);
+      const end = codePointOffset(input.value, input.selectionEnd);
+      if (draftSelection?.[0] === start && draftSelection[1] === end) return;
+      if (draftSelection) {
+        sendKeyPress("ArrowRight"); remoteCursor.current = Math.max(...draftSelection);
+        setDraftSelection(null);
+      }
+      if (input.selectionStart !== input.selectionEnd) {
+        const start = codePointOffset(input.value, input.selectionStart);
+        const end = codePointOffset(input.value, input.selectionEnd);
+        moveRemoteCursor(start);
+        for (let i = start; i < end; i++) sendKeyPress("ArrowRight", [Modifier.SHIFT]);
+        remoteCursor.current = end;
+        setDraftSelection([start, end]);
+        setDraftCursor(input.selectionEnd);
+      } else {
         setDraftCursor(input.selectionEnd);
         showDraftIndicator();
         moveRemoteCursor(characterCount(input.value.slice(0, input.selectionEnd)));
       }
     },
-    [moveRemoteCursor, replaceRemote, showDraftIndicator],
+    [moveRemoteCursor, replaceRemote, showDraftIndicator, sendKeyPress, draftSelection],
   );
 
   const editFallback = useCallback((start: number, end: number, text: string) => {
@@ -404,6 +421,7 @@ function TouchArea({
   }, []);
 
   const appendText = useCallback((value: string, shifted = false, suggested = false) => {
+    inputRef.current?.focus({ preventScroll: true });
     const modifiers = modifierState.current.active;
     if (modifiers.some(modifier => modifier !== Modifier.SHIFT) && characterCount(value) === 1) {
       sendKeyPress(value.toLocaleLowerCase(), combineModifiers(modifiers, shifted ? [Modifier.SHIFT] : []));
@@ -522,7 +540,7 @@ function TouchArea({
     }
     const origin = dragOrigin.current;
     if (!origin) return false;
-    const viewport = root.closest<HTMLElement>("[data-preview-scroll]")!.getBoundingClientRect();
+    const viewport = (root.closest<HTMLElement>("[data-preview-scroll]") ?? root).getBoundingClientRect();
     const left = Math.max(4, Math.min(bounds.width - 4, origin.left + (x - origin.x) * origin.scaleX));
     const top = Math.max(viewport.top - bounds.top, Math.min(viewport.bottom - bounds.top - origin.height, origin.top + (y - origin.y) * origin.scaleY));
     setCursorDrag({ left, top, height: origin.height });
@@ -546,6 +564,7 @@ function TouchArea({
       if (tapPressTimer.current) clearTimeout(tapPressTimer.current);
       tapReleaseTimer.current = null; tapPressTimer.current = null;
       continuingTap.current = false;
+      cancelRightClick(); rightClicked.current = false;
       lastGestureAllowsDrag.current = false;
       if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
       tapMouseDown.current = false; isDragging.current = false;
@@ -554,6 +573,19 @@ function TouchArea({
     window.addEventListener("blur", release);
     return () => { window.removeEventListener("blur", release); release(); };
   }, [send, connected]);
+
+  useEffect(() => {
+    if (inputEnabled) return;
+    cancelRightClick(); rightClicked.current = false;
+    if (tapReleaseTimer.current) clearTimeout(tapReleaseTimer.current);
+    if (tapPressTimer.current) clearTimeout(tapPressTimer.current);
+    tapReleaseTimer.current = null; tapPressTimer.current = null;
+    if (tapMouseDown.current) send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: [] });
+    tapMouseDown.current = false; continuingTap.current = false; isDragging.current = false;
+    lastGestureAllowsDrag.current = false; touchStartPos.current = null; lastTouchRef.current = null;
+    if (inertiaFrame.current) cancelAnimationFrame(inertiaFrame.current);
+    if (cursorInertiaFrame.current) cancelAnimationFrame(cursorInertiaFrame.current);
+  }, [inputEnabled, send]);
 
   const pressTap = () => {
     send({ type: "mousedown", btn: MouseButton.LEFT, modifiers: activeModifiers });
@@ -581,12 +613,15 @@ function TouchArea({
     tapReleaseTimer.current = setTimeout(releaseTap, DOUBLE_TAP_WINDOW_MS);
   };
 
+  useEffect(() => () => cancelRightClick(), [settings.holdRightClick, settings.rightClickHoldMs, settings.rightClickSlop]);
+
   const activateKeyboard = () => {
     if (settings.customKeyboard) setKeyboardOpen(true);
     else inputRef.current?.focus();
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
+    cancelRightClick(); rightClicked.current = false;
     e.preventDefault();
     dismissDraft();
 
@@ -667,10 +702,20 @@ function TouchArea({
 
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     lastTouchRef.current = { x: touch.clientX, y: touch.clientY };
+    if (settings.holdRightClick && !continuingTap.current) rightClickTimer.current = setTimeout(() => {
+      rightClickTimer.current = null;
+      if (!touchStartPos.current || gestureMoved.current || twoFingerRef.current) return;
+      rightClicked.current = true; lastGestureAllowsDrag.current = false;
+      send({ type: "mouseclick", btn: MouseButton.RIGHT, modifiers: activeModifiers });
+    }, settings.rightClickHoldMs);
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
+    if (rightClicked.current) return;
+    const touch = e.touches[0];
+    const slop = settings.holdRightClick && !continuingTap.current && !isDragging.current ? settings.rightClickSlop : 6;
+    if (touch && touchStartPos.current && Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) >= slop) { gestureMoved.current = true; cancelRightClick(); }
     const now = performance.now();
     if (now - lastMoveTime.current < 16) return;
     lastMoveTime.current = now;
@@ -723,8 +768,7 @@ function TouchArea({
       return;
     }
 
-    const touch = e.touches[0];
-    if (touchStartPos.current && Math.hypot(touch.clientX - touchStartPos.current.x, touch.clientY - touchStartPos.current.y) >= 6) gestureMoved.current = true;
+
     if (lastTouchRef.current) {
       const rawDx = touch.clientX - lastTouchRef.current.x;
       const rawDy = touch.clientY - lastTouchRef.current.y;
@@ -756,7 +800,12 @@ function TouchArea({
   };
 
   const onTouchEnd = (e: React.TouchEvent) => {
+    cancelRightClick();
     e.preventDefault();
+    if (rightClicked.current) {
+      if (!e.touches.length) { rightClicked.current = false; touchStartPos.current = null; lastTouchRef.current = null; lastGestureAllowsDrag.current = false; }
+      return;
+    }
 
     // Two-finger scroll end
     if (twoFingerRef.current) {
@@ -924,24 +973,13 @@ function TouchArea({
     if (settings.customKeyboard) trackpadRef.current?.focus();
     else inputRef.current?.focus();
 
-    // Handle click/drag
-    if (document.pointerLockElement && settings.clickAndDrag) {
-      if (dragLocked.current) {
-        send({ type: "mouseup", btn: MouseButton.LEFT, modifiers }); // TODO: Left or right or other?
-        dragLocked.current = false;
-      } else {
-        send({ type: "mousedown", btn: MouseButton.LEFT, modifiers });
-        dragLocked.current = true;
-      }
-    } else {
-      mouseHeld.current = true;
-      send({ type: "mousedown", btn: MouseButton.LEFT, modifiers });
-    }
+    mouseHeld.current = true;
+    send({ type: "mousedown", btn: MouseButton.LEFT, modifiers });
   };
 
   // Mouse movement and release (pointer lock + fallback)
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !inputEnabled) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       const now = performance.now();
@@ -986,10 +1024,7 @@ function TouchArea({
           mouseHeld.current = false;
           send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
         }
-        if (dragLocked.current) {
-          dragLocked.current = false;
-          send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
-        }
+
         lastMousePos.current = null;
         // Don't blur - keep trackpad focused for keyboard events and easy re-lock
       }
@@ -1005,14 +1040,19 @@ function TouchArea({
         "pointerlockchange",
         handlePointerLockChange,
       );
+      if (mouseHeld.current) {
+        mouseHeld.current = false;
+        lastMousePos.current = null;
+        send({ type: "mouseup", btn: MouseButton.LEFT, modifiers: activeModifiers });
+      }
       if (document.pointerLockElement) document.exitPointerLock();
     };
-  }, [activeModifiers, connected, send, settings.cursorSensitivity]);
+  }, [activeModifiers, connected, inputEnabled, send, settings.cursorSensitivity]);
 
   // Keyboard capture on the trackpad div
   useEffect(() => {
     const el = trackpadRef.current;
-    if (!el || !connected) return;
+    if (!el || !connected || !inputEnabled) return;
 
     el.addEventListener("keydown", handleKeyDown);
     el.addEventListener("keyup", handleKeyUp);
@@ -1020,12 +1060,12 @@ function TouchArea({
       el.removeEventListener("keydown", handleKeyDown);
       el.removeEventListener("keyup", handleKeyUp);
     };
-  }, [connected, handleKeyDown, handleKeyUp]);
+  }, [connected, inputEnabled, handleKeyDown, handleKeyUp]);
 
   // Wheel scroll handler (passive: false to allow preventDefault)
   useEffect(() => {
     const el = trackpadRef.current;
-    if (!el || !connected) return;
+    if (!el || !connected || !inputEnabled) return;
 
     const handleWheel = (e: WheelEvent) => {
       dismissDraft();
@@ -1057,7 +1097,7 @@ function TouchArea({
 
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
-  }, [connected, dismissDraft, send, settings.scrollSensitivity]);
+  }, [connected, inputEnabled, dismissDraft, send, settings.scrollSensitivity]);
 
 
   const preview = textPreview(remote, draft);
@@ -1065,8 +1105,8 @@ function TouchArea({
   const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.max(...draftSelection)) : draftCursor;
 
   const hasPreview = !!(preview || remote?.available || remote?.password) && draftVisible;
+  const nativePreview = !remote?.password && !remote?.protected && (!remote?.available || remote.editable);
   const previewStatus = <>
-    {!settings.mirrorFocusedText && <button type="button" aria-label="Enable focused text mirroring" onClick={() => onSettingsChange({ mirrorFocusedText: true })} className="pointer-events-auto rounded-md bg-zinc-950/80 px-2 py-1 text-[10px] text-blue-400">Enable preview</button>}
     <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
       title={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
       data-native-text-status className="pointer-events-auto flex h-7 w-5 shrink-0 items-center justify-center">
@@ -1106,10 +1146,11 @@ function TouchArea({
             else queueMicrotask(() => inputRef.current?.focus());
           }}
           onBlur={() => setFocused(false)}
-          onTouchStart={connected ? onTouchStart : undefined}
-          onTouchMove={connected ? onTouchMove : undefined}
-          onTouchEnd={connected ? onTouchEnd : undefined}
+          onTouchStart={connected && inputEnabled ? onTouchStart : undefined}
+          onTouchMove={connected && inputEnabled ? onTouchMove : undefined}
+          onTouchEnd={connected && inputEnabled ? onTouchEnd : undefined}
           onTouchCancel={() => {
+            cancelRightClick(); rightClicked.current = false;
             releaseTap();
             if (tapPressTimer.current) clearTimeout(tapPressTimer.current);
             tapPressTimer.current = null; continuingTap.current = false;
@@ -1117,7 +1158,7 @@ function TouchArea({
             lastGestureAllowsDrag.current = false;
             touchStartPos.current = null; lastTouchRef.current = null;
           }}
-          onPointerDown={connected ? onPointerDown : undefined}
+          onPointerDown={connected && inputEnabled ? onPointerDown : undefined}
           onContextMenu={(e) => {
             e.preventDefault();
           }}
@@ -1137,7 +1178,7 @@ function TouchArea({
         </div>
         {connected && !hasPreview && <div className="absolute bottom-3 right-16 z-20 flex items-center gap-1">{previewStatus}</div>}
         {connected && hasPreview && (
-          <div className="pointer-events-none absolute inset-3 z-20 flex flex-col justify-end gap-1 pr-11" data-text-preview>
+          <div className="remote-text-preview" data-native-field={nativePreview || undefined} data-text-preview>
             <div className="flex items-center justify-end gap-1">
               {previewStatus}
               <button type="button" aria-label="Dismiss preview" title="Dismiss preview" onClick={() => {
@@ -1146,7 +1187,11 @@ function TouchArea({
                 setDraftVisible(false);
               }} className="pointer-events-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-950/80 text-zinc-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>
             </div>
-            <PreviewViewport interactive={settings.interactivePreview}>
+            {nativePreview && <div ref={previewRef} aria-hidden="true" className="native-preview-ruler">
+              <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} variant="preview" dragging={cursorDrag !== null} className="whitespace-pre-wrap break-words px-[10px] py-2 text-base leading-6 [overflow-wrap:anywhere]" />
+            </div>}
+            {nativePreview && cursorDrag && <span aria-hidden="true" data-drag-caret className="native-drag-caret" style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} />}
+            {!nativePreview && <PreviewViewport interactive={settings.interactivePreview}>
               <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
                 onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
                 onPointerUp={(event) => {
@@ -1167,41 +1212,27 @@ function TouchArea({
                 {cursorDrag && <span aria-hidden="true" data-drag-caret className="pointer-events-none absolute left-0 top-0 z-30 w-0.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,.5)]"
                   style={{ height: cursorDrag.height, transform: `translate3d(${cursorDrag.left}px,${cursorDrag.top}px,0)` }} />}
               </div>
-            </PreviewViewport>
+            </PreviewViewport>}
           </div>
         )}
         {connected && (
           <ScrollRail send={send} sensitivity={settings.scrollSensitivity} friction={settings.scrollFriction} haptics={settings.haptics} onInteract={dismissDraft} />
         )}
-        {!settings.customKeyboard && (
-          <button
-            type="button"
-            disabled={!connected}
-            aria-label="Open keyboard settings"
-            title="Keyboard settings"
-            onClick={() => {
-              setKeyboardSettingsOpen(true);
-              setKeyboardOpen(true);
-            }}
-            className="absolute bottom-4 left-16 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-zinc-950/65 text-zinc-400 shadow-lg backdrop-blur-md transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-40"
-          >
-            <Settings className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        )}
-        {!settings.customKeyboard && (
+        {(
           <textarea
             ref={inputRef}
-            rows={1}
-            value={compositionValue ?? (remote?.available && remote.editable ? remote.value : draft)}
-            disabled={!connected}
-            aria-label="Type on the remote computer with the device keyboard"
-            className="pointer-events-none absolute bottom-2 left-2 h-px w-px resize-none opacity-0"
+            rows={2}
+            value={compositionValue ?? (remote?.available && remote.editable && !remote.password && !remote.protected ? remote.value : draft)}
+            disabled={!connected || !inputEnabled}
+            aria-label="Remote text"
+            className={nativePreview && hasPreview && connected ? "remote-native-text" : "remote-native-text remote-native-hidden"}
+            data-native-preview={nativePreview && hasPreview && connected || undefined}
+            inputMode={settings.customKeyboard ? "none" : "text"}
             autoComplete={remote?.password ? "off" : "on"}
             autoCapitalize={remote?.password ? "none" : "sentences"}
             autoCorrect={remote?.password ? "off" : "on"}
             spellCheck={!remote?.password}
             enterKeyHint="enter"
-            inputMode="text"
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={handleInputKeyDown}
@@ -1221,6 +1252,7 @@ function TouchArea({
             }}
             onChange={handleTextChange}
             onSelect={handleSelection}
+            onScroll={e => { if (previewRef.current && nativePreview) previewRef.current.scrollTop = e.currentTarget.scrollTop; }}
           />
         )}
       </div>
@@ -1228,9 +1260,8 @@ function TouchArea({
       <div className={docked ? "shrink-0" : "relative"}>
         <CustomKeyboard
           docked={docked}
-          key={keyboardSettingsOpen ? "settings" : "keyboard"}
-          open={docked || keyboardOpen}
-          connected={connected}
+          open={settings.customKeyboard && (docked || keyboardOpen)}
+          connected={connected && inputEnabled}
           remoteOS={remoteOS}
           textContext={typingContext}
           textBeforeCursor={draftVisible && !remote?.protected && !remote?.password && previewCursor === previewSelectionEnd ? preview.slice(0, previewCursor) : ""}
@@ -1264,7 +1295,7 @@ function TouchArea({
             dismissDraft();
           }}
           onTab={() => { dismissDraft(); sendKeyPress("Tab", activeModifiers); }}
-          onPasteImage={() => {
+          onPaste={() => {
             dismissDraft();
             modifierState.current = new KeyboardModifiers(); syncModifiers();
             const modifier = remoteOS === "darwin" ? Modifier.META : Modifier.CTRL;
@@ -1278,19 +1309,7 @@ function TouchArea({
             dragOrigin.current = null; setCursorDrag(null);
             modifierState.current = new KeyboardModifiers(); syncModifiers();
             setKeyboardOpen(false);
-            setKeyboardSettingsOpen(false);
           }}
-          onSettingsChange={onSettingsChange}
-          onUseCustomKeyboard={() => onSettingsChange({ customKeyboard: true })}
-          onUseDeviceKeyboard={() => {
-            dragOrigin.current = null; setCursorDrag(null);
-            onSettingsChange({ customKeyboard: false });
-            setKeyboardOpen(false);
-            setKeyboardSettingsOpen(false);
-            requestAnimationFrame(() => inputRef.current?.focus());
-          }}
-          usingCustomKeyboard={settings.customKeyboard}
-          settingsPageOpen={keyboardSettingsOpen}
           modifiers={activeModifiers}
           lockedModifiers={lockedModifiers}
           onModifierDown={beginModifier}
@@ -1305,171 +1324,21 @@ function TouchArea({
   );
 }
 
-export function Trackpad({
-  mode = "dashboard",
-  settingsContainer,
-  sideControls,
-  textContext,
-  connected,
-  connecting,
-  cursorPos,
-  cursorSupported,
-  send,
-  onVolumeStep,
-}: {
-  textContext: TrackpadMessageTextContext | null;
-  connected: boolean;
-  connecting: boolean;
-  cursorPos: { x: number; y: number } | null;
-  cursorSupported: boolean;
-  mode?: "dashboard" | "remote";
-  settingsContainer?: HTMLElement | null;
-  sideControls?: React.ReactNode;
-  send: (msg: TrackpadMessage) => void;
+export function Trackpad({ textContext, connected, connecting, send, settings, inputEnabled, onVolumeStep }: {
+  textContext: TrackpadMessageTextContext | null; connected: boolean; connecting: boolean;
+  cursorPos: { x: number; y: number } | null; cursorSupported: boolean;
+  send: (msg: TrackpadMessage) => void; settings: TrackpadSettings; inputEnabled: boolean;
   onVolumeStep?: (delta: number) => void;
 }) {
-  const layouts = useStore((s) => s.layouts);
-  const currentLayout = useStore((s) => s.currentLayout);
-  const loading = useStore((s) => s.layoutsLoading);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<TrackpadSettings>(loadSettings);
-  const settingsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    savePreference("ottoman-trackpad-settings", settings);
-  }, [settings]);
-
-  useEffect(() => {
-    if (showSettings) {
-      const onClick = (e: MouseEvent) => {
-        if (
-          settingsRef.current &&
-          !settingsRef.current.contains(e.target as Node)
-        ) {
-          setShowSettings(false);
-        }
-      };
-      document.addEventListener("mousedown", onClick);
-      return () => document.removeEventListener("mousedown", onClick);
-    }
-  }, [showSettings]);
-
   const sendInput = useCallback((message: TrackpadMessage) => {
+    if (!connected) return;
     if (settings.volumeKeysControlOutput && onVolumeStep &&
       (message.type === "keydown" || message.type === "keyup") &&
       (message.key === "AudioVolumeUp" || message.key === "AudioVolumeDown")) {
-      if (message.type === "keydown" && connected)
-        onVolumeStep(message.key === "AudioVolumeUp" ? 1 : -1);
+      if (message.type === "keydown" && connected) onVolumeStep(message.key === "AudioVolumeUp" ? 1 : -1);
       return;
     }
     send(message);
   }, [send, settings.volumeKeysControlOutput, onVolumeStep, connected]);
-
-  const controls = (
-      <div className={`flex items-center justify-between ${mode === "remote" ? "" : "mb-4"}`}>
-        {mode !== "remote" && <h2 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-          {"Trackpad"}
-          <span
-            className={`inline-block w-2 h-2 rounded-full ${
-              connected ? "bg-green-400" : "bg-red-400"
-            }`}
-          />
-        </h2>}
-        <div className="relative" ref={settingsRef}>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            title={showSettings ? "Close settings" : "Trackpad settings"}
-            aria-label={showSettings ? "Close settings" : "Trackpad settings"}
-            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors border cursor-pointer ${
-              showSettings
-                ? "bg-zinc-700 border-zinc-600 text-zinc-100"
-                : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-300"
-            }`}
-          >
-            {showSettings ? (
-              <X className="w-4 h-4" />
-            ) : (
-              <Settings className="w-4 h-4" />
-            )}
-          </button>
-          {showSettings && (
-            <div className="absolute right-0 top-full z-[60] mt-2 flex max-h-[70vh] w-72 flex-col gap-4 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                Trackpad
-              </div>
-              {TRACKPAD_RANGES.map(({ key, label, min, max, step, decimals }, index) => (
-                <div key={key}>
-                  {index === 2 && <div className="mb-4 h-px bg-zinc-800" />}
-                  <label className="block text-xs text-zinc-400 mb-1">
-                    {label} ({settings[key].toFixed(decimals)})
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={settings[key]}
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        setSettings((current) => ({ ...current, [key]: value }));
-                      }}
-                      className="w-full accent-blue-500"
-                    />
-                  </label>
-                </div>
-              ))}
-              {mode === "remote" && onVolumeStep && <label className="text-xs text-zinc-400">
-                <span className="flex items-center justify-between gap-3">
-                  Volume keys control selected output
-                  <input type="checkbox" aria-label="Volume keys control selected output" checked={settings.volumeKeysControlOutput}
-                    onChange={event => setSettings(current => ({ ...current, volumeKeysControlOutput: event.target.checked }))} />
-                </span>
-                <span className="mt-1 block text-[11px] text-zinc-500">Volume up/down adjust the selected TV or PC slider by 1%, including while brightness is shown.</span>
-              </label>}
-              <div className="h-px bg-zinc-800" />
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-zinc-400">Click and Drag</label>
-                <input
-                  type="checkbox"
-                  checked={settings.clickAndDrag}
-                  onChange={(e) =>
-                    setSettings({ ...settings, clickAndDrag: e.target.checked })
-                  }
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-  );
-
-  return (
-    <section className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : undefined}>
-      {mode === "remote" ? settingsContainer && createPortal(controls, settingsContainer) : controls}
-      <div className={mode === "remote" ? "flex min-h-0 flex-1 flex-col" : "flex flex-col-reverse md:flex-row gap-6 sm:items-start"}>
-        <TouchArea
-          key={connected ? "connected" : "disconnected"}
-          sideControls={sideControls}
-          docked={mode === "remote"}
-          textContext={textContext}
-          connected={connected}
-          connecting={connecting}
-          send={sendInput}
-          settings={settings}
-          onSettingsChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
-        />
-        {mode !== "remote" && <MonitorDisplay
-          layouts={layouts}
-          currentLayout={currentLayout}
-          cursorPos={cursorPos}
-          connected={connected}
-          loading={loading}
-          onSetPosition={
-            cursorSupported
-              ? (x, y) => send({ type: "mousemoveto", x, y })
-              : undefined
-          }
-        />}
-      </div>
-    </section>
-  );
+  return <section className="flex min-h-0 min-w-0 flex-1 flex-col"><TouchArea key={connected ? "connected" : "disconnected"} docked textContext={textContext} connected={connected} inputEnabled={inputEnabled} connecting={connecting} send={sendInput} settings={settings} /></section>;
 }

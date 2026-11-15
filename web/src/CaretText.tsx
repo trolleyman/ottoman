@@ -48,7 +48,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
   useLayoutEffect(() => {
     const container = root.current!;
     const node = text.current!.firstChild!;
-    const measure = () => {
+    const measureGeometry = (followCaret: boolean) => {
       const bounds = container.getBoundingClientRect();
       const box = (rect: DOMRect): Box => ({
         left: rect.left - bounds.left + container.scrollLeft,
@@ -66,17 +66,10 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       // Use the browser's real inline layout at the end, rather than a text
       // range edge: WebKit can report the latter inside the final glyph.
       if (inlineEnd && end === value.length) {
-        // The marker supplies only x. Its inline-box metrics are not the font's
-        // glyph metrics and must never determine caret height or baseline.
-        let vertical = caretRect;
-        if (value && !value.endsWith("\n")) {
-          const last = Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)).at(-1)!;
-          range.setStart(node, last.index); range.setEnd(node, end);
-          const glyph = Array.from(range.getClientRects()).at(-1);
-          if (glyph?.height) vertical = glyph;
-        }
         const marker = endMarker.current!.getBoundingClientRect();
-        caretRect = new DOMRect(marker.left, vertical.top, 0, vertical.height);
+        // A real zero-width glyph supplies both coordinates on the endpoint's
+        // line. Combining its x with the previous glyph's y breaks at wraps.
+        if (marker.height) caretRect = new DOMRect(marker.left, marker.top, 0, marker.height);
       }
       const caret = box(caretRect);
       range.setStart(node, start);
@@ -90,17 +83,28 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       // Search follows the end of a long query without squeezing the caret.
       if (variant === "search") container.scrollLeft = Math.max(0, caret.left - container.clientWidth + 2);
       const viewport = container.closest<HTMLElement>("[data-preview-scroll]");
-      if (viewport && !hideCaret) {
+      if (viewport && !hideCaret && followCaret) {
         const visible = viewport.getBoundingClientRect();
         if (caretRect.bottom > visible.bottom) viewport.scrollTop += caretRect.bottom - visible.bottom + 4;
         else if (caretRect.top < visible.top) viewport.scrollTop -= visible.top - caretRect.top + 4;
       }
       setGeometry({ caret, selection });
     };
+    const measure = () => measureGeometry(true);
     // DOM measurements must precede paint so the overlay never trails typing.
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(container);
+    // Scroll-fade style changes must not pull a manually scrolled terminal
+    // back to its caret while inherited font metrics are remeasured.
+    const metrics = new MutationObserver(() => measureGeometry(false));
+    const surface = container.closest("[data-text-preview]") ?? container;
+    let ancestor: HTMLElement | null = container;
+    while (ancestor) {
+      metrics.observe(ancestor, { attributes: true, attributeFilter: ["style", "class"] });
+      if (ancestor === surface) break;
+      ancestor = ancestor.parentElement;
+    }
     // Font changes can alter glyph widths without resizing this block.
     let active = true;
     void document.fonts.ready.then(() => { if (active) measure(); });
@@ -108,6 +112,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
     return () => {
       active = false;
       observer.disconnect();
+      metrics.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
   }, [value, cursor, selectionEnd, variant, inlineEnd, hideCaret]);
@@ -127,7 +132,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
 
   return <div ref={root} data-cursor-dragging={dragging || undefined} className={`relative ${className}`}>
     {/* One uninterrupted text run keeps wrapping stable as the caret moves. */}
-    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" style={{ display: "inline-block", width: 0, height: 0 }} />
+    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" >{"\u2060"}</span>
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
     {caret}
   </div>;

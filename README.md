@@ -108,34 +108,53 @@ Settings are saved to `magefiles/deploy.toml` for future deployments.
 
 ## PC remote
 
-Open **PC remote** from the dashboard, or bookmark `/remote`. It keeps the trackpad,
-scroll control and docked keyboard together with separate PC/TV volume controls
-and display layouts. Tap the slider’s volume icon to switch to monitor brightness; tap the output label to choose another output or display. Use the
-fullscreen icon where your browser supports it. This page controls the computer; it does not stream its screen.
+PC remote is the home page (also available at `/remote`). The trackpad, right-hand
+scroll rail and full-width phone keyboard stay together. The top-left menu holds
+the display layout, PC volume, TV volume and brightness, Settings, and desktop
+management. On larger screens it becomes a collapsible sidebar. Fullscreen is
+shown only where supported. This page controls the computer without streaming its screen.
 
-Before the computer connects, `/remote` shows TV power, volume, mute and available
-brightness controls. Configured TVs are controlled directly by the Pi using webOS
-(and Wake-on-LAN for power-on), without waiting for the computer. Set up and pair
-the TV while the computer is online first; the Pi persists a mirrored copy of its
-connection settings and pairing key for use after restarts. PC controls appear
-automatically when the computer connects.
+When disconnected, the same trackpad and inactive keyboard remain visible.
+Configured TVs can still be controlled from the menu directly through the Pi
+using webOS and Wake-on-LAN. Pair the TV while the computer is online first; the
+Pi persists its connection settings and pairing key.
 
-The PC remote keyboard stays visible even when the trackpad is unfocused. On the dashboard, focus or tap the trackpad to open your preferred keyboard. The shared keyboard bar
+The PC remote keyboard stays visible even when the trackpad is unfocused. Choose Ottoman or Device keyboard in menu → Settings. The shared keyboard bar
 shows local word completions and swipe alternatives, or searches emoji and symbols.
 Search results replace the number row; emoji
 categories share one continuous list with icon shortcuts. Contractions such as
 “don’t” and “isn’t” are supported in completions and swipe alternatives.
 Accepted suggestions and swipe words insert a trailing space. Punctuation removes that automatic separator. Optional **Autocorrect** (off by default) corrects common one-letter errors when you enter a space or punctuation, including `keynoard` → `keyboard`. The small
-erase icon above the preview clears its local display without deleting remote text.
+× dismisses the field without deleting its text; typing restores it.
 Emoji is available from the **#+=** symbols page. Enable **Show emoji key on letters** in keyboard settings to also show it beside space on the main letter page; it is off by default.
 
 Hold **Q** for backtick in the British layout; symbol mode uses the same key positions.
 **Fn** exposes function, paging and media keys. Hold an arrow key to repeat navigation; release it to stop. Tap a modifier for the next key, double-tap to lock it, or hold it across multiple keys. Meta (Super/Win/Cmd) opens the desktop launcher on a double-tap instead of locking. To send Meta+L, tap Meta then L, or hold Meta while pressing L. A separate launcher button also opens the desktop launcher.
 
-While Fn is active, the keyboard settings cog becomes an image button: choose a photo from your phone, review it, and tap Paste to insert it into the focused desktop app. Turn Fn off to restore settings. Image paste replaces the desktop clipboard; the receiving app must support images. Photos are converted to PNG (maximum 4096 pixels per side and 20 MB uploaded); formats the phone cannot decode show an error. Linux desktops need `wl-copy` (the `wl-clipboard` package) on Wayland or `xclip` on X11. Windows uses its native image clipboard through PowerShell. Image paste is unavailable on the login screen.
+The clipboard button beside **Fn** replaces the existing function row with three
+actions: **Paste image**, **Paste from phone**, and **Copy from PC**. Choosing an
+image uploads and pastes it immediately. Phone text uses browser clipboard access
+when permitted, with a manual paste field as fallback. PC text opens a selectable
+field with an explicit Copy action. Clipboard access requires a secure browser
+context; iPhone may require an additional tap or its native paste/copy menu.
+Sharing is on demand, with no background clipboard synchronization.
 
-Enable **Taller keys** in keyboard settings for larger vertical touch targets. Turn off **Tab beside space** to move Tab to Shift’s position on the **#+=** page.
+Image paste replaces the desktop clipboard; the receiving app must support images.
+Photos are converted to PNG (maximum 4096 pixels per side and 20 MB uploaded).
+Linux needs `wl-copy`/`wl-paste` on Wayland or `xclip` on X11; Windows uses its
+native clipboard through PowerShell. Text transfers are limited to 1 MiB.
+Clipboard sharing is unavailable on the login screen.
+
+Compatible Linux players expose now-playing information through MPRIS. The menu
+shows a player and only the playback controls it supports; unavailable players
+and unsupported platforms have no card.
+
+Enable **Taller keys** in Settings for larger touch targets. Tab, comma and
+period beside space are off by default and individually configurable. Emoji is
+hidden on letters by default and remains available from **#+=**.
 **Adaptive key sizes** uses the preceding words and repeated phrases in the current field to predict next letters, including between words and in capitals. It silently scales touch targets in both dimensions around fixed centers, capped at 20% growth. Visible keys stay the same size unless **Debug key sizes** is enabled, which reveals enlarged shapes, boundaries and actual scale. Suggestions continue with next-word choices after a space, without correction ticks or confirmation highlighting. Completions reuse vocabulary found in the current field and offer existing one-edit typo corrections when ordinary completions run out; this never enables automatic correction by itself. A compact fallback keeps next-word choices available while the full dictionary loads. Both are off by default. Keyboard options are grouped by typing, preview/navigation, layout, prediction/feedback, and gesture timing.
+
+A stationary one-finger hold right-clicks after 500 ms by default. Settings → Trackpad lets you disable it or adjust the hold duration (250–1,000 ms) and movement tolerance (2–20 CSS px, default 6). Moving, adding another contact, opening the menu or disconnecting cancels it; continuing a tap-drag takes priority.
 
 A tap presses the mouse button when you lift, then releases it after a 300 ms retouch window. Touch again nearby within that window to continue the same press: hold for as long as you need, then move to drag. Dragging starts immediately with movement and releases when you lift, without a second press that could maximize a window or select a whole word. Each additional quick stationary tap advances the native click count and reserves the next press for another retouch. Tap–tap–drag produces one click-drag; tap–tap–tap–drag produces a double-click-drag; tap–tap–tap–tap–drag produces a triple-click-drag, with no fixed chain limit. Stationary tap chains finish all their clicks when the retouch window closes. Ordinary pointer movement never arms a drag; cancellation, focus loss and disconnect release held input.
 
@@ -170,8 +189,17 @@ does not restart GDM or log out your desktop session.
 
 ## Focused text on the trackpad
 
-Open the trackpad keyboard settings and enable **Mirror focused text** to show
-an accessible desktop field's text, caret, and selection on the phone. Preview interaction is off by default, so touches pass through to the trackpad. Enable **Interact with text preview** to scroll inside it or tap to position the caret. The status dot sits beside the × button, which dismisses the preview without clearing the text. For connected fields that support native edits, spacebar cursor gestures and navigation keys follow the preview’s visual lines by default; turn off **Navigate by preview lines** to use the desktop’s layout instead. Adjust **Space cursor sensitivity** for faster or finer movement. Holding and dragging space shows a smooth blue floating caret while the actual insertion position appears gray; releasing space restores the regular caret. Opening keyboard settings keeps both the text preview and suggestion strip visible and in the same position. Both Ottoman and Device keyboards can replace the
+Enable **Mirror focused text** in menu → Settings to show an accessible desktop
+field in a native text box inside the trackpad. The box has a fixed two-line
+height and scrolls independently, with native selection controls. The × dismisses
+it without deleting text or moving the keyboard. Protected fields stay masked;
+terminal/read-only content uses the retained preview renderer.
+
+For connected fields that support native edits, spacebar cursor gestures and
+navigation keys follow the preview’s visual lines by default; turn off
+**Navigate by preview lines** to use the desktop’s layout instead. Adjust
+**Space cursor sensitivity** for faster or finer movement. Both Ottoman and
+Device keyboards can replace the
 native selection; local desktop edits and caret moves update the preview.
 Mirroring is off by default and uses the existing authenticated WebSocket.
 
@@ -290,6 +318,8 @@ ottoman status                            # Check server and client status
 | `/api/wake` | POST | Yes | Send Wake-on-LAN |
 | `/api/layouts` | GET | Yes | List display layouts (proxied) |
 | `/api/layouts/switch` | POST | Yes | Switch layout (proxied) |
+| `/api/clipboard/text` | GET/POST | Yes | Read/write desktop text clipboard (1 MiB) |
+| `/api/media` | GET/POST | Yes | Read active player and send supported playback actions |
 | `/api/clipboard/image` | POST | Yes | Forward an image to the desktop clipboard |
 
 ### Client API
@@ -301,6 +331,8 @@ ottoman status                            # Check server and client status
 | `/api/layouts` | GET | Yes | List available layouts |
 | `/api/layouts/switch` | POST | Yes | Switch to a layout |
 | `/api/monitors` | GET | Yes | List connected monitors |
+| `/api/clipboard/text` | GET/POST | Yes | Read/write desktop text clipboard (1 MiB) |
+| `/api/media` | GET/POST | Yes | Linux MPRIS metadata and capability-checked playback actions |
 | `/api/clipboard/image` | POST | Yes | Copy a PNG/JPEG/GIF body to the clipboard (20 MB / 16 megapixel limit); returns 204 when ready |
 
 ### Authentication

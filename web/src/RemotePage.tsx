@@ -1,87 +1,120 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { ArrowLeft, Maximize, Minimize, Monitor, ChevronDown, Volume2, Sun } from "lucide-react";
-import { followAppLink } from "./navigation";
-import { OfflineTVControls } from "./Monitors";
+import { Menu, X, Maximize, Minimize, Monitor, ChevronRight, Volume2, Sun, Settings, LayoutGrid, Power, LogOut, ArrowLeft } from "lucide-react";
+import { NowPlaying } from "./NowPlaying";
 import { Trackpad } from "./Trackpad";
+import { KeyboardSettingsPanel } from "./KeyboardSettingsPanel";
+import { Monitors } from "./Monitors";
+import { MonitorDisplay } from "./MonitorDisplay";
+import { Audio } from "./Audio";
+import { Layouts } from "./Layouts";
+import { ClientStatus } from "./ClientStatus";
+import { useMonitorPower } from "./useMonitorPower";
 import { useStore } from "./store";
+import { loadSettings, savePreference } from "./preferences";
 import { useCoalescedSlider } from "./useCoalescedSlider";
 import type { TrackpadMessage, TrackpadMessageTextContext } from "./api";
+import type { TrackpadSettings } from "./trackpadSettings";
 
 type VolumeControl = { step: (delta: number) => void };
-
-function RemoteVolume({ label, value, onVolume, onTarget, brightness = false, onMode, controlRef, hidden = false }: {
-  controlRef?: Ref<VolumeControl>; hidden?: boolean;
-  brightness?: boolean; onMode?: () => void;
-  onTarget?: () => void; label: string; value: number; onVolume: (value: number) => Promise<void>;
+function RemoteSlider({ label, value, onChange, brightness = false, controlRef, disabled = false }: {
+  label: string; value: number; onChange: (value: number) => Promise<void>; brightness?: boolean; controlRef?: Ref<VolumeControl>; disabled?: boolean;
 }) {
-  const slider = useCoalescedSlider(value, onVolume);
-  // Keep audio mounted while brightness is visible so keys share its optimistic
-  // value and coalesced writes, even with a slow TV or stale status polls.
-  useImperativeHandle(controlRef, () => ({
-    step: delta => slider.set(current => Math.min(100, Math.max(0, current + delta))),
-  }));
-  return <aside hidden={hidden} className={`${hidden ? "hidden" : "flex"} remote-volume w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-white/8 bg-white/3 py-2`} aria-label={brightness ? "Remote brightness" : "Remote audio"}>
-    <button type="button" onClick={onTarget} disabled={!onTarget} aria-label={`${brightness ? "Display" : "Audio output"}: ${label}. Switch output`} className="text-xs font-medium text-zinc-300 disabled:cursor-default">{label}</button>
-    <span className="text-[10px] tabular-nums text-zinc-500">{slider.value}%</span>
-    <input type="range" aria-label={`${label} ${brightness ? "brightness" : "volume"}`} min={0} max={100} value={slider.value} {...slider.dragProps} onChange={(event) => slider.set(Number(event.target.value))} className="remote-volume-slider min-h-0 flex-1 accent-blue-400" />
-    {onMode && <button type="button" onClick={onMode} aria-label={brightness ? "Switch to volume" : "Switch to brightness"} className="p-2 text-zinc-300 hover:text-white">{brightness ? <Sun className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}</button>}
-  </aside>;
+  const slider = useCoalescedSlider(value, onChange);
+  useImperativeHandle(controlRef, () => ({ step: delta => { if (!disabled) slider.set(current => Math.min(100, Math.max(0, current + delta))); } }));
+  return <label className="remote-menu-slider"><span>{brightness ? <Sun /> : <Volume2 />}<span>{brightness ? "Brightness" : "Volume"}</span><output>{value < 0 ? "—" : `${slider.value}%`}</output></span><input aria-label={label} type="range" min="0" max="100" value={slider.value} disabled={disabled || value < 0} {...slider.dragProps} onChange={e => slider.set(Number(e.target.value))} /></label>;
 }
 
+function TVPower({ edid, on }: { edid: string; on: boolean }) {
+  const power = useMonitorPower(edid, on);
+  return <button className="remote-tv-power" aria-label="TV power" aria-pressed={power.on} aria-busy={power.loading} disabled={power.loading} onClick={() => void power.toggle(!power.on)}><Power /></button>;
+}
+
+type Panel = "remote" | "settings" | "displays" | "audio" | "layouts" | "connection";
 export function RemotePage(props: {
-  textContext: TrackpadMessageTextContext | null;
-  connected: boolean; connecting: boolean; cursorPos: { x: number; y: number } | null;
+  textContext: TrackpadMessageTextContext | null; connected: boolean; connecting: boolean; cursorPos: { x: number; y: number } | null;
   cursorSupported: boolean; send: (message: TrackpadMessage) => void;
 }) {
-  const { agentInfo, layouts, currentLayout, switchLayout, audioSinks, monitors, setSinkVolume, setMonitorVolume, setMonitorBrightness } = useStore();
-  const volumeControl = useRef<VolumeControl>(null);
-  const stepVolume = useCallback((delta: number) => volumeControl.current?.step(delta), []);
-  const [settingsContainer, setSettingsContainer] = useState<HTMLDivElement | null>(null);
-  const [brightnessMode, setBrightnessMode] = useState(false);
-  const [brightnessTarget, setBrightnessTarget] = useState("");
+  const store = useStore();
+  const [settings, setSettings] = useState(loadSettings);
+  const changeSettings = useCallback((patch: Partial<TrackpadSettings>) => setSettings(current => ({ ...current, ...patch })), []);
+  useEffect(() => savePreference("ottoman-trackpad-settings", settings), [settings]);
+  const [panel, setPanel] = useState<Panel>("remote");
+  const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1024px)").matches);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarClosed, setSidebarClosed] = useState(false);
+  const menu = useRef<HTMLElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [audioTarget, setAudioTarget] = useState("");
+  const controls = useRef(new Map<string, VolumeControl>());
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement);
-  const [showFullscreenHelp, setShowFullscreenHelp] = useState(false);
-  const [fullscreenError, setFullscreenError] = useState("");
+  const [error, setError] = useState("");
   useEffect(() => {
+    const query = matchMedia("(min-width: 1024px)");
+    const resize = () => { setWide(query.matches); setMenuOpen(false); };
+    query.addEventListener("change", resize);
     const changed = () => setFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", changed);
-    return () => document.removeEventListener("fullscreenchange", changed);
+    return () => { query.removeEventListener("change", resize); document.removeEventListener("fullscreenchange", changed); };
   }, []);
-  const sink = audioSinks.find((item) => item.default);
-  const tvs = monitors.filter((item) => item.capabilities?.volume && item.tv_state?.paired);
-  const outputs = [
-    ...tvs.map((tv, index) => ({ id: tv.edid, label: tvs.length > 1 ? `TV ${index + 1}` : "TV", value: tv.tv_state!.volume, onVolume: (value: number) => setMonitorVolume(tv.edid, value) })),
-    ...(sink ? [{ id: sink.name, label: "PC", value: Math.round(sink.volume * 100), onVolume: (value: number) => setSinkVolume(sink.name, value / 100) }] : []),
-  ];
-  const outputIndex = Math.max(0, outputs.findIndex((item) => item.id === audioTarget));
-  const audioOutput = outputs[outputIndex];
-  const displays = monitors.filter(item => item.capabilities?.brightness);
-  const displayIndex = Math.max(0, displays.findIndex(item => item.edid === brightnessTarget));
-  const display = displays[displayIndex];
-  const isBrightness = !!display && (brightnessMode || !audioOutput);
-  const output = isBrightness ? { id: display.edid + "-brightness", label: displays.length > 1 ? `D${displayIndex + 1}` : "Screen", value: display.brightness != null && display.brightness >= 0 ? Math.min(100, display.brightness) : 50, onVolume: (value: number) => setMonitorBrightness(display.edid, value) } : audioOutput;
-  return <main className="pc-remote bg-zinc-950 text-zinc-100">
-    <header className="flex shrink-0 items-center gap-3 border-b border-white/8 pb-3">
-      <a href="/" onClick={followAppLink} aria-label="Back to dashboard" className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white"><ArrowLeft className="h-4 w-4" /></a>
-      <div className="min-w-0 flex-1"><div className="flex items-center gap-2 text-sm font-semibold"><Monitor className="h-4 w-4 text-blue-400" />PC remote</div><div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-500"><span className={`h-1.5 w-1.5 rounded-full ${props.connected ? "bg-emerald-400" : "bg-red-400"}`} />{agentInfo?.hostname || "Computer"} · {props.connected ? "Connected" : "Disconnected"}</div></div>
-      {layouts.length > 0 && <div className="relative"><select aria-label="Display layout" value={currentLayout ?? ""} onChange={(event) => void switchLayout(event.target.value)} className="max-w-28 appearance-none rounded-lg border border-white/10 bg-zinc-900 py-2 pl-2 pr-7 text-xs text-zinc-100"><option value="" disabled>Layout</option>{layouts.map((layout) => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-300" /></div>}
-      <button type="button" aria-label={!document.fullscreenEnabled ? "Open without address bar" : fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => {
-        if (!document.fullscreenEnabled) { setShowFullscreenHelp((open) => !open); return; }
-        setFullscreenError("");
-        void (fullscreen ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setFullscreenError("Fullscreen could not open. Try again from the fullscreen button."));
-      }} className="rounded-lg border border-white/10 p-2 text-zinc-400 hover:text-white">{fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}</button>
-      <div ref={setSettingsContainer} />
+  useEffect(() => {
+    if (!menuOpen || wide) return;
+    const previous = document.activeElement;
+    const node = menu.current!;
+    node.querySelector<HTMLButtonElement>("button")?.focus();
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMenuOpen(false); }
+      if (event.key !== "Tab") return;
+      const elements = Array.from(node.querySelectorAll<HTMLElement>('button:not(:disabled),a,input:not(:disabled),select:not(:disabled)')).filter(el => el.getClientRects().length);
+      const first = elements[0], last = elements.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", keys);
+    return () => { document.removeEventListener("keydown", keys); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, [menuOpen, wide]);
+  const tvs = store.monitors.filter(item => item.tv_state?.paired);
+  const sink = store.audioSinks.find(item => item.default) ?? store.audioSinks[0];
+  const outputs = [...tvs.filter(tv => tv.capabilities?.volume).map(tv => tv.edid), ...(sink ? [sink.name] : [])];
+  const selected = outputs.includes(audioTarget) ? audioTarget : outputs[0];
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  const stepVolume = useCallback((delta: number) => { const id = selectedRef.current; if (id) controls.current.get(id)?.step(delta); }, [selectedRef]);
+  const visible = wide ? !sidebarClosed : menuOpen;
+  useEffect(() => { if (visible) menu.current?.scrollTo({ top: 0 }); }, [visible]);
+  const navigate = (next: Panel) => { setPanel(next); setMenuOpen(false); };
+  return <main className={`pc-remote ${wide && !sidebarClosed ? "remote-has-sidebar" : ""}`}>
+    <header className="remote-header">
+      <button ref={menuButton} type="button" aria-label="Open menu" aria-expanded={visible} aria-controls="remote-menu" onClick={() => wide ? setSidebarClosed(value => !value) : setMenuOpen(value => !value)}><Menu /></button>
+      <div><h1>PC remote</h1><span className="remote-connection"><i data-connected={props.connected} />{store.agentInfo?.hostname || "Computer"} · {props.connected ? "Connected" : props.connecting ? "Connecting" : "Disconnected"}</span></div>
+      {document.fullscreenEnabled && <button className="remote-fullscreen" aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => { setError(""); void (fullscreen ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setError("Fullscreen could not open.")); }}>{fullscreen ? <Minimize /> : <Maximize />}</button>}
     </header>
-    {showFullscreenHelp && <p role="status" className="shrink-0 text-xs text-zinc-300">To open without the address bar on iPhone, use Safari’s Share menu → Add to Home Screen. Enable Open as Web App if shown, then launch PC remote from your Home Screen.</p>}
-    {fullscreenError && <p role="alert" className="text-xs text-amber-300">{fullscreenError}</p>}
-    {!props.connected ? <OfflineTVControls /> : <div className="remote-workspace">
-      <div className="remote-pad"><Trackpad {...props} mode="remote" settingsContainer={settingsContainer} onVolumeStep={audioOutput ? stepVolume : undefined}
-        sideControls={<>{audioOutput && <RemoteVolume key={audioOutput.id} {...audioOutput} controlRef={volumeControl} hidden={isBrightness}
-          onMode={display ? () => setBrightnessMode(true) : undefined}
-          onTarget={outputs.length > 1 ? () => setAudioTarget(outputs[(outputIndex + 1) % outputs.length].id) : undefined} />}
-        {isBrightness && output && <RemoteVolume key={output.id} {...output} brightness onMode={audioOutput ? () => setBrightnessMode(false) : undefined}
-          onTarget={displays.length > 1 ? () => setBrightnessTarget(displays[(displayIndex + 1) % displays.length].edid) : undefined} />}</>} /></div>
-    </div>}
+    {menuOpen && !wide && <button className="remote-menu-scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
+    <aside ref={menu} id="remote-menu" className="remote-menu" hidden={!visible} role={!wide ? "dialog" : undefined} aria-modal={!wide ? true : undefined} aria-label="Desktop controls">
+      <header><button className="remote-brand" onClick={() => navigate("remote")}>ottoman<span>.</span></button><button aria-label="Close menu" onClick={() => wide ? setSidebarClosed(true) : setMenuOpen(false)}><X /></button></header>
+      {store.layouts.length > 0 && <label className="remote-layout">Display layout<select aria-label="Display layout" value={store.currentLayout ?? ""} disabled={store.switching} onChange={e => void store.switchLayout(e.target.value)}><option value="" disabled>Choose layout</option>{store.layouts.map(layout => <option key={layout.id} value={layout.id}>{layout.name}</option>)}</select></label>}
+      {store.layoutNotice && <p role="status" className="remote-notice">{store.layoutNotice.text}</p>}
+      {sink && <section><h2><button className="remote-output" aria-label="Select PC audio" aria-pressed={selected === sink.name} onClick={() => setAudioTarget(sink.name)}><Monitor />PC</button><span>{store.agentInfo?.hostname}</span></h2><RemoteSlider key={sink.name} label="PC volume" value={Math.round(sink.volume * 100)} onChange={value => store.setSinkVolume(sink.name, value / 100)} disabled={!props.connected} controlRef={value => { if (value) controls.current.set(sink.name, value); else controls.current.delete(sink.name); }} /><NowPlaying active={visible && props.connected} /></section>}
+      {tvs.map((tv, index) => <section key={tv.edid}><h2><button className="remote-output" aria-label={`Select ${tvs.length > 1 ? `TV ${index + 1}` : "TV"} audio`} aria-pressed={selected === tv.edid} onClick={() => setAudioTarget(tv.edid)}><Monitor />{tv.friendly_name || (tvs.length > 1 ? `TV ${index + 1}` : "TV")}</button>{tv.capabilities?.power && tv.visibility?.power !== false && <TVPower edid={tv.edid} on={tv.tv_state!.on} />}</h2>
+        {tv.capabilities?.volume && tv.visibility?.volume !== false && <RemoteSlider label={`${tvs.length > 1 ? `TV ${index + 1}` : "TV"} volume`} value={tv.tv_state!.volume} onChange={value => store.setMonitorVolume(tv.edid, value)} controlRef={value => { if (value) controls.current.set(tv.edid, value); else controls.current.delete(tv.edid); }} />}
+        {tv.capabilities?.brightness && tv.visibility?.brightness !== false && <RemoteSlider brightness label={`${tvs.length > 1 ? `TV ${index + 1}` : "TV"} brightness`} value={tv.brightness ?? -1} onChange={value => store.setMonitorBrightness(tv.edid, value)} />}
+      </section>)}
+      {store.monitors.filter(item => !item.tv_state && item.capabilities?.brightness && item.visibility?.brightness !== false).map(display => <section key={display.edid}><h2><Monitor />{display.friendly_name || display.name}</h2><RemoteSlider brightness label={`${display.name} brightness`} value={display.brightness ?? -1} onChange={value => store.setMonitorBrightness(display.edid, value)} disabled={!props.connected} /></section>)}
+      <nav aria-label="Remote navigation">
+        <button onClick={() => navigate("remote")}><Monitor />PC remote<ChevronRight /></button>
+        <button onClick={() => navigate("displays")}><Monitor />Displays<ChevronRight /></button>
+        <button onClick={() => navigate("audio")}><Volume2 />Audio outputs<ChevronRight /></button>
+        <button onClick={() => navigate("layouts")}><LayoutGrid />Display layouts<ChevronRight /></button>
+        <button aria-label="Keyboard settings" onClick={() => navigate("settings")}><Settings />Settings<ChevronRight /></button>
+        <button onClick={() => navigate("connection")}><Power />Connection & power<ChevronRight /></button>
+        <button onClick={() => void store.logout()}><LogOut />Log out</button>
+      </nav>
+      {(store.monitorsError || store.audioError) && <p className="remote-notice" role="alert">{store.monitorsError || store.audioError}</p>}
+    </aside>
+    <div className="remote-content" inert={menuOpen && !wide ? true : undefined}>
+      {error && <p role="alert" className="remote-notice">{error}</p>}
+      <div className="remote-workspace" hidden={panel !== "remote"}><div className="remote-pad"><Trackpad {...props} inputEnabled={panel === "remote" && (!menuOpen || wide)} settings={settings} onVolumeStep={selected ? stepVolume : undefined} /></div></div>
+      {panel === "settings" && <KeyboardSettingsPanel settings={settings} onSettingsChange={changeSettings} onBack={() => setPanel("remote")} />}
+      {panel !== "remote" && panel !== "settings" && <div className="remote-management"><button className="remote-back" onClick={() => setPanel("remote")}><ArrowLeft />PC remote</button>{panel === "displays" ? <><MonitorDisplay layouts={store.layouts} currentLayout={store.currentLayout ?? ""} loading={store.layoutsLoading} cursorPos={props.cursorPos} connected={props.connected} onSetPosition={props.connected && props.cursorSupported ? (x, y) => props.send({ type: "mousemoveto", x, y }) : undefined} /><Monitors /></> : panel === "audio" ? <Audio /> : panel === "layouts" ? <Layouts /> : <ClientStatus />}</div>}
+    </div>
   </main>;
 }

@@ -23,7 +23,7 @@ export function useMonitorPower(edid: string, initialOn: boolean) {
   const [loading, setLoading] = useState(false);
   const runId = useRef(0);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Re-sync to the caller's power state when it changes — e.g. a TV's
   // `reachable` arrives after the first render, or a poll flips `active`. Skip

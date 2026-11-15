@@ -1,5 +1,5 @@
 type PreviewPoint = { offset: number; x: number; y: number; height: number };
-const geometry = new WeakMap<HTMLElement, { node: Node; value: string; width: number; height: number; font: string; status: string; points: PreviewPoint[] }>();
+const geometry = new WeakMap<HTMLElement, { node: Node; value: string; width: number; height: number; font: string; status: string; scrollTop: number; points: PreviewPoint[] }>();
 
 export function previewPositions(root: HTMLElement) {
   const node = root.querySelector("[data-caret-text]")?.firstChild;
@@ -9,7 +9,7 @@ export function previewPositions(root: HTMLElement) {
   const font = getComputedStyle(node.parentElement!).font;
   const cached = geometry.get(root);
   const status = document.fonts.status;
-  if (cached && cached.node === node && cached.value === value && cached.width === bounds.width && cached.height === bounds.height && cached.font === font && cached.status === status) {
+  if (cached && cached.node === node && cached.value === value && cached.width === bounds.width && cached.height === bounds.height && cached.font === font && cached.status === status && cached.scrollTop === root.scrollTop) {
     return cached.points.map(point => ({ ...point, x: point.x + bounds.left, y: point.y + bounds.top }));
   }
   const range = document.createRange();
@@ -22,7 +22,7 @@ export function previewPositions(root: HTMLElement) {
     points.push({ offset, x: rect.left, y: rect.top, height: rect.height });
     offset += char.length;
   }
-  geometry.set(root, { node, value, width: bounds.width, height: bounds.height, font, status, points: points.map(point => ({ ...point, x: point.x - bounds.left, y: point.y - bounds.top })) });
+  geometry.set(root, { node, value, width: bounds.width, height: bounds.height, font, status, scrollTop: root.scrollTop, points: points.map(point => ({ ...point, x: point.x - bounds.left, y: point.y - bounds.top })) });
   return points;
 }
 

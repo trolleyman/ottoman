@@ -248,7 +248,7 @@ function TVPairPill({ monitor }: { monitor: Monitor }) {
   );
 }
 
-function MonitorCard({ monitor, controlsOnly = false }: { monitor: Monitor; controlsOnly?: boolean }) {
+function MonitorCard({ monitor }: { monitor: Monitor }) {
   const a = monitor.active;
   const [editing, setEditing] = useState(false);
   const tv = monitor.tv_state;
@@ -281,9 +281,7 @@ function MonitorCard({ monitor, controlsOnly = false }: { monitor: Monitor; cont
             {monitor.friendly_name || monitor.name || monitor.port || "Unknown"}
           </h3>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {isTV && (controlsOnly && !tv?.paired
-              ? <span className="text-xs text-zinc-500">Pair from dashboard while PC is online</span>
-              : <TVPairPill monitor={monitor} />)}
+            {isTV && <TVPairPill monitor={monitor} />}
             {!a && !isTV && (
               <span className="text-xs font-medium bg-zinc-700/30 text-zinc-500 px-2 py-0.5 rounded-full">
                 Inactive
@@ -294,7 +292,7 @@ function MonitorCard({ monitor, controlsOnly = false }: { monitor: Monitor; cont
                 Primary
               </span>
             )}
-            {!controlsOnly && <button
+            <button
               onClick={() => setEditing((v) => !v)}
               title="Monitor settings"
               aria-label="Monitor settings"
@@ -304,14 +302,14 @@ function MonitorCard({ monitor, controlsOnly = false }: { monitor: Monitor; cont
                 }`}
             >
               <Settings className="h-4 w-4" />
-            </button>}
+            </button>
             {showPower && (
               <PowerToggle on={powerOn} loading={powerLoading} onChange={(on) => void togglePower(on)} />
             )}
           </div>
         </div>
 
-        {!controlsOnly && <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           {a && (
             <>
               <Row label="Resolution" value={`${a.width}x${a.height}`} />
@@ -328,7 +326,7 @@ function MonitorCard({ monitor, controlsOnly = false }: { monitor: Monitor; cont
           {monitor.manufacturer && (
             <Row label="Manufacturer" value={monitor.manufacturer} />
           )}
-        </div>}
+        </div>
 
         {editing ? (
           <MonitorSettingsEditor monitor={monitor} onClose={() => setEditing(false)} />
@@ -369,16 +367,4 @@ export function Monitors() {
       )}
     </Section>
   );
-}
-
-// Use the same power, mute, volume and brightness controls without desktop settings.
-export function OfflineTVControls() {
-  const monitors = useStore((s) => s.monitors);
-  const loading = useStore((s) => s.monitorsLoading);
-  const tvs = monitors.filter((monitor) => monitor.control_backend === "tv");
-  return <section aria-label="TV controls" className="min-h-0 flex-1 overflow-y-auto space-y-4">
-    <p className="text-sm text-zinc-400">TV controls connect directly via the Pi. PC controls appear when the computer connects.</p>
-    {tvs.length > 0 ? <div className="grid gap-4 sm:grid-cols-2">{tvs.map((monitor) => <MonitorCard key={monitor.edid} monitor={monitor} controlsOnly />)}</div>
-      : <p role="status" className="text-sm text-zinc-500">{loading ? "Loading TV controls…" : "No TV available. Set up and pair a webOS TV from the dashboard while the computer is online."}</p>}
-  </section>;
 }

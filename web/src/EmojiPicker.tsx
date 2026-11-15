@@ -23,8 +23,8 @@ export function EmojiPicker({ recent, onSelect }: {
     root.scrollTo({ top: root.scrollTop + section.getBoundingClientRect().top - root.getBoundingClientRect().top, behavior: "smooth" });
   };
   return (
-    <div className="custom-keyboard-emoji-grid flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white/[0.02] p-1.5">
-      <div className="relative flex shrink-0 gap-1">
+    <div className="custom-keyboard-emoji-grid flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden rounded-lg bg-white/[0.02] p-1.5">
+      <div className="relative flex min-w-0 shrink-0 gap-1">
       <nav aria-label="Emoji categories" className="keyboard-scroll flex min-w-0 flex-1 gap-1 overflow-x-auto">
         {[{ name: "Recent emoji", Icon: Clock3 }, ...EMOJI_GROUPS.map((group, index) => ({ name: group.name, Icon: GROUP_ICONS[index] }))].map(({ name, Icon }, index) => (
           <ActionKey key={name} type="button" aria-label={name} aria-current={category === index - 1 ? "location" : undefined}
@@ -47,7 +47,7 @@ export function EmojiPicker({ recent, onSelect }: {
         ))}
       </div>}
       </div>
-      <div ref={scroller} role="region" aria-label="All emoji" className="keyboard-scroll min-h-0 flex-1 overflow-y-auto"
+      <div ref={scroller} role="region" aria-label="All emoji" className="keyboard-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto"
         onScroll={() => {
           const top = scroller.current!.getBoundingClientRect().top;
           let current = -1;

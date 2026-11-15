@@ -1,3 +1,4 @@
+import { openSettings } from "./settings-helpers";
 import type { Page } from "playwright";
 
 export async function checkPredictionAndCursor(page: Page, reset: (text: string, cursor?: number) => Promise<void>) {
@@ -24,7 +25,7 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
   const edgeHits = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-letter]")?.getAttribute("data-letter"), { x: grown.x, y: grown.y - grown.height / 2 + 0.5 });
   assert(edgeHits === grown.letter, `The enlarged vertical edge must belong to the enlarged key: ${String(edgeHits)}, ${JSON.stringify(grown)}`);
   await page.screenshot({ path: "/tmp/adaptive-keyboard@2x.png" });
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Adaptive key sizes", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const normal = await rectangles();
@@ -33,10 +34,10 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
   const original = normal.find(point => point.letter === grown.letter)!;
   assert(grown.width > original.width && grown.height > original.height, "Keys must grow in both dimensions");
   assert(Math.abs(grown.width / original.width - grown.height / original.height) < 0.01, "Key growth must use the same scale horizontally and vertically");
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Adaptive key sizes", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Debug key sizes", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const quietFaces = await page.locator("[data-letter] .key-face").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number }));
@@ -45,7 +46,7 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
   }
   assert(Number(await key(grown.letter!).getAttribute("data-key-scale")) > 1, "Invisible adaptive touch targets must remain enlarged");
   await page.screenshot({ path: "/tmp/adaptive-hit-targets-normal@2x.png" });
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByRole("switch", { name: "Debug key sizes", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   const debugFace = await key(grown.letter!).locator(".key-face").boundingBox();
@@ -96,7 +97,7 @@ export async function checkPredictionAndCursor(page: Page, reset: (text: string,
     assert(await page.locator("[data-preview-caret]").evaluate(element => getComputedStyle(element).backgroundColor) === "rgb(161, 161, 170)", "Actual caret must be gray while dragging");
     await page.mouse.move(start.x + 1, start.y);
     const fractional = (await ghost.boundingBox())!;
-    assert(fractional.x > origin.x && fractional.x - origin.x < 4, "The blue caret must move smoothly before crossing a character boundary");
+    assert(fractional.x > origin.x && fractional.x - origin.x < 4, `The blue caret must move smoothly before crossing a character boundary: ${JSON.stringify({ origin, fractional })}`);
     await page.mouse.move(start.x + 24, start.y, { steps: 6 });
     await page.screenshot({ path: "/tmp/keyboard-cursor-drag@2x.png" });
     await page.waitForTimeout(500);

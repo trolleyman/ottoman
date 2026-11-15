@@ -1,10 +1,11 @@
+import { openSettings } from "./settings-helpers";
 import type { Page } from "playwright";
 
 export async function checkTerminalPreview(page: Page) {
   await page.setViewportSize({ width: 402, height: 874 });
   await page.evaluate("window.fixture.configure({interactivePreview:true})");
   await page.waitForTimeout(80);
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   if (await page.getByRole("switch", { name: "Show terminal scrollback", exact: true }).getAttribute("aria-checked") !== "false") throw Error("Terminal scrollback must default off");
   if (await page.getByLabel("Terminal font", { exact: true }).inputValue() !== "iosevka") throw Error("Terminal font must default to Iosevka");
   await page.getByRole("switch", { name: "Show terminal scrollback", exact: true }).click();
@@ -39,7 +40,7 @@ export async function checkTerminalPreview(page: Page) {
   if (await viewport.getAttribute("data-preview-hidden-above")) throw Error("Short terminal preview must not fade");
   await page.locator("[data-text-preview]").screenshot({ path: "/tmp/terminal-command@2x.png" });
   await preview.screenshot({ path: "/tmp/terminal-nerd-font@2x.png" });
-  await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
+  await openSettings(page);
   await page.getByLabel("Terminal font", { exact: true }).selectOption("fira-code");
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   if (!await preview.evaluate(element => getComputedStyle(element).fontFamily.includes("Fira Code"))) throw Error("Selected font not applied");
