@@ -103,6 +103,9 @@ func (k *UinputKeyboard) typeUnicode(r rune) error {
 	if err := k.emitCode(code, []string{"ctrl", "shift"}, 0); err != nil {
 		return err
 	}
+	// IBus composition is asynchronous. Let the prefix reach the input method
+	// before digits, and let each commit settle before the next emoji scalar.
+	time.Sleep(20 * time.Millisecond)
 	for _, digit := range strconv.FormatInt(int64(r), 16) {
 		code, mods, _ := textKey(digit, k.layout)
 		if err := k.emitCode(code, mods, 1); err != nil {
@@ -112,8 +115,14 @@ func (k *UinputKeyboard) typeUnicode(r rune) error {
 			return err
 		}
 	}
-	if err := k.emitKey("Enter", nil, 1); err != nil {
+	if err := k.emitKey(" ", nil, 1); err != nil {
 		return err
 	}
-	return k.emitKey("Enter", nil, 0)
+	if err := k.emitKey(" ", nil, 0); err != nil {
+		return err
+	}
+	// Space commits Unicode entry without risking an application submit key
+	// when a desktop input method does not consume the composition.
+	time.Sleep(20 * time.Millisecond)
+	return nil
 }

@@ -218,7 +218,7 @@ export function UtilityKey({
       aria-label={label}
       preview={children}
       onPress={onPress}
-      className={`keyboard-cell flex touch-none select-none items-center justify-center rounded-md border text-sm font-semibold shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px ${
+      className={`keyboard-cell flex touch-none select-none items-center justify-center rounded-md border text-sm font-semibold shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] ${
         wide ? "min-w-[52px] flex-[1.4]" : "min-w-0 flex-1"
       } ${
         active
@@ -249,7 +249,7 @@ export function NavigationKey({
       preview={children}
       onPress={onPress}
       repeat={repeat}
-      className="custom-keyboard-utility flex h-8 min-w-0 flex-1 touch-none select-none items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] font-semibold text-zinc-400 shadow-sm hover:bg-zinc-800 hover:text-zinc-100 active:translate-y-px"
+      className="custom-keyboard-utility flex h-8 min-w-0 flex-1 touch-none select-none items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 text-[10px] font-semibold text-zinc-400 shadow-sm hover:bg-zinc-800 hover:text-zinc-100"
     >
       {children}
     </ActionKey>

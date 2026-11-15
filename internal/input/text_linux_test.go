@@ -91,8 +91,55 @@ func TestUnicodeTextEmitsInputMethodSequence(t *testing.T) {
 			if digits != expected {
 				t.Fatalf("Unicode digits %q, want %q", digits, expected)
 			}
-			if keys[len(keys)-2].Code != keyEnter || keys[len(keys)-1].Code != keyEnter || keys[len(keys)-1].Value != 0 {
+			if keys[len(keys)-2].Code != keySpace || keys[len(keys)-1].Code != keySpace || keys[len(keys)-1].Value != 0 {
 				t.Fatal("Unicode entry was not committed")
+			}
+		})
+	}
+}
+
+func TestCompositeEmojiNeverEmitEnter(t *testing.T) {
+	for _, text := range []string{"☀️", "❤️", "👩‍💻", "🏳️‍🌈", "🇬🇧", "é"} {
+		t.Run(text, func(t *testing.T) {
+			file, err := os.CreateTemp(t.TempDir(), "events")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			keyboard := &UinputKeyboard{dev: &uinputDevice{fd: int(file.Fd())}, layout: "gb", layoutRead: time.Now()}
+			if err := keyboard.TypeText(text); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.Seek(0, 0); err != nil {
+				t.Fatal(err)
+			}
+			compositions, commits := 0, 0
+			for {
+				var event inputEvent
+				if err := binary.Read(file, binary.LittleEndian, &event); err != nil {
+					break
+				}
+				if event.Type != evKey {
+					continue
+				}
+				if event.Code == keyEnter {
+					t.Fatal("Unicode text must never send Enter to submit the host app")
+				}
+				if event.Value == 1 && event.Code == keyLeftCtrl {
+					compositions++
+				}
+				if event.Value == 1 && event.Code == keySpace {
+					commits++
+				}
+			}
+			want := 0
+			for _, r := range text {
+				if _, _, ok := textKey(r, "gb"); !ok {
+					want++
+				}
+			}
+			if compositions != want || commits != want {
+				t.Fatalf("compositions=%d commits=%d want=%d", compositions, commits, want)
 			}
 		})
 	}

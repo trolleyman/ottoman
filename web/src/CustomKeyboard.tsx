@@ -397,7 +397,7 @@ function KeyboardSession({
             </ModifierButton>
           </>
         )}
-        <ActionKey type="button" aria-label="Open desktop launcher" onPress={onSuperPress} className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
+        <ActionKey type="button" aria-label="Open desktop launcher" preview={<LayoutGrid className="h-4 w-4" />} onPress={onSuperPress} className="custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-xs text-zinc-400"><LayoutGrid className="h-4 w-4" /></ActionKey>
         <ActionKey type="button" aria-label="Clipboard" aria-pressed={clipboardActive}
           onPress={() => { haptic(settings.haptics); setFnActive(false); setClipboardActive(value => !value); }}
           className={`custom-keyboard-utility flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${clipboardActive ? "border-blue-400 bg-blue-500 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}><Clipboard className="h-4 w-4" /></ActionKey>
@@ -557,7 +557,7 @@ function KeyboardSession({
             onPointerUp={endSpace}
             onPointerCancel={cancelSpace}
             onContextMenu={(event) => event.preventDefault()}
-            className={`keyboard-cell custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] active:translate-y-px ${
+            className={`keyboard-cell custom-keyboard-key flex-[4] touch-none select-none rounded-md border text-sm shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.35)] ${
               spaceNavigating
                 ? "border-blue-400/60 bg-zinc-700/95 text-blue-100 ring-2 ring-inset ring-blue-400/15"
                 : "border-white/10 bg-zinc-600/95 text-zinc-200 active:bg-zinc-500"
@@ -583,7 +583,7 @@ function KeyboardSession({
               else if (symbolSearching && matchingSymbols[0]) selectSymbol(matchingSymbols[0][0]);
               else onEnter(shift !== "off");
             }}
-            className="keyboard-cell custom-keyboard-utility flex min-w-[48px] flex-[1.3] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:translate-y-px active:bg-zinc-700 disabled:opacity-40"
+            className="keyboard-cell custom-keyboard-utility flex min-w-[48px] flex-[1.3] touch-none select-none items-center justify-center rounded-md border border-white/5 bg-zinc-800 text-zinc-100 shadow-[0_1px_0_rgba(0,0,0,.7),0_2px_3px_rgba(0,0,0,.3)] active:bg-zinc-700 disabled:opacity-40"
           >
             <CornerDownLeft className="h-5 w-5" />
           </ActionKey>
