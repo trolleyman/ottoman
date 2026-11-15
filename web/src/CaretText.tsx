@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 type Box = { left: number; top: number; width: number; height: number };
 
@@ -21,33 +21,32 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
   const text = useRef<HTMLSpanElement>(null);
   const endMarker = useRef<HTMLSpanElement>(null);
 
-  const highlightId = useId().replace(/[^a-zA-Z0-9]/g, "");
-  useLayoutEffect(() => {
-    // CSS highlights keep the single text node used by caret measurement and
-    // hit testing. Browsers without the API retain a monochrome preview.
-    if (!colors?.length || !CSS.highlights || typeof Highlight === "undefined") return;
-    const node = text.current!.firstChild!;
-    const names: string[] = [];
-    const rules: string[] = [];
-    for (const [index, run] of (colors ?? []).slice(0, 64).entries()) {
-      if (!/^#[0-9a-f]{6}$/i.test(run.color) || run.start < 0 || run.end > value.length || run.end <= run.start) continue;
-      const range = document.createRange();
-      range.setStart(node, run.start); range.setEnd(node, run.end);
-      const name = `terminal-${highlightId}-${index}`;
-      CSS.highlights.set(name, new Highlight(range));
-      names.push(name);
-      rules.push(`::highlight(${name}) { color: ${run.color}; }`);
-    }
-    const style = document.createElement("style");
-    style.textContent = rules.join("\n");
-    document.head.append(style);
-    return () => { names.forEach(name => CSS.highlights.delete(name)); style.remove(); };
-  }, [colors, value, highlightId]);
+  const runs = (colors ?? []).slice(0, 64).filter(run => /^#[0-9a-f]{6}$/i.test(run.color) &&
+    run.start >= 0 && run.end <= value.length && run.end > run.start).sort((a, b) => a.start - b.start);
+  const fragments: React.ReactNode[] = [];
+  let coloredOffset = 0;
+  for (const run of runs) {
+    if (run.start < coloredOffset) continue;
+    if (run.start > coloredOffset) fragments.push(value.slice(coloredOffset, run.start));
+    fragments.push(<span key={`${run.start}-${run.end}`} data-terminal-color style={{ color: run.color }}>{value.slice(run.start, run.end)}</span>);
+    coloredOffset = run.end;
+  }
+  if (runs.length) fragments.push(value.slice(coloredOffset) + "\u200b");
 
   const [geometry, setGeometry] = useState<{ caret: Box; selection: Box[] } | null>(null);
   useLayoutEffect(() => {
     const container = root.current!;
-    const node = text.current!.firstChild!;
+    const textPoint = (offset: number): [Node, number] => {
+      const walker = document.createTreeWalker(text.current!, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode()!;
+      while (offset > (node.textContent?.length ?? 0)) {
+        const next = walker.nextNode();
+        if (!next) break;
+        offset -= node.textContent?.length ?? 0;
+        node = next;
+      }
+      return [node, Math.min(offset, node.textContent?.length ?? 0)];
+    };
     const measureGeometry = (followCaret: boolean) => {
       const bounds = container.getBoundingClientRect();
       const box = (rect: DOMRect): Box => ({
@@ -59,10 +58,10 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       const start = Math.max(0, Math.min(cursor, value.length));
       const end = Math.max(start, Math.min(selectionEnd, value.length));
       const range = document.createRange();
-      range.setStart(node, end);
+      range.setStart(...textPoint(end));
       range.collapse(true);
       let caretRect = range.getBoundingClientRect();
-      if (!caretRect.height) { range.setEnd(node, Math.min(end + 1, node.textContent!.length)); caretRect = range.getBoundingClientRect(); }
+      if (!caretRect.height) { range.setEnd(...textPoint(Math.min(end + 1, value.length + 1))); caretRect = range.getBoundingClientRect(); }
       // Use the browser's real inline layout at the end, rather than a text
       // range edge: WebKit can report the latter inside the final glyph.
       if (inlineEnd && end === value.length) {
@@ -72,8 +71,8 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
         if (marker.height) caretRect = new DOMRect(marker.left, marker.top, 0, marker.height);
       }
       const caret = box(caretRect);
-      range.setStart(node, start);
-      range.setEnd(node, end);
+      range.setStart(...textPoint(start));
+      range.setEnd(...textPoint(end));
       const selection = start === end ? [] : Array.from(range.getClientRects(), box);
       const last = selection.at(-1);
       // Align a final selection highlight with the measured inline endpoint.
@@ -115,7 +114,7 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
       metrics.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
-  }, [value, cursor, selectionEnd, variant, inlineEnd, hideCaret]);
+  }, [value, cursor, selectionEnd, variant, inlineEnd, hideCaret, colors]);
 
   useLayoutEffect(() => {
     const container = root.current!;
@@ -131,8 +130,8 @@ export function CaretText({ value, cursor, selectionEnd = cursor, hideCaret = fa
     style={geometry ? { background: dragging ? "#a1a1aa" : undefined, left: geometry.caret.left, top: geometry.caret.top, height: geometry.caret.height } : { display: "none" }} />;
 
   return <div ref={root} data-cursor-dragging={dragging || undefined} className={`relative ${className}`}>
-    {/* One uninterrupted text run keeps wrapping stable as the caret moves. */}
-    <span ref={text} data-caret-text className="relative z-10">{value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" >{"\u2060"}</span>
+    {/* Colour spans preserve native text selection and work without CSS highlights. */}
+    <span ref={text} data-caret-text className="relative z-10">{runs.length ? fragments : value + "\u200b"}</span><span ref={endMarker} data-caret-end-marker aria-hidden="true" >{"\u2060"}</span>
     {geometry?.selection.map((box, index) => <span key={index} aria-hidden="true" className="pointer-events-none absolute bg-blue-500/40" style={box} />)}
     {caret}
   </div>;

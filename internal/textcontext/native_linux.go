@@ -445,22 +445,34 @@ func (a *atspi) terminalColors(ctx context.Context, r reference, low, high int) 
 		if a.object(r).CallWithContext(ctx, textInterface+".GetAttributeRun", 0, int32(offset), true).Store(&attrs, &start, &end) != nil || int(end) <= offset || int(start) > offset {
 			break
 		}
-		parts := strings.Split(attrs["fg-color"], ",")
-		if len(parts) == 3 {
-			rgb := [3]int{}
-			valid := true
-			for i, part := range parts {
-				n, err := strconv.Atoi(strings.TrimSpace(part))
-				if err != nil || n < 0 || n > 255 {
-					valid = false
-				}
-				rgb[i] = n
-			}
-			if valid {
-				runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: fmt.Sprintf("#%02x%02x%02x", rgb[0], rgb[1], rgb[2])})
-			}
+		if color, ok := terminalColor(attrs["fg-color"]); ok {
+			runs = append(runs, api.TerminalColor{Start: max(low, int(start)), End: min(high, int(end)), Color: color})
 		}
 		offset = int(start) - 1
 	}
 	return runs
+}
+
+// GTK/ATK exposes 16-bit RGB components; other providers use 8-bit values.
+func terminalColor(value string) (string, bool) {
+	parts := strings.Split(value, ",")
+	if len(parts) != 3 {
+		return "", false
+	}
+	rgb := [3]int{}
+	wide := false
+	for i, part := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || n < 0 || n > 65535 {
+			return "", false
+		}
+		rgb[i] = n
+		wide = wide || n > 255
+	}
+	if wide {
+		for i := range rgb {
+			rgb[i] = (rgb[i] + 128) / 257
+		}
+	}
+	return fmt.Sprintf("#%02x%02x%02x", rgb[0], rgb[1], rgb[2]), true
 }

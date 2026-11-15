@@ -3,7 +3,6 @@ import type { Page } from "playwright";
 
 export async function checkTerminalPreview(page: Page) {
   await page.setViewportSize({ width: 402, height: 874 });
-  await page.evaluate("window.fixture.configure({interactivePreview:true})");
   await page.waitForTimeout(80);
   await openSettings(page);
   if (await page.getByRole("switch", { name: "Show terminal scrollback", exact: true }).getAttribute("aria-checked") !== "false") throw Error("Terminal scrollback must default off");
@@ -32,9 +31,9 @@ export async function checkTerminalPreview(page: Page) {
       ["\ue0a0", "\uf120", "\u{f0001}"].every(icon => Math.abs(context.measureText(icon).width - cell) < 0.01);
   });
   if (!nerdFontLoaded) throw Error("Bundled Nerd Font must load and retain single-cell BMP and supplementary icons");
-  if (!await page.evaluate(() => CSS.highlights.size > 0)) throw Error("Terminal colours were not applied");
-  const wholeBranchHighlighted = await page.evaluate(() => Array.from(CSS.highlights.values()).some(highlight =>
-    Array.from(highlight).some(range => range instanceof Range && range.toString() === "main")));
+  if (await page.locator("[data-terminal-color]").count() === 0) throw Error("Terminal colours were not applied");
+  const wholeBranchHighlighted = await page.locator("[data-terminal-color]").evaluateAll(elements => elements.some(element =>
+    element.textContent === "main" && getComputedStyle(element).color === "rgb(232, 121, 249)"));
   if (!wholeBranchHighlighted) throw Error("Branch colour must include the entire name, including the first letter");
   const viewport = page.locator("[data-preview-scroll]");
   if (await viewport.getAttribute("data-preview-hidden-above")) throw Error("Short terminal preview must not fade");

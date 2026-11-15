@@ -240,7 +240,7 @@ func (*fakeTerminal) GetNSelections() (int32, *dbus.Error) { return 0, nil }
 func (f *fakeTerminal) GetAttributeRun(offset int32, defaults bool) (map[string]string, int32, int32, *dbus.Error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return map[string]string{"fg-color": "0,205,255"}, 0, int32(len([]rune(f.value))), nil
+	return map[string]string{"fg-color": "0,52685,65535"}, 0, int32(len([]rune(f.value))), nil
 }
 
 func TestNativeATSPITerminalPreview(t *testing.T) {
@@ -569,5 +569,16 @@ func TestBackgroundTerminalDoesNotReappearWithoutFocusedChromeInput(t *testing.T
 	restored, err := backend.Snapshot(ctx, 128)
 	if err != nil || !restored.Available || restored.Value != first.Value {
 		t.Fatalf("terminal did not recover on activation: %#v %v", restored, err)
+	}
+}
+
+func TestTerminalColorComponents(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{
+		{"0,205,255", "#00cdff"}, {"0,52685,65535", "#00cdff"}, {"65535,0,0", "#ff0000"}, {"0,0,0", "#000000"}, {"65536,0,0", ""}, {"-1,0,0", ""}, {"bad", ""},
+	} {
+		got, ok := terminalColor(tc.value)
+		if got != tc.want || ok != (tc.want != "") {
+			t.Fatalf("%q => %q,%v; want %q", tc.value, got, ok, tc.want)
+		}
 	}
 }
