@@ -159,6 +159,13 @@ A stationary one-finger hold right-clicks after 500 ms by default. Settings → 
 
 A tap presses the mouse button when you lift, then releases it after a 300 ms retouch window. Touch again nearby within that window to continue the same press: hold for as long as you need, then move to drag. Dragging starts immediately with movement and releases when you lift, without a second press that could maximize a window or select a whole word. Each additional quick stationary tap advances the native click count and reserves the next press for another retouch. Tap–tap–drag produces one click-drag; tap–tap–tap–drag produces a double-click-drag; tap–tap–tap–tap–drag produces a triple-click-drag, with no fixed chain limit. Stationary tap chains finish all their clicks when the retouch window closes. Ordinary pointer movement never arms a drag; cancellation, focus loss and disconnect release held input.
 
+Settings includes **Reset all settings to defaults**, covering both keyboard and
+trackpad options. Text fields always accept native selection and touch scrolling;
+8px text fades indicate overflow above/below without fading the field frame.
+The menu footer shows the Web, controller and agent Git revisions, or one Build
+revision when all three match. `-dirty` identifies builds with local changes;
+unknown/offline components are labeled explicitly.
+
 ## Linux login and lock screens
 
 GNOME's lock screen uses the normal session agent. Keyboard and trackpad input
@@ -194,10 +201,13 @@ Enable **Mirror focused text** in menu → Settings to show an accessible deskto
 field in a native text box inside the trackpad. The box has a fixed two-line
 height and scrolls independently, with native selection controls. The × dismisses
 it without deleting text or moving the keyboard. Protected fields stay masked;
-terminal/read-only content uses the retained preview renderer.
+terminal content uses the retained preview renderer. Non-terminal rich editors
+use the same native phone field, with edits and selections sent as keystrokes
+when the host does not support accessibility range edits.
 
 Spacebar cursor gestures and navigation keys follow the phone text box’s visual
-lines for both native editable fields and locally typed text by default; turn off
+lines for native editable fields, keystroke-only rich editors and locally typed
+text by default; turn off
 **Navigate by preview lines** to use the desktop’s layout instead. Adjust
 **Space cursor sensitivity** for faster or finer movement. Both Ottoman and
 Device keyboards can replace the
@@ -209,15 +219,15 @@ screen check supports GNOME; sessions without a readable lock state fall back
 to ordinary keyboard input. EditableText controls support native range edits.
 Linux terminal emulators exposing the AT-SPI Terminal role and Text interface
 also mirror their text and caret, including shells such as Fish, Bash, and Zsh.
-This is a plain text view of the terminal buffer; ANSI colors and formatting
-are not mirrored. Terminal and read-only rich text previews always send navigation
-keys directly to the desktop. Locally typed text uses the phone text box’s
-visual lines and sends horizontal caret moves to the desktop. Preview taps
-can position the caret only in fields that support native edits.
+Terminal previews preserve foreground colours when the accessibility provider
+exposes them, including 16-bit RGB values. Colours render as native text spans
+without depending on the CSS Highlight API. Terminal navigation keys always go
+directly to the desktop. Locally typed text uses the phone text box’s
+visual lines and sends horizontal caret moves to the desktop. Native selection controls can position the caret in non-terminal fields.
 Windows uses UI Automation through a helper running under the agent's user
 account (Windows PowerShell and the system UI Automation assemblies). Writable
 ValuePattern controls with a matching TextPattern support native edits; rich
-editors without that model retain keystroke input and a read-only native preview.
+editors without that model use keystroke edits with the same phone text box.
 If the OS requests accessibility access, grant it to the desktop agent. Elevated
 or inaccessible applications may not expose a usable text model.
 

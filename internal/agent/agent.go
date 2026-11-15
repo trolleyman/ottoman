@@ -333,7 +333,7 @@ func (a *Agent) getStatusResponse() (api.GetStatus200JSONResponse, error) {
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
 		Os:        runtime.GOOS,
-		Version:   "dev",
+		Version:   common.BuildRevision(),
 		Uptime:    uptime,
 		Hostname:  hostname,
 		IpAddress: ipAddr,

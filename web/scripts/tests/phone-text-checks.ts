@@ -5,16 +5,17 @@ export async function checkPhoneText(page: Page, out: string) {
   const fixture = (code: string) => page.evaluate(`window.fixture.${code}`);
   const field = page.getByLabel("Remote text", { exact: true });
   const longText = Array.from({ length: 16 }, (_, i) => `Line ${i + 1}: words that wrap on the phone screen.`).join("\n");
-  for (const native of [true, false]) {
-    await fixture(`setField(${JSON.stringify({ available: native, editable: native, value: native ? longText : "", selectionStart: 0, selectionEnd: 0 })})`);
+  for (const mode of ["native", "local", "rich"]) {
+    const native = mode === "native", available = mode !== "local";
+    await fixture(`setField(${JSON.stringify({ available, editable: native, value: available ? longText : "", selectionStart: 0, selectionEnd: 0 })})`);
     await page.waitForTimeout(80);
-    if (!native) { await page.locator('[data-letter="q"]').click(); await field.fill(longText); }
+    if (!available) { await page.locator('[data-letter="q"]').click(); await field.fill(longText); }
     await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(0, 0); document.dispatchEvent(new Event("selectionchange")); });
     await page.waitForTimeout(50);
     await fixture("log.length = 0");
     await page.getByRole("button", { name: "Arrow down", exact: true }).click();
     const down = await field.evaluate((element: HTMLTextAreaElement) => element.selectionEnd);
-    assert(down > 0 && down < longText.indexOf("\n"), `Down must follow the phone's wrapped line (${native ? "mirrored" : "local"}): ${JSON.stringify({ down, value: await field.inputValue(), log: await fixture("log"), context: await fixture("context") })}`);
+    assert(down > 0 && down < longText.indexOf("\n"), `Down must follow the phone's wrapped line (${mode}): ${JSON.stringify({ down, value: await field.inputValue(), log: await fixture("log"), context: await fixture("context") })}`);
     await page.getByRole("button", { name: "Home", exact: true }).click();
     const home = await field.evaluate((element: HTMLTextAreaElement) => element.selectionEnd);
     await page.getByRole("button", { name: "End", exact: true }).click();
@@ -24,9 +25,12 @@ export async function checkPhoneText(page: Page, out: string) {
     assert(!messages.some(message => message.type === "keydown" && /^(ArrowUp|ArrowDown|Home|End)$/.test(message.key || "")), "Phone navigation must not send host line-navigation keys");
     await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(1, 6); document.dispatchEvent(new Event("selectionchange")); });
     await page.waitForTimeout(50);
-    if (native) assert((await fixture("context.selectionStart")) === 1 && (await fixture("context.selectionEnd")) === 6, "Document selection changes must synchronize iOS-style selection handles");
+    if (available) assert((await fixture("context.selectionStart")) === 1 && (await fixture("context.selectionEnd")) === 6, "Document selection changes must synchronize iOS-style selection handles");
     assert(await field.evaluate((element: HTMLTextAreaElement) => element.selectionStart === 1 && element.selectionEnd === 6), "Native selection must remain stable");
     await field.evaluate((element: HTMLTextAreaElement) => { element.setSelectionRange(0, 0); document.dispatchEvent(new Event("selectionchange")); element.scrollTop = 0; });
+    await page.waitForTimeout(40);
+    assert(await field.getAttribute("data-preview-hidden-above") === null && await field.getAttribute("data-preview-hidden-below") !== null, "Only overflow below must fade at the top");
+    assert(await page.locator(".native-text-frame").evaluate(element => getComputedStyle(element).maskImage) === "none", "Text fading must never fade the frame");
     const box = (await field.boundingBox())!;
     const cdp = await page.context().newCDPSession(page);
     const x = box.x + box.width / 2, y = box.y + box.height - 8;
@@ -41,6 +45,10 @@ export async function checkPhoneText(page: Page, out: string) {
     await page.waitForTimeout(150);
     assert(await field.evaluate((element: HTMLTextAreaElement) => element.scrollTop > 0), "Finger swipes must scroll the native text box");
     assert(!(await fixture('log') as { type: string }[]).some(message => /^(mouse|touch)/.test(message.type)), "Selecting and scrolling text must never control the trackpad");
+    await field.evaluate((element: HTMLTextAreaElement) => { element.scrollTop = element.scrollHeight; });
+    await page.waitForTimeout(40);
+    assert(await field.getAttribute("data-preview-hidden-above") !== null && await field.getAttribute("data-preview-hidden-below") === null, "Bottom fade must disappear at the bottom");
+    assert(await field.evaluate((element: HTMLTextAreaElement) => element.style.maskImage.includes("8px")), "Overflow fades must be compact");
     await field.evaluate((element: HTMLTextAreaElement) => { element.focus(); element.setSelectionRange(0, 0); document.dispatchEvent(new Event("selectionchange")); element.scrollTop = 0; });
     const space = page.getByRole("button", { name: "Space. Hold and drag to move the cursor", exact: true });
     const key = (await space.boundingBox())!;
@@ -57,7 +65,14 @@ export async function checkPhoneText(page: Page, out: string) {
       if (!native) await page.screenshot({ path: `${out}/local-cursor@2x.png` });
     } finally { await page.mouse.up(); }
     assert(await page.locator("[data-drag-caret]").count() === 0, "Releasing space removes the floating caret");
+    if (mode === "rich") {
+      await fixture("log.length = 0");
+      await field.fill("Rich edit 👩‍💻 stays whole");
+      await page.waitForTimeout(60);
+      assert(await fixture("context.value") === "Rich edit 👩‍💻 stays whole", "Native phone edits must reach keystroke-only rich host fields");
+      assert(!(await fixture("log") as { type: string }[]).some(message => message.type === "textedit"), "Rich field must keep its supported keystroke path");
+    }
   }
   await fixture('reset("Select and edit this text normally.")');
-  console.log("PASS: native selection, touch scrolling, phone-relative navigation and visible spacebar caret for mirrored and local text");
+  console.log("PASS: native selection, touch scrolling, phone-relative navigation and visible spacebar caret for native, local and keystroke-only rich text");
 }

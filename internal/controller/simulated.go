@@ -304,7 +304,7 @@ func (s *SimulatedController) GetStatus(ctx context.Context, request api.GetStat
 	return api.GetStatus200JSONResponse{
 		Status:    "ok",
 		Os:        runtime.GOOS,
-		Version:   "dev",
+		Version:   common.BuildRevision(),
 		Uptime:    uptime,
 		Hostname:  "",
 		IpAddress: ipAddr,
@@ -336,7 +336,7 @@ func (s *SimulatedController) GetAgentStatus(ctx context.Context, request api.Ge
 	return api.GetAgentStatus200JSONResponse{
 		Status:    "ok",
 		Os:        runtime.GOOS,
-		Version:   "dev",
+		Version:   common.BuildRevision(),
 		Uptime:    uptime,
 		Hostname:  hostname,
 		IpAddress: ipAddr,

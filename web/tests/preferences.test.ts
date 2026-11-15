@@ -96,12 +96,6 @@ describe("trackpad preferences", () => {
   });
 });
 
-test("preview gestures are opt-in and persist only boolean choices", () => {
-  expect(parseSettings({}).interactivePreview).toBe(false);
-  expect(parseSettings({ interactivePreview: true }).interactivePreview).toBe(true);
-  expect(parseSettings({ interactivePreview: "true" }).interactivePreview).toBe(false);
-});
-
 test("Tab placement defaults off and preserves an explicit choice", () => {
   expect(parseSettings({}).tabKey).toBe(false);
   expect(parseSettings({ tabKey: false }).tabKey).toBe(false);

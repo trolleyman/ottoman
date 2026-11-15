@@ -5,7 +5,7 @@ import { CancelablePromise } from "../../src/api/core/CancelablePromise";
 import { client, useStore } from "../../src/store";
 import { DEFAULT_SETTINGS } from "../../src/trackpadSettings";
 import { codePointOffset } from "../../src/remoteText";
-import type { TrackpadMessage, TrackpadMessageTextContext } from "../../src/api";
+import { Modifier, type TrackpadMessage, type TrackpadMessageTextContext } from "../../src/api";
 import "../../src/index.css";
 
 const initial: TrackpadMessageTextContext = { type: "textcontext", fieldId: "fixture", revision: 1, value: "hello world", selectionStart: 11, selectionEnd: 11, windowStart: 0, available: true, editable: true, multiline: true, password: false, protected: false };
@@ -52,7 +52,31 @@ export function Fixture() {
   const [context, setContext] = useState(initial);
   const send = React.useCallback((message: TrackpadMessage) => {
     log.current.push(message);
-    if (message.type !== "textedit") return;
+    if (message.type !== "textedit") {
+      if (message.type === "text" || (message.type === "keydown" && ["ArrowLeft", "ArrowRight", "Backspace"].includes(message.key))) {
+        setContext(current => {
+          if (!current.available || current.editable || current.terminal || current.password || current.protected) return current;
+          const chars = Array.from(current.value);
+          let start = current.selectionStart, end = current.selectionEnd, value = current.value;
+          const boundaries = [0, ...Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value), part => codePointOffset(value, part.index + part.segment.length))];
+          const left = (offset: number) => boundaries.filter(point => point < offset).at(-1) ?? 0;
+          const right = (offset: number) => boundaries.find(point => point > offset) ?? chars.length;
+          if (message.type === "text") {
+            value = chars.slice(0, start).join("") + message.text + chars.slice(end).join("");
+            start = end = start + Array.from(message.text).length;
+          } else if (message.key === "Backspace") {
+            if (start === end) start = left(start);
+            value = chars.slice(0, start).join("") + chars.slice(end).join(""); end = start;
+          } else if (message.modifiers?.includes(Modifier.SHIFT)) {
+            end = message.key === "ArrowLeft" ? left(end) : right(end);
+          } else {
+            start = end = message.key === "ArrowLeft" ? (start !== end ? start : left(start)) : (start !== end ? end : right(end));
+          }
+          return { ...current, value, selectionStart: start, selectionEnd: end, revision: current.revision + 1, requestId: undefined };
+        });
+      }
+      return;
+    }
     setContext(current => {
       const chars = Array.from(current.value);
       const value = message.selectionOnly ? current.value : chars.slice(0, message.start).join("") + message.text + chars.slice(message.end).join("");
@@ -60,11 +84,12 @@ export function Fixture() {
     });
   }, []);
   useEffect(() => { Object.assign(window, { fixture: {
-    log: log.current, context,
+    log: log.current, context, defaults: DEFAULT_SETTINGS,
     setField(patch: Partial<TrackpadMessageTextContext>) { log.current.length = 0; setContext(current => ({ ...initial, ...patch, revision: current.revision + 1 })); },
     setOS(os: string) { useStore.setState({ agentInfo: { os, status: "online", version: "fixture", uptime: "0", hostname: "Fixture", ip_address: "127.0.0.1", port: "0" } }); },
     volumeWrites,
     powerWrites,
+    setAgentVersion(version: string) { useStore.setState({ agentInfo: { os: "linux", status: "online", version, uptime: "0", hostname: "Fixture", ip_address: "127.0.0.1", port: "0" } }); },
     setConnected,
     setStatus(agentStatus: "online" | "offline" | "waking" | "shutting_down") { useStore.setState({ agentStatus }); },
     addTV() { useStore.setState(state => ({ monitors: [...state.monitors, { edid: "fixture-tv", port: "HDMI-1", name: "TV", brightness: 65, manufacturer: "Fixture", capabilities: { brightness: true, power: true, volume: true }, tv_state: { paired: true, pairing: false, on: true, volume: 12, muted: false } }] })); },

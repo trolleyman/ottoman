@@ -32,8 +32,7 @@ export async function checkArrowRepeat(page: Page, reset: (text: string, cursor?
 
 export async function checkRawNavigation(page: Page) {
   for (const context of [
-    { available: true, editable: false, value: "❯ echo hello\noutput", selectionStart: 5, selectionEnd: 5 },
-    { available: true, editable: false, value: "rich text\nsecond line", selectionStart: 1, selectionEnd: 7 },
+    { available: true, editable: false, terminal: true, value: "❯ echo hello\noutput", selectionStart: 5, selectionEnd: 5 },
   ]) {
     await page.evaluate(`window.fixture.setField(${JSON.stringify(context)})`);
     await page.waitForTimeout(60);
@@ -43,7 +42,7 @@ export async function checkRawNavigation(page: Page) {
       const messages = await page.evaluate<{ type: string; key?: string }[]>("window.fixture.log");
       const navigation = messages.filter(message => message.type === "keydown" || message.type === "textedit");
       if (navigation.length !== 1 || navigation[0].type !== "keydown" || navigation[0].key !== key) {
-        throw Error(`Read-only preview must send ${key} unchanged: ${JSON.stringify(messages)}`);
+        throw Error(`Terminal preview must send ${key} unchanged: ${JSON.stringify(messages)}`);
       }
     }
   }

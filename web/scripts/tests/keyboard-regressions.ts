@@ -27,7 +27,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 2, hasTouch: true });
   const errors: string[] = [];
   page.on("pageerror", error => { errors.push(error.message); console.error(error.stack); });
-  await page.addInitScript(() => localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false, interactivePreview: true, tabKey: true, commaKey: true, periodKey: true })));
+  await page.addInitScript(() => localStorage.setItem("ottoman-trackpad-settings", JSON.stringify({ mirrorFocusedText: true, swipeTyping: false, tabKey: true, commaKey: true, periodKey: true })));
   await page.goto(`http://127.0.0.1:${address.port}/__keyboard`);
   await page.locator('[data-letter="q"]').waitFor({ state: "visible" });
   if (await page.getByRole("button", { name: "Close keyboard", exact: true }).count()) throw Error("PC remote must not offer an action to hide its always-visible keyboard");
@@ -343,7 +343,6 @@ try {
   const dismissBox = (await page.getByRole("button", { name: "Dismiss preview", exact: true }).boundingBox())!;
   assert(dotBox.x + dotBox.width <= dismissBox.x && Math.abs(dotBox.y - dismissBox.y) < 2, "Preview status must sit directly left of the dismiss button");
   await openSettings(page);
-  await page.getByRole("switch", { name: "Interact with text preview", exact: true }).click();
   await page.getByRole("button", { name: "Back to keyboard", exact: true }).click();
   await reset("dismiss keeps this text");
   await page.getByRole("button", { name: "Dismiss preview", exact: true }).click();

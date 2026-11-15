@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { House, X, Maximize, Minimize, Monitor, ChevronRight, Volume2, Sun, Settings, LayoutGrid, Power, LogOut, ArrowLeft } from "lucide-react";
+import { BuildVersions } from "./BuildVersions";
 import { ComputerPower } from "./ComputerPower";
 import { followAppLink } from "./navigation";
 import { OttomanWithLogo } from "./OttomanWithLogo";
@@ -112,6 +113,7 @@ export function RemotePage(props: {
         <button onClick={() => void store.logout()}><LogOut />Log out</button>
       </nav>
       {(store.monitorsError || store.audioError) && <p className="remote-notice" role="alert">{store.monitorsError || store.audioError}</p>}
+      <BuildVersions active={visible} agent={store.agentInfo?.version} />
     </aside>
     <div className="remote-content" inert={menuOpen && !wide ? true : undefined}>
       {error && <p role="alert" className="remote-notice">{error}</p>}

@@ -8,6 +8,7 @@ export async function openSettings(page: Page) {
   await openMenu(page);
   await page.getByRole("button", { name: "Keyboard settings", exact: true }).click();
   await page.locator(".input-settings details").evaluateAll(elements => elements.forEach(element => { (element as HTMLDetailsElement).open = true; }));
+  await settleMenu(page);
 }
 export async function openMenu(page: Page) {
   await settleMenu(page);

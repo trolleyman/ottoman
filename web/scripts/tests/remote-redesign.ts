@@ -26,6 +26,8 @@ try {
   });
   const computerActions: string[] = [];
   await page.route(/\/api\/(shutdown|boot|wake)$/, async route => { computerActions.push(`${new URL(route.request().url()).pathname}:${route.request().postData() || ""}`); await route.fulfill({ json: { success: true } }); });
+  let controllerRevision = "controller-test";
+  await page.route("**/api/status", route => route.fulfill({ json: { version: controllerRevision } }));
   let clipboard = "From PC £"; const mediaActions: string[] = [];
   await page.route("**/api/clipboard/text", async route => {
     if (route.request().method() === "POST") { clipboard = route.request().postData() || ""; await route.fulfill({ status: 204 }); }
@@ -65,6 +67,18 @@ try {
   await page.screenshot({ path: `${out}/phone@2x.png` });
   await fixture("addTV()"); await openMenu(page);
   await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector(".remote-build-versions")?.textContent?.includes("controller-test"));
+  const webRevision = await page.locator(".remote-build-versions code").first().textContent();
+  controllerRevision = webRevision!;
+  await fixture(`setAgentVersion(${JSON.stringify(webRevision)})`);
+  await closeMenu(page); await openMenu(page);
+  await page.waitForFunction(() => document.querySelector(".remote-build-versions")?.textContent?.startsWith("Build "));
+  controllerRevision = "controller-test";
+  await fixture('setAgentVersion("agent-test")');
+  await closeMenu(page); await openMenu(page);
+  await page.waitForFunction(() => document.querySelector(".remote-build-versions")?.textContent?.includes("agent-test"));
+  assert(await page.locator(".remote-build-versions code").count() === 3, "Different Web, controller and agent builds must show separately");
+
   await page.waitForFunction(() => (document.querySelector(".remote-media-art img") as HTMLImageElement)?.naturalWidth > 0);
   artwork = "/api/media/artwork?key=broken";
   await page.locator(".remote-media-art svg").waitFor();
@@ -175,6 +189,12 @@ try {
   await page.locator(".custom-keyboard-shell[inert]").waitFor();
   assert(await page.locator(".custom-keyboard-shell").getAttribute("inert") !== null && await pad.isVisible(), "Offline must preserve an inert keyboard and trackpad");
   await page.screenshot({ path: `${out}/disconnected@2x.png` });
+  await openSettings(page);
+  await page.getByRole("switch", { name: "Period beside space", exact: true }).click();
+  await page.getByRole("switch", { name: "Navigate by preview lines", exact: true }).click();
+  await page.getByRole("button", { name: "Reset all settings to defaults", exact: true }).click();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ottoman-trackpad-settings")!) as Record<string, unknown>);
+  assert(JSON.stringify(saved) === JSON.stringify(await fixture("defaults")), "Reset must restore every keyboard and trackpad preference, including phone navigation and optional keys");
   assert(!errors.length, errors.join("\n"));
   console.log("PASS: responsive shell, native editing, fixed field, media capabilities, bidirectional clipboard, configurable right-click, emoji widths and disconnected remote");
   console.log(out);

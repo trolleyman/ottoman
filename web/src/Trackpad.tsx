@@ -1,3 +1,4 @@
+import { useOverflowFade } from "./useOverflowFade";
 import { PreviewViewport } from "./PreviewViewport";
 import { TERMINAL_FONTS } from "./trackpadSettings";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -310,7 +311,7 @@ function TouchArea({
       if (e.nativeEvent.isComposing || composing.current) return;
       const view = remoteModel.current!.view;
       if (settings.previewNavigation && !view?.password && !view?.protected &&
-        (!view?.available || view.editable) && !e.ctrlKey && !e.altKey && !e.metaKey &&
+        !view?.terminal && !e.ctrlKey && !e.altKey && !e.metaKey &&
         /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(e.key)) return;
       if (
         e.key === "Unidentified" ||
@@ -327,6 +328,37 @@ function TouchArea({
     [sendKeyPress, activeModifiers, dismissDraft, settings.previewNavigation],
   );
 
+  const selectRichText = useCallback((start: number, end: number) => {
+    const view = remoteModel.current!.view;
+    if (!view?.available || view.editable || view.terminal || view.password || view.protected ||
+      start < view.windowStart || end < start || end > view.windowStart + characterCount(view.value)) return false;
+    const steps = (from: number, to: number) => {
+      const text = Array.from(view.value).slice(Math.min(from, to) - view.windowStart, Math.max(from, to) - view.windowStart).join("");
+      return Array.from(new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)).length;
+    };
+    let cursor = view.selectionEnd;
+    if (view.selectionStart !== view.selectionEnd) {
+      sendKeyPress("ArrowRight"); cursor = Math.max(view.selectionStart, view.selectionEnd);
+    }
+    for (let i = 0; i < steps(cursor, start); i++) sendKeyPress(start < cursor ? "ArrowLeft" : "ArrowRight");
+    for (let i = 0; i < steps(start, end); i++) sendKeyPress("ArrowRight", [Modifier.SHIFT]);
+    remoteModel.current!.view = { ...view, selectionStart: start, selectionEnd: end };
+    setRemote(remoteModel.current!.view);
+    return true;
+  }, [sendKeyPress]);
+
+  const editRichText = useCallback((start: number, end: number, text: string) => {
+    if (!selectRichText(start, end)) return;
+    const view = remoteModel.current!.view!;
+    if (start !== end) sendKeyPress("Backspace");
+    if (text) send({ type: "text", text });
+    const chars = Array.from(view.value);
+    const value = chars.slice(0, start - view.windowStart).join("") + text + chars.slice(end - view.windowStart).join("");
+    const caret = start + characterCount(text);
+    remoteModel.current!.view = { ...view, value, selectionStart: caret, selectionEnd: caret };
+    setRemote(remoteModel.current!.view);
+  }, [selectRichText, sendKeyPress, send]);
+
   const handleTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const next = e.currentTarget.value;
@@ -339,9 +371,9 @@ function TouchArea({
         return;
       }
       const view = remoteModel.current!.view;
-      if (view?.available && view.editable && !view.password && !view.protected) {
+      if (view?.available && !view.terminal && !view.password && !view.protected) {
         const edit = diffText(view.value, next);
-        if (edit) replaceRemote(
+        if (edit) (view.editable ? replaceRemote : editRichText)(
           view.windowStart + codePointOffset(view.value, edit.start),
           view.windowStart + codePointOffset(view.value, edit.start + edit.removed.length), edit.inserted,
         );
@@ -370,7 +402,7 @@ function TouchArea({
       showDraftIndicator();
       moveRemoteCursor(characterCount(next.slice(0, e.currentTarget.selectionEnd)));
     },
-    [moveRemoteCursor, replaceRemote, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft, draftSelection],
+    [moveRemoteCursor, replaceRemote, editRichText, send, sendKeyPress, showDraftIndicator, activeModifiers, dismissDraft, draftSelection],
   );
 
   const handleSelection = useCallback(
@@ -378,15 +410,18 @@ function TouchArea({
       const input = e.currentTarget;
       if (composing.current) return;
       const view = remoteModel.current!.view;
-      if (view?.available && view.editable && !view.password && !view.protected) {
+      if (view?.available && !view.terminal && !view.password && !view.protected) {
         // A delayed selection event can describe an older controlled value.
         if (input.value !== view.value) return;
         const start = view.windowStart + codePointOffset(input.value, input.selectionStart);
         const end = view.windowStart + codePointOffset(input.value, input.selectionEnd);
-        if (start !== view.selectionStart || end !== view.selectionEnd) replaceRemote(start, end, "", true);
+        if (start !== view.selectionStart || end !== view.selectionEnd) {
+          if (view.editable) replaceRemote(start, end, "", true);
+          else selectRichText(start, end);
+        }
         return;
       }
-      if (view?.password || view?.protected) return;
+      if (view?.password || view?.protected || view?.terminal) return;
       const start = codePointOffset(input.value, input.selectionStart);
       const end = codePointOffset(input.value, input.selectionEnd);
       if (draftSelection?.[0] === start && draftSelection[1] === end) return;
@@ -408,7 +443,7 @@ function TouchArea({
         moveRemoteCursor(characterCount(input.value.slice(0, input.selectionEnd)));
       }
     },
-    [moveRemoteCursor, replaceRemote, showDraftIndicator, sendKeyPress, draftSelection],
+    [moveRemoteCursor, replaceRemote, selectRichText, showDraftIndicator, sendKeyPress, draftSelection],
   );
 
   useEffect(() => {
@@ -497,8 +532,8 @@ function TouchArea({
 
   const selectPreview = (offset: number, extend = false) => {
     const view = remoteModel.current!.view;
-    // Read-only and protected desktop contexts retain their original key path.
-    if (view?.password || view?.protected || (view?.available && !view.editable)) return false;
+    // Terminals and protected fields retain their original key path.
+    if (view?.password || view?.protected || view?.terminal) return false;
     const value = view?.available ? view.value : draftRef.current;
     const windowStart = view?.available ? view.windowStart : 0;
     revealPhoneCaret.current = true;
@@ -506,7 +541,9 @@ function TouchArea({
     const current = view?.available ? view.selectionStart : remoteCursor.current;
     const anchor = extend ? navigationAnchor.current ?? current : target;
     navigationAnchor.current = extend ? anchor : null;
-    if (view?.available) return replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true);
+    if (view?.available) return view.editable
+      ? replaceRemote(Math.min(anchor, target), Math.max(anchor, target), "", true)
+      : selectRichText(Math.min(anchor, target), Math.max(anchor, target));
     if (draftSelection) {
       sendKeyPress("ArrowRight");
       remoteCursor.current = Math.max(...draftSelection);
@@ -525,8 +562,8 @@ function TouchArea({
   const navigate = (key: string) => {
     const view = remoteModel.current!.view;
     const modifiers = modifierState.current.active;
-    const local = !view?.available && !!draftRef.current && !view?.password && !view?.protected;
-    if (settings.previewNavigation && previewRef.current && (local || (view?.available && view.editable && !view.password && !view.protected)) &&
+    const local = !view?.available && !!draftRef.current && !view?.password && !view?.protected && !view?.terminal;
+    if (settings.previewNavigation && previewRef.current && (local || (view?.available && !view.terminal && !view.password && !view.protected)) &&
       !modifiers.some(modifier => modifier !== Modifier.SHIFT) && /^(Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown)$/.test(key)) {
       const value = view?.available ? view.value : draftRef.current;
       const start = view?.available ? view.selectionStart : draftSelection?.[0] ?? remoteCursor.current;
@@ -556,7 +593,7 @@ function TouchArea({
     const root = previewRef.current;
     const view = remoteModel.current!.view;
     if (phase === "end") { dragOrigin.current = null; setCursorDrag(null); return false; }
-    if (!root || view?.password || view?.protected || (view?.available && !view.editable)) return false;
+    if (!root || view?.password || view?.protected || view?.terminal) return false;
     const value = view?.available ? view.value : draftRef.current;
     const windowStart = view?.available ? view.windowStart : 0;
     const position = view?.available ? view.selectionEnd : remoteCursor.current;
@@ -567,9 +604,9 @@ function TouchArea({
       const point = positions.find(point => point.offset === offset);
       if (!point) return false;
       const caret = root.querySelector<HTMLElement>("[data-preview-caret]")?.getBoundingClientRect();
-      const left = (caret?.left ?? point.x) - bounds.left;
-      const top = (caret?.top ?? point.y) - bounds.top;
       const height = caret?.height || point.height || 20;
+      const left = Math.max(4, Math.min(bounds.width - 4, (caret?.left ?? point.x) - bounds.left));
+      const top = Math.max(0, Math.min(bounds.height - height, (caret?.top ?? point.y) - bounds.top));
       const widths = positions.slice(1).flatMap((point, index) => {
         const previous = positions[index];
         const width = point.x - previous.x;
@@ -1147,7 +1184,8 @@ function TouchArea({
   const previewSelectionEnd = remote?.password ? preview.length : remote?.available ? utf16Offset(preview, remote.selectionEnd - remote.windowStart) : draftSelection ? utf16Offset(preview, Math.max(...draftSelection)) : draftCursor;
 
   const hasPreview = !!(preview || remote?.available || remote?.password) && draftVisible;
-  const nativePreview = !remote?.password && !remote?.protected && (!remote?.available || remote.editable);
+  const nativePreview = !remote?.password && !remote?.protected && !remote?.terminal;
+  useOverflowFade(inputRef, nativePreview && hasPreview ? preview : null);
   const previewStatus = <>
     <span role="status" aria-label={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
       title={settings.mirrorFocusedText ? textMirroringStatus(connected, remote) : "Desktop text: mirroring is off"}
@@ -1232,16 +1270,8 @@ function TouchArea({
             {nativePreview && <div ref={previewRef} aria-hidden="true" className="native-preview-ruler">
               <CaretText value={preview} cursor={previewCursor} selectionEnd={previewSelectionEnd} variant="preview" dragging={cursorDrag !== null} className="whitespace-pre-wrap break-words px-[10px] py-2 text-base leading-6 [overflow-wrap:anywhere]" />
             </div>}
-            {!nativePreview && <PreviewViewport interactive={settings.interactivePreview}>
-              <div ref={previewRef} className="relative shrink-0 touch-pan-y select-none" aria-live="polite" aria-atomic="true"
-                onPointerDown={(event) => { touchStartPos.current = { x: event.clientX, y: event.clientY }; }}
-                onPointerUp={(event) => {
-                  const start = touchStartPos.current;
-                  touchStartPos.current = null;
-                  if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
-                  const offset = previewHit(event.currentTarget, event.clientX, event.clientY);
-                  if (offset !== undefined) { navigationX.current = undefined; selectPreview(offset); showDraftIndicator(); }
-                }}
+            {!nativePreview && <PreviewViewport>
+              <div ref={previewRef} className="relative shrink-0 touch-pan-y select-text" aria-live="polite" aria-atomic="true"
                 aria-label={remote?.password ? "Password field. Contents hidden." : undefined}
                 data-password-preview={remote?.password || undefined}
                 data-terminal-preview={remote?.terminal || undefined}
@@ -1259,11 +1289,12 @@ function TouchArea({
         {connected && (
           <ScrollRail send={send} sensitivity={settings.scrollSensitivity} friction={settings.scrollFriction} haptics={settings.haptics} onInteract={dismissDraft} />
         )}
+        {nativePreview && hasPreview && connected && <div className="native-text-frame" aria-hidden="true" />}
         {(
           <textarea
             ref={inputRef}
             rows={2}
-            value={compositionValue ?? (remote?.available && remote.editable && !remote.password && !remote.protected ? remote.value : draft)}
+            value={compositionValue ?? (remote?.available && !remote.terminal && !remote.password && !remote.protected ? remote.value : draft)}
             disabled={!connected || !inputEnabled}
             aria-label="Remote text"
             className={nativePreview && hasPreview && connected ? "remote-native-text" : "remote-native-text remote-native-hidden"}

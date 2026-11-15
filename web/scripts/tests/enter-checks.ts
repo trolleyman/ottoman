@@ -57,7 +57,7 @@ export async function checkEnter(page: Page) {
     }, inputType);
     await assertEnter();
   }
-  await fixture("configure({ interactivePreview: true })");
+  await fixture("configure({})");
   await setField({ fieldId: "fixture" });
   console.log("PASS: Enter sends native key events in login, terminal and text fields; Shift/Ctrl/Alt+Enter and device Return preserve key semantics");
 }
