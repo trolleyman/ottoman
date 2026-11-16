@@ -85,12 +85,14 @@ export function RemotePage(props: {
   const stepVolume = useCallback((delta: number) => { const id = selectedRef.current; if (id) controls.current.get(id)?.step(delta); }, [selectedRef]);
   const visible = wide ? !sidebarClosed : menuOpen;
   useEffect(() => { if (visible) menu.current?.scrollTo({ top: 0 }); }, [visible]);
+  const connectionStatus = props.connected ? "Connected" : props.connecting ? "Connecting" : "Disconnected";
   const navigate = (next: Panel) => { setPanel(next); setMenuOpen(false); };
   return <main className={`pc-remote ${wide && !sidebarClosed ? "remote-has-sidebar" : ""}`}>
     <header className="remote-header">
       <button ref={menuButton} type="button" aria-label="Open menu" aria-expanded={visible} aria-controls="remote-menu" onClick={() => wide ? setSidebarClosed(value => !value) : setMenuOpen(value => !value)}><span className="remote-menu-icon" aria-hidden="true"><i /><i /><i /></span></button>
-      <div><h1>PC remote</h1><span className="remote-connection"><i data-connected={props.connected} />{store.agentInfo?.hostname || "Computer"} · {props.connected ? "Connected" : props.connecting ? "Connecting" : "Disconnected"}</span></div>
+      <h1>{store.agentInfo?.hostname || "Computer"} · {connectionStatus}</h1>
       {document.fullscreenEnabled && <button className="remote-fullscreen" aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => { setError(""); void (fullscreen ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setError("Fullscreen could not open.")); }}>{fullscreen ? <Minimize /> : <Maximize />}</button>}
+      <span className="remote-connection" role="status" aria-label={connectionStatus} title={connectionStatus}><i data-connected={props.connected} aria-hidden="true" /></span>
     </header>
     <button className="remote-menu-scrim" data-open={menuOpen && !wide} aria-hidden={!menuOpen || wide} inert={!menuOpen || wide} tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} />
     <aside ref={menu} id="remote-menu" className="remote-menu" data-open={visible} inert={!visible} aria-hidden={!visible} role={!wide ? "dialog" : undefined} aria-modal={!wide ? true : undefined} aria-label="Desktop controls">
