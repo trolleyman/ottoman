@@ -90,7 +90,7 @@ export function RemotePage(props: {
   return <main className={`pc-remote ${wide && !sidebarClosed ? "remote-has-sidebar" : ""}`}>
     <header className="remote-header">
       <button ref={menuButton} type="button" aria-label="Open menu" aria-expanded={visible} aria-controls="remote-menu" onClick={() => wide ? setSidebarClosed(value => !value) : setMenuOpen(value => !value)}><span className="remote-menu-icon" aria-hidden="true"><i /><i /><i /></span></button>
-      <h1>{store.agentInfo?.hostname || "Computer"} · {connectionStatus}</h1>
+      <h1>{store.agentInfo?.hostname || "Computer"}</h1>
       {document.fullscreenEnabled && <button className="remote-fullscreen" aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => { setError(""); void (fullscreen ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setError("Fullscreen could not open.")); }}>{fullscreen ? <Minimize /> : <Maximize />}</button>}
       <span className="remote-connection" role="status" aria-label={connectionStatus} title={connectionStatus}><i data-connected={props.connected} aria-hidden="true" /></span>
     </header>
