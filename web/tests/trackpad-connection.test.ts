@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, jest, mock, test } from "bun:t
 import { createTrackpadConnection } from "../src/trackpadConnection";
 
 class FakeWebSocket {
+  static CONNECTING = 0;
   static OPEN = 1;
   static instances: FakeWebSocket[] = [];
   readyState = 1;
@@ -14,13 +15,33 @@ class FakeWebSocket {
 }
 
 const OriginalWebSocket = globalThis.WebSocket;
+const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+let page: EventTarget & { visibilityState: string };
+let browser: EventTarget;
+function hide() {
+  page.visibilityState = "hidden";
+  page.dispatchEvent(new Event("visibilitychange"));
+}
+function show() {
+  page.visibilityState = "visible";
+  page.dispatchEvent(new Event("visibilitychange"));
+}
 beforeEach(() => {
   jest.useFakeTimers();
+  page = Object.assign(new EventTarget(), { visibilityState: "visible" });
+  browser = new EventTarget();
+  Object.defineProperty(globalThis, "document", { configurable: true, value: page });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: browser });
   FakeWebSocket.instances = [];
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 });
 afterEach(() => {
   jest.useRealTimers();
+  if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+  else Reflect.deleteProperty(globalThis, "document");
+  if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+  else Reflect.deleteProperty(globalThis, "window");
   globalThis.WebSocket = OriginalWebSocket;
 });
 
@@ -86,6 +107,47 @@ describe("trackpad connection lifecycle", () => {
     jest.advanceTimersByTime(1);
     expect(FakeWebSocket.instances).toHaveLength(2);
     connection.dispose();
+  });
+
+  test("returning to the page immediately replaces a delayed retry", () => {
+    const { connection, socket, state } = setup();
+    hide();
+    socket.onclose!();
+    show();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(state).toHaveBeenLastCalledWith({ connected: false, connecting: true });
+    browser.dispatchEvent(new Event("online"));
+    FakeWebSocket.instances[1].readyState = FakeWebSocket.CONNECTING;
+    browser.dispatchEvent(new Event("online"));
+    jest.advanceTimersByTime(3000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    connection.dispose();
+  });
+
+  test("resume replaces an apparently live socket and ignores its queued events", () => {
+    const { connection, socket, state } = setup();
+    socket.message('{"type":"connected"}');
+    const queuedClose = socket.onclose!;
+    hide();
+    show();
+    expect(socket.close).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    queuedClose();
+    expect(state).toHaveBeenLastCalledWith({ connected: false, connecting: true });
+    connection.dispose();
+  });
+
+  test("restoring from the back-forward cache reconnects immediately", () => {
+    const { connection, socket } = setup();
+    socket.message('{"type":"connected"}');
+    browser.dispatchEvent(new Event("pagehide"));
+    browser.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    connection.dispose();
+    hide();
+    show();
+    browser.dispatchEvent(new Event("online"));
+    expect(FakeWebSocket.instances).toHaveLength(2);
   });
 
   test("disposal before startup prevents the first socket from opening", () => {

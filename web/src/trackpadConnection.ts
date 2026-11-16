@@ -16,6 +16,7 @@ export function createTrackpadConnection(
   let retry: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let connected = false;
+  let suspended = document.visibilityState === "hidden";
 
   const closeSocket = () => {
     if (!socket) return;
@@ -27,7 +28,10 @@ export function createTrackpadConnection(
 
   const connect = () => {
     if (disposed || connected) return;
+    if (retry === undefined && socket &&
+      (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) return;
     clearTimeout(retry);
+    retry = undefined;
     closeSocket();
     onState({ connected: false, connecting: true });
     const current = new WebSocket(url);
@@ -54,6 +58,29 @@ export function createTrackpadConnection(
     };
   };
 
+  const suspend = () => { suspended = true; };
+  const resume = () => {
+    if (document.visibilityState === "hidden") return;
+    if (suspended) {
+      // A suspended page can retain an apparently open but dead socket.
+      suspended = false;
+      connected = false;
+      closeSocket();
+    }
+    connect();
+  };
+  const visibilityChanged = () => {
+    if (document.visibilityState === "hidden") suspend();
+    else resume();
+  };
+  const pageShown = (event: PageTransitionEvent) => {
+    if (event.persisted) resume();
+  };
+  document.addEventListener("visibilitychange", visibilityChanged);
+  window.addEventListener("pagehide", suspend);
+  window.addEventListener("pageshow", pageShown);
+  window.addEventListener("online", resume);
+
   // Schedule the initial connection so creating the owner has no synchronous
   // React state updates. Cleanup also cancels this during StrictMode's probe.
   retry = setTimeout(connect, 0);
@@ -64,6 +91,10 @@ export function createTrackpadConnection(
     },
     dispose() {
       disposed = true;
+      document.removeEventListener("visibilitychange", visibilityChanged);
+      window.removeEventListener("pagehide", suspend);
+      window.removeEventListener("pageshow", pageShown);
+      window.removeEventListener("online", resume);
       clearTimeout(retry);
       closeSocket();
     },
