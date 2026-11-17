@@ -91,7 +91,9 @@ func testControllerConfig(agentURL string) *config.ControllerConfig {
 // redirected into the test's temp dir.
 func newTestController(t *testing.T, agentURL string) *Controller {
 	t.Helper()
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("LOCALAPPDATA", dir)
 	c, err := New(testControllerConfig(agentURL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -193,7 +195,9 @@ func TestGetLayoutsReportsPendingFromTheAgent(t *testing.T) {
 }
 
 func TestLayoutsMirrorRoundTrip(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("LOCALAPPDATA", dir)
 
 	if _, ok := mirroredLayouts(); ok {
 		t.Error("mirroredLayouts reported a mirror before one was written")

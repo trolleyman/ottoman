@@ -10,6 +10,8 @@ export function ClientStatus() {
   const storeShutdown = useStore((s) => s.shutdown);
   const storeReboot = useStore((s) => s.reboot);
 
+  const bootTarget = clientInfo?.os === "windows" ? "linux" : "windows";
+  const bootLabel = bootTarget === "linux" ? "Linux" : "Windows";
   const [busy, setBusy] = useState(false);
 
   const wake = async (target?: "linux" | "windows") => {
@@ -32,7 +34,7 @@ export function ClientStatus() {
   };
 
   const reboot = async (target: "linux" | "windows") => {
-    if (!confirm(`Are you sure you want to ${target === "windows" ? "reboot into Windows" : "reboot"}?`)) return;
+    if (!confirm(`Are you sure you want to ${target === "windows" ? "reboot into Windows" : "reboot into Linux"}?`)) return;
     setBusy(true);
     try {
       await storeReboot(target);
@@ -102,13 +104,13 @@ export function ClientStatus() {
           {isOnline && (
             <>
               <button
-                onClick={() => void reboot("windows")}
+                onClick={() => void reboot(bootTarget)}
                 disabled={isBusy}
                 className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-zinc-700/60 hover:bg-zinc-600 text-zinc-200 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
-                title="Reboot into Windows once"
+                title={`Restart to ${bootLabel}`}
               >
                 <RotateCcw className="w-4 h-4 shrink-0" />
-                Restart to Windows
+                Restart to {bootLabel}
               </button>
               <button
                 onClick={() => void shutdown()}

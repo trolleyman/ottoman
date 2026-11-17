@@ -635,12 +635,10 @@ func getDisplayPathsFromConfig() ([]displayPathInfo, error) {
 func (m *WindowsManager) ApplyLayoutConfig(layout api.Layout) error {
 	log.Printf("Applying layout: %s (%s)", layout.Id, layout.Name)
 
-	// Build map of EDIDs that should be enabled with their config
-	monitorsByEdid := make(map[string]api.LayoutMonitor)
-	for _, mon := range layout.Monitors {
-		monitorsByEdid[mon.Edid] = mon
-	}
+	return setWindowsLayout(layout, SDC_APPLY|SDC_SAVE_TO_DATABASE)
+}
 
+func setWindowsLayout(layout api.Layout, operation uint32) error {
 	// Get all display path info
 	pathInfos, err := getDisplayPathsFromConfig()
 	if err != nil {
@@ -657,7 +655,8 @@ func (m *WindowsManager) ApplyLayoutConfig(layout api.Layout) error {
 	var monitorData []monitorModeData
 	sourceIdCounter := uint32(0)
 
-	for edid, layoutMon := range monitorsByEdid {
+	for _, layoutMon := range layout.Monitors {
+		edid := layoutMon.Edid
 		// Find the path info for this EDID
 		var info *displayPathInfo
 		for i := range pathInfos {
@@ -668,8 +667,7 @@ func (m *WindowsManager) ApplyLayoutConfig(layout api.Layout) error {
 		}
 
 		if info == nil {
-			log.Printf("WARNING: No path found for EDID %s", edid)
-			continue
+			return fmt.Errorf("monitor %s is unavailable", edid)
 		}
 
 		monitorData = append(monitorData, monitorModeData{
@@ -750,7 +748,7 @@ func (m *WindowsManager) ApplyLayoutConfig(layout api.Layout) error {
 	modes := append(targetModes, sourceModes...)
 
 	// Apply the configuration
-	flags := uint32(SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE)
+	flags := operation | SDC_USE_SUPPLIED_DISPLAY_CONFIG
 	ret, _, _ := procSetDisplayConfig.Call(
 		uintptr(len(paths)),
 		uintptr(unsafe.Pointer(&paths[0])),

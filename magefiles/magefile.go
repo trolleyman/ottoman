@@ -610,6 +610,11 @@ func DeployAgent() error {
 		}
 	}
 
+	// Build for current platform
+	if err := Build(); err != nil {
+		return fmt.Errorf("build failed: %w", err)
+	}
+
 	// Stop existing service/process to allow binary overwrite
 	if runtime.GOOS == "windows" {
 		run("schtasks", "/End", "/TN", "OttomanAgent")
@@ -617,11 +622,6 @@ func DeployAgent() error {
 		run("taskkill", "/F", "/IM", "ottoman.exe")
 	} else {
 		run("systemctl", "--user", "stop", "ottoman-agent")
-	}
-
-	// Build for current platform
-	if err := Build(); err != nil {
-		return fmt.Errorf("build failed: %w", err)
 	}
 
 	// Get built binary path
@@ -775,20 +775,13 @@ func DeployController() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Stop service if running (ignore errors as it might not exist yet)
-	_ = runRemote("ssh", cfg.Controller.SSHTarget, "systemctl --user stop ottoman-controller")
-
-	// Copy binary. rsync writes a temp file and renames, so unlike scp it can't
-	// hit ETXTBSY overwriting a previously running binary (no rm needed first),
-	// and leaving the old file in place lets its delta transfer skip unchanged
-	// blocks — much faster to a Pi over wifi.
-	if err := runRemote("rsync", "-az", binaryPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, remotePath(cfg.Controller.DeployPath))); err != nil {
-		return fmt.Errorf("failed to copy binary: %w", err)
+	// Stage the upload beside the live binary so a failed transfer leaves the Pi running.
+	staged := fmt.Sprintf("%s.upload-%d", cfg.Controller.DeployPath, os.Getpid())
+	if err := upload(cfg.Controller.SSHTarget, binaryPath, staged); err != nil {
+		return err
 	}
-
-	// Make executable
-	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`chmod +x "%s"`, expandPath(cfg.Controller.DeployPath))); err != nil {
-		return fmt.Errorf("failed to chmod: %w", err)
+	if err := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`chmod +x "%s" && mv -f "%s" "%s"`, expandPath(staged), expandPath(staged), expandPath(cfg.Controller.DeployPath))); err != nil {
+		return err
 	}
 
 	// Write config file, but only if the remote has none yet: a redeploy must
@@ -797,7 +790,7 @@ func DeployController() error {
 	configExists := runRemote("ssh", cfg.Controller.SSHTarget, fmt.Sprintf(`test -f "%s"`, remoteConfig)) == nil
 	if configExists {
 		fmt.Printf("Remote config already exists at %s - leaving it untouched.\n", cfg.Controller.ConfigPath)
-	} else if err := runRemote("rsync", "-az", controllerConfigPath, fmt.Sprintf("%s:%s", cfg.Controller.SSHTarget, remotePath(cfg.Controller.ConfigPath))); err != nil {
+	} else if err := upload(cfg.Controller.SSHTarget, controllerConfigPath, cfg.Controller.ConfigPath); err != nil {
 		return fmt.Errorf("failed to copy config: %w", err)
 	}
 
@@ -809,6 +802,14 @@ func DeployController() error {
 
 	fmt.Println("\n=== Controller deployment complete! ===")
 	return nil
+}
+
+func upload(host, local, remote string) error {
+	dest := host + ":" + remotePath(remote)
+	if runtime.GOOS == "windows" {
+		return runRemote("scp", local, dest)
+	}
+	return runRemote("rsync", "-az", local, dest)
 }
 
 func DeployAll() error {

@@ -233,8 +233,6 @@ func installWindowsService() error {
 	}
 
 	// Clean up previous installations (ignore errors)
-	common.RunCmdSilent("schtasks", "/End", "/TN", "OttomanAgent")
-	common.RunCmdSilent("schtasks", "/Delete", "/TN", "OttomanAgent", "/F")
 	common.RunCmdSilent("schtasks", "/End", "/TN", "OttomanHotkeys")
 	common.RunCmdSilent("schtasks", "/Delete", "/TN", "OttomanHotkeys", "/F")
 
@@ -254,19 +252,36 @@ func installWindowsService() error {
 
 	// Create XML definition
 	xmlContent := fmt.Sprintf(taskXmlTemplate, "Ottoman Display Control Agent", currentUser.Username, "wscript.exe", fmt.Sprintf(`//nologo "%s"`, agentVbsPath))
-	xmlPath := filepath.Join(configDir, "ottoman_task.xml")
-	if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
-		return errors.Wrap(err, "failed to write task XML")
+	// Task Scheduler normalizes imported XML. Compare its effective settings.
+	const checkTask = `$t = Get-ScheduledTask -TaskName OttomanAgent -ErrorAction SilentlyContinue
+$account = $t.Principal.UserId
+if ($account -and $account -notlike 'S-1-*') {
+    $account = ([System.Security.Principal.NTAccount]$account).Translate([System.Security.Principal.SecurityIdentifier]).Value
+}
+if ($t -and $t.Settings.Enabled -and $t.Settings.Hidden -and $t.Actions.Count -eq 1 -and
+    $t.Actions[0].Execute -eq 'wscript.exe' -and $t.Actions[0].Arguments -eq $env:OTTOMAN_TASK_ARGS -and
+    $account -eq $env:OTTOMAN_TASK_SID -and
+    $t.Principal.RunLevel -eq 'Limited' -and $t.Principal.LogonType -eq 'Interactive' -and
+    $t.Triggers.Count -eq 1 -and $t.Triggers[0].Enabled -and
+    $t.Triggers[0].CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger') { exit 0 }
+exit 1`
+	check := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", checkTask)
+	check.Env = append(os.Environ(), "OTTOMAN_TASK_SID="+currentUser.Uid,
+		"OTTOMAN_TASK_ARGS="+fmt.Sprintf(`//nologo "%s"`, agentVbsPath))
+	if check.Run() == nil {
+		log.Println("Reusing existing OttomanAgent login task.")
+	} else {
+		xmlPath := filepath.Join(configDir, "ottoman_task.xml")
+		if err := os.WriteFile(xmlPath, []byte(xmlContent), 0644); err != nil {
+			return err
+		}
+		defer os.Remove(xmlPath)
+		if err := runSchtasks("/Create", "/TN", "OttomanAgent", "/XML", xmlPath, "/F"); err != nil {
+			return err
+		}
+		log.Println("Task Scheduler task installed successfully!")
 	}
-	defer os.Remove(xmlPath) // Cleanup temp file
 
-	// Register Task
-	// /F forces overwrite
-	if err := runSchtasks("/Create", "/TN", "OttomanAgent", "/XML", xmlPath, "/F"); err != nil {
-		return err
-	}
-
-	log.Println("Task Scheduler task installed successfully!")
 	log.Println()
 	log.Println("The agent will start automatically at login (hidden).")
 	log.Println("To start now, run: schtasks /Run /TN OttomanAgent")

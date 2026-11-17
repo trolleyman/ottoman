@@ -89,7 +89,7 @@ func TestListenConflictHintWithoutTailscale(t *testing.T) {
 }
 
 func TestListenWithRetryFailsFastOnAServeConflict(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("setting up listener: %v", err)
 	}
@@ -101,8 +101,8 @@ func TestListenWithRetryFailsFastOnAServeConflict(t *testing.T) {
 	stubServeStatus(t, `{"TCP": {"`+port+`": {}}}`, true)
 
 	// The port is held and tailscale serve claims it, so this must not spend the
-	// retry window waiting for a holder that will never leave. Binding the
-	// wildcard here would also hit the loopback listener above.
+	// retry window waiting for a holder that will never leave. Use the same wildcard
+	// address on both listeners so the conflict is portable.
 	start := time.Now()
 	if _, err := ListenWithRetry("tcp", ":"+port); err == nil {
 		t.Fatal("expected a bind conflict")

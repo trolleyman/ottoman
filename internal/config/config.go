@@ -54,6 +54,7 @@ type ControllerConfig struct {
 
 // AgentControllerConfig holds the configuration for how to contact the agent.
 type AgentControllerConfig struct {
+	Socket     string `json:"socket,omitempty"` // Optional private SSH forward for the alternate OS.
 	MACAddress string `json:"mac_address"`
 
 	// URL is the agent's base URL, scheme included. The scheme decides how the
@@ -153,6 +154,7 @@ func localAuthRequired(v *bool) bool { return v == nil || *v }
 // "boot into Linux" is a plain reboot, while "boot into Windows" needs a name to
 // hand grub-reboot for a one-shot next boot.
 type BootConfig struct {
+	LinuxDefault bool   `json:"linux_default"` // Windows restarts into the verified firmware/GRUB default.
 	WindowsEntry string `json:"windows_entry"` // GRUB menuentry name for Windows
 }
 
@@ -312,6 +314,12 @@ func ensureConfigDir(path string) error {
 func setAgent(w *viper.Viper, cfg *AgentConfig) {
 	w.Set("agent.listen_address", cfg.ListenAddress)
 	w.Set("agent.auth_token", cfg.AuthToken)
+	if cfg.Boot.LinuxDefault {
+		w.Set("agent.boot.linux_default", true)
+	}
+	if cfg.Boot.WindowsEntry != "" {
+		w.Set("agent.boot.windows_entry", cfg.Boot.WindowsEntry)
+	}
 	// Always written, not only when true: the default is the strict setting, so
 	// a file that omits the key looks the same as one that turned it off.
 	w.Set("agent.require_local_auth", cfg.LocalAuthRequired())
@@ -378,6 +386,9 @@ func setController(w *viper.Viper, cfg *ControllerConfig) {
 	// Write the modern key only: a config round-tripped through `config init`
 	// comes back with url and no ip_address/port to disagree with it.
 	w.Set("controller.agent.url", cfg.Agent.resolvedURL())
+	if cfg.Agent.Socket != "" {
+		w.Set("controller.agent.socket", cfg.Agent.Socket)
+	}
 }
 
 // SaveController writes controller configuration to a file

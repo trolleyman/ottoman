@@ -66,7 +66,7 @@ var _ api.StrictServerInterface = (*Controller)(nil)
 // agentURL builds an absolute URL for a path on the agent, carrying whatever
 // scheme the config asked for. path must start with "/".
 func (c *Controller) agentURL(path string) string {
-	u := *c.agentBase
+	u := *c.activeAgentBase()
 	u.Path = strings.TrimSuffix(u.Path, "/") + path
 	return u.String()
 }
@@ -74,13 +74,28 @@ func (c *Controller) agentURL(path string) string {
 // agentWebSocketURL is agentURL for a WebSocket endpoint: https implies wss,
 // http implies ws, so a TLS-fronted agent doesn't get dialled in the clear.
 func (c *Controller) agentWebSocketURL(path string) string {
-	u := *c.agentBase
-	u.Scheme = "ws"
-	if c.agentBase.Scheme == "https" {
+	u := *c.activeAgentBase()
+	if u.Scheme == "https" {
 		u.Scheme = "wss"
+	} else {
+		u.Scheme = "ws"
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/") + path
 	return u.String()
+}
+
+// A Windows session can forward its agent to an owner-only Unix socket on the Pi.
+const tunnelHost = "ottoman-agent.invalid"
+
+func (c *Controller) activeAgentBase() *url.URL {
+	if c.config != nil && c.config.Agent.Socket != "" {
+		conn, err := net.DialTimeout("unix", c.config.Agent.Socket, time.Second)
+		if err == nil {
+			conn.Close()
+			return &url.URL{Scheme: "http", Host: tunnelHost}
+		}
+	}
+	return c.agentBase
 }
 
 // New creates a new controller instance
@@ -105,6 +120,24 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		localIP:   getOutboundIP(),
 
 		pendingPollInterval: defaultPendingPollInterval,
+	}
+
+	if socket := config.Agent.Socket; socket != "" {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		dial := transport.DialContext
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if addr == tunnelHost+":80" {
+				return dial(ctx, "unix", socket)
+			}
+			return dial(ctx, network, addr)
+		}
+		transport.Proxy = func(r *http.Request) (*url.URL, error) {
+			if r.URL.Hostname() == tunnelHost {
+				return nil, nil
+			}
+			return http.ProxyFromEnvironment(r)
+		}
+		c.client.Transport = transport
 	}
 
 	// TV mirror. These cache files hold a copy of the agent's TV registry +
@@ -630,7 +663,7 @@ func (c *Controller) handleTrackpadWebSocket(w http.ResponseWriter, r *http.Requ
 
 	// Dial client WebSocket
 	clientURL := c.agentWebSocketURL("/api/trackpad")
-	dialOpts := &websocket.DialOptions{}
+	dialOpts := &websocket.DialOptions{HTTPClient: &http.Client{Transport: c.client.Transport}}
 	if c.config.AuthToken != "" {
 		dialOpts.HTTPHeader = http.Header{
 			"Authorization": []string{"Bearer " + c.config.AuthToken},

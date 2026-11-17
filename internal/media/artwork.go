@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -25,6 +26,25 @@ const maxArtworkSourceBytes = 5 * 1024 * 1024
 func artworkKey(st State) string {
 	sum := sha256.Sum256([]byte(st.Player + "\x00" + st.ArtworkSource + "\x00" + st.Title + "\x00" + st.Artist))
 	return hex.EncodeToString(sum[:])
+}
+
+// A local Windows file URL has a leading slash before its drive letter.
+func artworkFilePath(u *url.URL) string {
+	if (u.Host != "" && u.Host != "localhost") || u.Opaque != "" || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	p := u.Path
+	if runtime.GOOS == "windows" {
+		p = filepath.FromSlash(strings.TrimPrefix(p, "/"))
+		// Only allow a local drive, never UNC shares, device paths or reserved names.
+		if len(p) < 4 || len(filepath.VolumeName(p)) != 2 || p[1] != ':' || !filepath.IsLocal(p[3:]) || strings.Contains(p[3:], ":") {
+			return ""
+		}
+	}
+	if !filepath.IsAbs(p) {
+		return ""
+	}
+	return p
 }
 func validArtworkSource(source string) bool {
 	if len(source) > 8192 {
@@ -38,7 +58,7 @@ func validArtworkSource(source string) bool {
 	case "http", "https":
 		return u.Hostname() != ""
 	case "file":
-		return (u.Host == "" || u.Host == "localhost") && filepath.IsAbs(u.Path) && u.RawQuery == "" && u.Fragment == ""
+		return artworkFilePath(u) != ""
 	}
 	return false
 }
@@ -62,11 +82,12 @@ func loadArtwork(ctx context.Context, source string) ([]byte, error) {
 	u, _ := url.Parse(source)
 	var reader io.ReadCloser
 	if u.Scheme == "file" {
-		info, err := os.Stat(u.Path)
+		path := artworkFilePath(u)
+		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() || info.Size() > maxArtworkSourceBytes {
 			return nil, errors.New("artwork unavailable")
 		}
-		file, err := os.Open(u.Path)
+		file, err := os.Open(path)
 		if err != nil {
 			return nil, err
 		}

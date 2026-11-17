@@ -163,13 +163,7 @@ func TestSetValuePreservesFileMode(t *testing.T) {
 	}
 
 	// The file holds the auth token; a rewrite must not widen it.
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0600 {
-		t.Errorf("mode = %o, want 600", got)
-	}
+	checkConfigPermissions(t, path)
 }
 
 func TestSetValueCreatesMissingFile(t *testing.T) {
@@ -265,13 +259,7 @@ func TestNewConfigFileIsNotWorldReadable(t *testing.T) {
 
 	// The file holds the shared token; viper's default 0644 would hand it to
 	// every other local user.
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0600 {
-		t.Errorf("mode = %o, want 600", got)
-	}
+	checkConfigPermissions(t, path)
 }
 
 func TestSaveAgentIsNotWorldReadable(t *testing.T) {
@@ -281,11 +269,5 @@ func TestSaveAgentIsNotWorldReadable(t *testing.T) {
 		t.Fatalf("SaveAgent: %v", err)
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0600 {
-		t.Errorf("mode = %o, want 600", got)
-	}
+	checkConfigPermissions(t, path)
 }

@@ -11,8 +11,11 @@ import (
 	"encoding/json"
 	"io"
 	"os/exec"
+	"syscall"
 	"time"
 	"unicode/utf16"
+
+	"golang.org/x/sys/windows"
 )
 
 // The helper uses the UI Automation assemblies shipped with Windows. Text never
@@ -35,6 +38,7 @@ func Native(ctx context.Context) (Backend, error) {
 		binary.LittleEndian.PutUint16(data[i*2:], v)
 	}
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(data))
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

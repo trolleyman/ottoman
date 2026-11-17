@@ -6,6 +6,8 @@ import { useStore } from "./store";
 export function ComputerPower() {
   const { agentStatus: status, agentInfo, wake, shutdown, reboot } = useStore();
   const [open, setOpen] = useState(false);
+  const bootTarget = agentInfo?.os === "windows" ? "linux" : "windows";
+  const bootLabel = bootTarget === "linux" ? "Linux" : "Windows";
   const [busy, setBusy] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -18,13 +20,13 @@ export function ComputerPower() {
     const button = trigger.current;
     return () => button?.focus();
   }, [open]);
-  const run = async (action: "shutdown" | "windows" | "wake") => {
+  const run = async (action: "shutdown" | "restart" | "wake") => {
     if (pending || (action === "wake" ? !offline : !online)) return;
     setBusy(true);
     try {
       if (action === "wake") await wake("linux");
       else if (action === "shutdown") await shutdown();
-      else await reboot("windows");
+      else await reboot(bootTarget);
       setOpen(false);
     } finally { setBusy(false); }
   };
@@ -41,7 +43,7 @@ export function ComputerPower() {
         }
       }}>
         <header><h2 id="computer-power-title">{agentInfo?.hostname || "Computer"}</h2><button aria-label="Close computer power" disabled={busy} onClick={() => setOpen(false)}><X /></button></header>
-        {online ? <><button className="computer-power-action computer-power-shutdown" disabled={pending} onClick={() => void run("shutdown")}><Power />Shut down</button><button className="computer-power-action" disabled={pending} onClick={() => void run("windows")}><RotateCcw />Restart to Windows</button></> : offline ? <button className="computer-power-action" disabled={pending} onClick={() => void run("wake")}><Power />Turn on</button> : <p role="status">{status === "waking" ? "Turning on…" : status === "shutting_down" ? "Shutting down…" : "Checking connection…"}</p>}
+        {online ? <><button className="computer-power-action computer-power-shutdown" disabled={pending} onClick={() => void run("shutdown")}><Power />Shut down</button><button className="computer-power-action" disabled={pending} onClick={() => void run("restart")}><RotateCcw />Restart to {bootLabel}</button></> : offline ? <button className="computer-power-action" disabled={pending} onClick={() => void run("wake")}><Power />Turn on</button> : <p role="status">{status === "waking" ? "Turning on…" : status === "shutting_down" ? "Shutting down…" : "Checking connection…"}</p>}
         <button className="computer-power-cancel" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>, document.body)}

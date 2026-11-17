@@ -3,7 +3,9 @@ package store
 import "testing"
 
 func TestCurrentLayoutRoundTrip(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("LOCALAPPDATA", dir)
 
 	if got := LoadCurrentLayout(); got != "" {
 		t.Fatalf("expected empty current layout initially, got %q", got)

@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 func WriteImage(ctx context.Context, png []byte) error {
@@ -23,6 +26,7 @@ try {
  try { [Windows.Forms.Clipboard]::SetImage($image) } finally { $image.Dispose() }
 } finally { $stream.Dispose() }`
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	cmd.Stdin = strings.NewReader(base64.StdEncoding.EncodeToString(png))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("could not set the desktop image clipboard: %w", err)

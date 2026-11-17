@@ -39,7 +39,7 @@ func TestArtworkLocalAndHTTPThumbnail(t *testing.T) {
 		w.Write(data)
 	}))
 	defer server.Close()
-	for _, source := range []string{(&url.URL{Scheme: "file", Path: path}).String(), server.URL} {
+	for _, source := range []string{(&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/")}).String(), server.URL} {
 		got, err := loadArtwork(context.Background(), source)
 		if err != nil {
 			t.Fatal(err)

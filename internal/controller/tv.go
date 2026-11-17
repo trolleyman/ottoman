@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -39,7 +40,10 @@ func (c *Controller) syncTVFromAgent(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	url := c.agentURL("/api/tv/export")
+	// Pairing data belongs to the primary agent. A secondary OS may have no TV registry.
+	base := *c.agentBase
+	base.Path = strings.TrimSuffix(base.Path, "/") + "/api/tv/export"
+	url := base.String()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err

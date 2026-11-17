@@ -21,6 +21,16 @@ func (a *Agent) Boot(ctx context.Context, request api.BootRequestObject) (api.Bo
 	}
 	target := request.Body.Target
 
+	if runtime.GOOS == "windows" {
+		if target != "linux" || !a.config.Boot.LinuxDefault {
+			return api.Boot400JSONResponse{Code: 400, Error: "restart to Linux requires a Linux boot default and [agent.boot] linux_default = true"}, nil
+		}
+		if out, err := exec.Command("shutdown.exe", "/r", "/t", "0").CombinedOutput(); err != nil {
+			return api.Boot500JSONResponse{Code: 500, Error: "restart failed: " + err.Error() + " " + string(out)}, nil
+		}
+		msg := "Restarting into Linux"
+		return api.Boot200JSONResponse{Success: true, Message: &msg}, nil
+	}
 	if runtime.GOOS != "linux" {
 		return api.Boot500JSONResponse{Code: 500, Error: "boot-target selection is only supported on Linux"}, nil
 	}
