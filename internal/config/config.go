@@ -54,8 +54,9 @@ type ControllerConfig struct {
 
 // AgentControllerConfig holds the configuration for how to contact the agent.
 type AgentControllerConfig struct {
-	Socket     string `json:"socket,omitempty"` // Optional private SSH forward for the alternate OS.
-	MACAddress string `json:"mac_address"`
+	AlternateURL string `json:"alternate_url,omitempty"`
+	Socket       string `json:"socket,omitempty"` // Optional private SSH forward for the alternate OS.
+	MACAddress   string `json:"mac_address"`
 
 	// URL is the agent's base URL, scheme included. The scheme decides how the
 	// controller talks to the agent: "https://host:port" when a TLS front-end
@@ -126,6 +127,15 @@ func (a *AgentControllerConfig) BaseURL() (*url.URL, error) {
 		return nil, errors.Errorf("controller.agent.url %q is missing a host", raw)
 	}
 	return u, nil
+}
+
+// AlternateBaseURL is optional for a dual-boot machine with two network identities.
+func (a *AgentControllerConfig) AlternateBaseURL() (*url.URL, error) {
+	if a.AlternateURL == "" {
+		return nil, nil
+	}
+	alternate := AgentControllerConfig{URL: a.AlternateURL}
+	return alternate.BaseURL()
 }
 
 // Normalize collapses the legacy spelling into URL so a config written back out
@@ -386,6 +396,9 @@ func setController(w *viper.Viper, cfg *ControllerConfig) {
 	// Write the modern key only: a config round-tripped through `config init`
 	// comes back with url and no ip_address/port to disagree with it.
 	w.Set("controller.agent.url", cfg.Agent.resolvedURL())
+	if cfg.Agent.AlternateURL != "" {
+		w.Set("controller.agent.alternate_url", cfg.Agent.AlternateURL)
+	}
 	if cfg.Agent.Socket != "" {
 		w.Set("controller.agent.socket", cfg.Agent.Socket)
 	}

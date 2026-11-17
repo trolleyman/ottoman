@@ -42,6 +42,7 @@ var settings = []setting{
 	{"controller.auth_token", "shared token the controller requires; must match the agent's", parseToken},
 	{"controller.require_local_auth", "gate loopback callers too (default true); false only when nothing forwards traffic in from 127.0.0.1", parseBool},
 	{"controller.agent.url", "agent base URL including scheme, e.g. https://hades.tail1234.ts.net", parseAgentURL},
+	{"controller.agent.alternate_url", "optional base URL for the alternate OS on a dual-boot agent", parseAgentURL},
 	{"controller.agent.mac_address", "agent's MAC address, for Wake-on-LAN", parseMAC},
 }
 

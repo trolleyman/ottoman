@@ -31,13 +31,17 @@ import (
 
 // Controller is the main orchestrator running on the Raspberry Pi
 type Controller struct {
-	config    *config.ControllerConfig
-	router    *http.ServeMux
-	server    *http.Server
-	client    *http.Client
-	auth      *common.Authenticator
-	agentBase *url.URL
-	startTime time.Time
+	config          *config.ControllerConfig
+	router          *http.ServeMux
+	server          *http.Server
+	client          *http.Client
+	auth            *common.Authenticator
+	agentBase       *url.URL
+	alternateBase   *url.URL
+	routeMu         sync.Mutex
+	alternateOnline bool
+	nextProbe       time.Time
+	startTime       time.Time
 
 	mu      sync.RWMutex
 	localIP string
@@ -88,6 +92,28 @@ func (c *Controller) agentWebSocketURL(path string) string {
 const tunnelHost = "ottoman-agent.invalid"
 
 func (c *Controller) activeAgentBase() *url.URL {
+	if c.alternateBase != nil {
+		c.routeMu.Lock()
+		defer c.routeMu.Unlock()
+		if !time.Now().Before(c.nextProbe) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			health := c.alternateBase.JoinPath("health")
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, health.String(), nil)
+			c.alternateOnline = false
+			if err == nil {
+				resp, err := c.client.Do(req)
+				if err == nil {
+					c.alternateOnline = resp.StatusCode == http.StatusOK
+					resp.Body.Close()
+				}
+			}
+			cancel()
+			c.nextProbe = time.Now().Add(10 * time.Second)
+		}
+		if c.alternateOnline {
+			return c.alternateBase
+		}
+	}
 	if c.config != nil && c.config.Agent.Socket != "" {
 		conn, err := net.DialTimeout("unix", c.config.Agent.Socket, time.Second)
 		if err == nil {
@@ -109,15 +135,21 @@ func New(config *config.ControllerConfig) (*Controller, error) {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
+	alternateBase, err := config.Agent.AlternateBaseURL()
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid alternate agent URL")
+	}
+
 	c := &Controller{
 		config: config,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		auth:      common.NewAuthenticator(config.AuthToken, config.LocalAuthRequired()),
-		agentBase: agentBase,
-		startTime: time.Now(),
-		localIP:   getOutboundIP(),
+		auth:          common.NewAuthenticator(config.AuthToken, config.LocalAuthRequired()),
+		agentBase:     agentBase,
+		alternateBase: alternateBase,
+		startTime:     time.Now(),
+		localIP:       getOutboundIP(),
 
 		pendingPollInterval: defaultPendingPollInterval,
 	}

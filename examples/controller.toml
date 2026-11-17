@@ -21,6 +21,9 @@ auth_token = 'your-secret-token-here'
 require_local_auth = true
 
 [controller.agent]
+# For dual boot, prefer the other OS while its agent health endpoint responds.
+# alternate_url = "https://desktop-windows.example.ts.net:17294"
+
 # Where the agent is, scheme included. Use https when a TLS front-end sits in
 # front of the agent, http for a direct connection over a link that is already
 # encrypted (a tailnet, a VPN). The scheme also decides how the trackpad
